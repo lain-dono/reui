@@ -17,6 +17,7 @@ use crate::vg::utils::{
     min, max,
     average_scale,
 };
+use slotmap::Key;
 
 extern "C" {
     fn fonsTextIterInit(
@@ -126,7 +127,7 @@ unsafe fn flush_text_texture(ctx: &mut Context) {
     if ctx.fs.validate_texture(&mut dirty) {
         let image = ctx.font_images[ctx.font_image_idx as usize];
         // Update texture
-        if image.0 != 0 {
+        if !image.is_null() {
             let (_, _, data) = ctx.fs.texture_data();
             let x = dirty[0];
             let y = dirty[1];
@@ -143,10 +144,12 @@ unsafe fn alloc_text_atlas(ctx: &mut Context) -> bool {
         return false;
     }
     // if next fontImage already have a texture
-    let (iw, ih) = if ctx.font_images[(ctx.font_image_idx+1) as usize].0 != 0 {
+    let (iw, ih) = if !ctx.font_images[(ctx.font_image_idx+1) as usize].is_null() {
         ctx.image_size(ctx.font_images[(ctx.font_image_idx+1) as usize])
+            .expect("font image texture")
     } else { // calculate the new font image size and create it.
-        let (mut iw, mut ih) = ctx.image_size(ctx.font_images[ctx.font_image_idx as usize]);
+        let (mut iw, mut ih) = ctx.image_size(ctx.font_images[ctx.font_image_idx as usize])
+            .expect("font image texture");
         if iw > ih {
             ih *= 2;
         } else {

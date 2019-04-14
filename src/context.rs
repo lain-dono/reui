@@ -5,7 +5,7 @@ use core::ptr::null_mut;
 use arrayvec::ArrayVec;
 
 use crate::{
-    backend::BackendGL,
+    backend::{BackendGL, Image},
     cache::{PathCache, LineCap, LineJoin},
     transform,
     vg::*,
@@ -175,10 +175,10 @@ impl States {
         Self { states }
     }
     pub(crate) fn last(&self) -> &State {
-        self.states.last().unwrap() //[(self.states.len()-1) as usize]
+        self.states.last().expect("last state") //[(self.states.len()-1) as usize]
     }
     pub(crate) fn last_mut(&mut self) -> &mut State {
-        self.states.last_mut().unwrap()
+        self.states.last_mut().expect("last_mut state")
     }
 
     pub(crate) fn clear(&mut self) {
@@ -225,7 +225,7 @@ impl Context {
             state
         } else {
             self.states.states.push(unsafe { std::mem::zeroed() });
-            self.states.states.last_mut().unwrap()
+            self.states.states.last_mut().expect("last mut state (reset)")
         };
         *state = State::new();
     }

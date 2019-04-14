@@ -2,6 +2,7 @@ mod images;
 
 use crate::{
     context::Context,
+    backend::Image,
     cache::{Winding, LineJoin, LineCap},
     vg::*,
 };

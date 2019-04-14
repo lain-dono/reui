@@ -120,6 +120,12 @@ pub fn average_scale(t: &[f32; 6]) -> f32 {
     (sx + sy) * 0.5
 }
 
+#[inline(always)]
+pub const fn pack_uv(u: f32, v: f32) -> [u16; 2] {
+    let u = (u * 65535.0) as u16;
+    let v = (v * 65535.0) as u16;
+    [u, v]
+}
 
 pub fn deg2rad(deg: f32) -> f32 { deg / 180.0 * PI }
 pub fn rad2deg(rad: f32) -> f32 { rad / PI * 180.0 }

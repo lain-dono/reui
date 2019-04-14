@@ -3,17 +3,18 @@
 use std::{
     slice::from_raw_parts_mut,
     mem,
-    ptr::null,
 };
 
 use crate::{
-    context::Context,
     cache::{Path, Vertex},
-    vg::{Scissor, Paint, CompositeState, BlendFactor, Image},
+    vg::{Scissor, Paint, CompositeState},
 };
 
-use super::ImageFlags;
+use super::{Image, ImageFlags};
 use super::gl::*;
+use super::gl_shader::Shader;
+
+use slotmap::Key;
 
 fn check_error(msg: &str) {
     if true {
@@ -58,53 +59,6 @@ fn max_vert_count(paths: &[Path]) -> usize {
     paths.into_iter().fold(0, |acc, path| acc + path.nfill + path.nstroke)
 }
 
-fn blend_factor(factor: BlendFactor) -> GLenum {
-    match factor {
-        BlendFactor::ZERO                   => GL_ZERO,
-        BlendFactor::ONE                    => GL_ONE,
-
-        BlendFactor::SRC_COLOR              => GL_SRC_COLOR,
-        BlendFactor::ONE_MINUS_SRC_COLOR    => GL_ONE_MINUS_SRC_COLOR,
-
-        BlendFactor::SRC_ALPHA              => GL_SRC_ALPHA,
-        BlendFactor::ONE_MINUS_SRC_ALPHA    => GL_ONE_MINUS_SRC_ALPHA,
-
-        BlendFactor::DST_ALPHA              => GL_DST_ALPHA,
-        BlendFactor::ONE_MINUS_DST_ALPHA    => GL_ONE_MINUS_DST_ALPHA,
-
-        BlendFactor::DST_COLOR              => GL_DST_COLOR,
-        BlendFactor::ONE_MINUS_DST_COLOR    => GL_ONE_MINUS_DST_COLOR,
-
-        BlendFactor::SRC_ALPHA_SATURATE     => GL_SRC_ALPHA_SATURATE,
-    }
-}
-
-fn blend_composite_op(op: CompositeState) -> Blend {
-    op.into()
-}
-
-impl From<CompositeState> for Blend {
-    fn from(op: CompositeState) -> Self {
-        Self {
-            src_color: blend_factor(op.src_color),
-            dst_color: blend_factor(op.dst_color),
-            src_alpha: blend_factor(op.src_alpha),
-            dst_alpha: blend_factor(op.dst_alpha),
-        }
-    }
-}
-
-impl Default for Blend {
-    fn default() -> Self {
-        Self {
-            src_color: GL_ONE,
-            dst_color: GL_ONE_MINUS_SRC_ALPHA,
-            src_alpha: GL_ONE,
-            dst_alpha: GL_ONE_MINUS_SRC_ALPHA,
-        }
-    }
-}
-
 bitflags::bitflags!(
     #[repr(transparent)]
     pub struct NFlags: i32 {
@@ -133,14 +87,6 @@ const LOC_VIEWSIZE: usize = 0;
 const LOC_TEX: usize = 1;
 const LOC_FRAG: usize = 2;
 const MAX_LOCS: usize = 3;
-
-#[repr(C)]
-struct Shader {
-    prog: GLuint,
-    frag: GLuint,
-    vert: GLuint,
-    loc: [GLint; MAX_LOCS],
-}
 
 #[repr(C, align(4))]
 struct FragUniforms {
@@ -202,7 +148,6 @@ impl FragUniforms {
     }
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Default)]
 struct PathGL {
     fill_offset: usize,
@@ -211,10 +156,8 @@ struct PathGL {
     stroke_count: usize,
 }
 
-#[repr(C)]
-#[derive(Default)]
+#[derive(Debug)]
 struct Texture {
-    id: Image,
     tex: GLuint,
 
     width: u32,
@@ -222,6 +165,27 @@ struct Texture {
 
     kind: i32,
     flags: ImageFlags,
+}
+
+impl Drop for Texture {
+    fn drop(&mut self) {
+        if self.tex != 0 && !self.flags.contains(ImageFlags::NODELETE) {
+            unsafe { glDeleteTextures(1, &self.tex); }
+            self.tex = 0;
+        }
+    }
+}
+
+impl Default for Texture {
+    fn default() -> Self {
+        Self {
+            tex: 0,
+            width: 0,
+            height: 0,
+            kind: 0,
+            flags: ImageFlags::empty(),
+        }
+    }
 }
 
 #[repr(i32)]
@@ -240,19 +204,55 @@ impl Default for CallKind {
     }
 }
 
-#[repr(C)]
-struct Blend {
-    src_color: GLenum,
-    dst_color: GLenum,
-    src_alpha: GLenum,
-    dst_alpha: GLenum,
+struct DrawCallData {
+    image: Image,
+    uniform_offset: usize,
 }
 
-#[repr(C)]
+impl Default for DrawCallData {
+    fn default() -> Self {
+        Self {
+            image: Image::null(),
+            uniform_offset: 0,
+        }
+    }
+}
+
+enum DrawCall {
+    Fill {
+        data: DrawCallData,
+        blend_func: Blend,
+
+        path_offset: usize,
+        path_count: usize,
+
+        triangle_offset: usize,
+    },
+    ConvexFill {
+        data: DrawCallData,
+        blend_func: Blend,
+
+        path_offset: usize,
+    },
+    Stroke {
+        data: DrawCallData,
+        blend_func: Blend,
+
+        path_offset: usize,
+        path_count: usize,
+    },
+    Triangles {
+        data: DrawCallData,
+        blend_func: Blend,
+
+        triangle_offset: usize,
+        triangle_count: usize,
+    },
+}
+
 #[derive(Default)]
 struct Call {
     kind: CallKind,
-    image: Image,
 
     path_offset: usize,
     path_count: usize,
@@ -260,63 +260,39 @@ struct Call {
     triangle_offset: usize,
     triangle_count: usize,
 
-    uniform_offset: usize,
-
+    data: DrawCallData,
     blend_func: Blend,
 }
 
-#[repr(C)]
 pub struct BackendGL {
-    shader: Shader,
-    view: [f32; 2],
-
-    texture_id: i32,
-    vert_buf: GLuint,
-    flags: NFlags,
-
-    textures: Vec<Texture>,
-
     // Per frame buffers
     calls: Vec<Call>,
     paths: Vec<PathGL>,
     verts: Vec<Vertex>,
     uniforms: Vec<FragUniforms>,
-}
 
-impl Drop for BackendGL {
-    fn drop(&mut self) {
-        if self.vert_buf != 0 {
-            unsafe { glDeleteBuffers(1, &self.vert_buf); }
-        }
-        for t in &mut self.textures {
-            if t.tex != 0 && !t.flags.contains(ImageFlags::NODELETE) {
-                unsafe { glDeleteTextures(1, &t.tex); }
-            }
-        }
-    }
+    textures: slotmap::SlotMap<Image, Texture>,
+
+    shader: Shader,
+    view: [f32; 2],
+
+    vert_buf: Buffer,
+    flags: NFlags,
 }
 
 impl BackendGL {
     pub fn new(flags: NFlags) -> Self {
         check_error("init");
-        let shader = create_shader();
+        let shader = Shader::new();
         check_error("shader & uniform locations");
-        let mut vert_buf = 0;
-        // Create dynamic vertex array
-        unsafe {
-            glGenBuffers(1, &mut vert_buf);
-            check_error("create done");
-            glFinish();
-        }
 
         Self {
             shader,
             view: [0f32; 2],
 
-            textures: Vec::new(),
+            textures: slotmap::SlotMap::with_key(),
 
-            texture_id: 0,
-            vert_buf,
+            vert_buf: Buffer::new(),
             flags,
 
             // Per frame buffers
@@ -353,26 +329,15 @@ impl BackendGL {
 
     fn alloc_frag_uniforms(&mut self, n: usize) -> usize {
         let start = self.uniforms.len();
-        let size = start + n;
         self.uniforms.resize_with(start + n, Default::default);
         start
     }
 
-    fn alloc_texture(&mut self) -> &mut Texture {
-        self.texture_id += 1;
-        self.textures.push(Texture {
-            id: Image(self.texture_id as u32),
-            .. Default::default()
-        });
-        self.textures.last_mut().unwrap()
-    }
-
     fn set_uniforms(&self, offset: usize, image: Image) {
         let frag = self.frag_uniform(offset);
+        self.shader.bind_frag(&frag.array);
         unsafe {
-            glUniform4fv(self.shader.loc[LOC_FRAG], 11, &(frag.array[0]));
-
-            if image.0 != 0 {
+            if !image.is_null() {
                 let tex = self.find_texture(image);
                 glBindTexture(GL_TEXTURE_2D, tex.map(|t| t.tex).unwrap_or(0));
                 check_error("tex paint tex");
@@ -391,11 +356,11 @@ impl BackendGL {
     }
 
     fn find_texture(&self, image: Image) -> Option<&Texture> {
-        self.textures.iter().find(|t| t.id == image)
+        self.textures.get(image)
     }
 
     fn find_texture_mut<'a>(&mut self, image: Image) -> Option<&'a mut Texture> {
-        if let Some(tex) = self.textures.iter_mut().find(|t| t.id == image) {
+        if let Some(tex) = self.textures.get_mut(image) {
             let tex: *mut Texture = tex;
             Some(unsafe { &mut *tex })
         } else {
@@ -431,7 +396,7 @@ impl BackendGL {
         frag.set_stroke_mul((width*0.5 + fringe*0.5) / fringe);
         frag.set_stroke_thr(stroke_thr);
 
-        let invxform = if paint.image != Default::default() {
+        let invxform = if !paint.image.is_null() {
             let tex = match self.find_texture(paint.image) {
                 Some(tex) => tex,
                 None => return false,
@@ -471,7 +436,7 @@ impl BackendGL {
         let start = call.path_offset as usize;
         let end = start + call.path_count as usize;
 
-        self.set_uniforms(call.uniform_offset, call.image);
+        self.set_uniforms(call.data.uniform_offset, call.data.image);
         check_error("convex fill");
 
         for path in &self.paths[start..end] {
@@ -484,7 +449,7 @@ impl BackendGL {
     }
 
     unsafe fn triangles(&self, call: &Call) {
-        self.set_uniforms(call.uniform_offset, call.image);
+        self.set_uniforms(call.data.uniform_offset, call.data.image);
         check_error("triangles fill");
 
         glDrawArrays(GL_TRIANGLES, call.triangle_offset as i32, call.triangle_count as i32);
@@ -501,7 +466,7 @@ impl BackendGL {
         glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 
         // set bindpoint for solid loc
-        self.set_uniforms(call.uniform_offset, Default::default());
+        self.set_uniforms(call.data.uniform_offset, Image::null());
         check_error("fill simple");
 
         glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_KEEP, GL_INCR_WRAP);
@@ -515,7 +480,7 @@ impl BackendGL {
         // Draw anti-aliased pixels
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
-        self.set_uniforms(call.uniform_offset + 1, call.image);
+        self.set_uniforms(call.data.uniform_offset + 1, call.data.image);
         check_error("fill fill");
 
         if self.flags.contains(NFlags::ANTIALIAS) {
@@ -528,9 +493,11 @@ impl BackendGL {
         }
 
         // Draw fill
-        glStencilFunc(GL_NOTEQUAL, 0x0, 0xff);
-        glStencilOp(GL_ZERO, GL_ZERO, GL_ZERO);
-        glDrawArrays(GL_TRIANGLE_STRIP, call.triangle_offset as i32, call.triangle_count as i32);
+        if call.triangle_count == 4 {
+            glStencilFunc(GL_NOTEQUAL, 0x0, 0xff);
+            glStencilOp(GL_ZERO, GL_ZERO, GL_ZERO);
+            glDrawArrays(GL_TRIANGLE_STRIP, call.triangle_offset as i32, call.triangle_count as i32);
+        }
 
         glDisable(GL_STENCIL_TEST);
     }
@@ -546,14 +513,14 @@ impl BackendGL {
             // Fill the stroke base without overlap
             glStencilFunc(GL_EQUAL, 0x0, 0xff);
             glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
-            self.set_uniforms(call.uniform_offset + 1, call.image);
+            self.set_uniforms(call.data.uniform_offset + 1, call.data.image);
             check_error("stroke fill 0");
             for path in &self.paths[start..end] {
                 glDrawArrays(GL_TRIANGLE_STRIP, path.stroke_offset as i32, path.stroke_count as i32);
             }
 
             // Draw anti-aliased pixels.
-            self.set_uniforms(call.uniform_offset, call.image);
+            self.set_uniforms(call.data.uniform_offset, call.data.image);
             glStencilFunc(GL_EQUAL, 0x00, 0xff);
             glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
             for path in &self.paths[start..end] {
@@ -576,7 +543,7 @@ impl BackendGL {
             //  gl,
             //  self.frag_uniformPtr(gl, call.uniformOffset + 1), paint, scissor, strokeWidth, fringe, 1.0f - 0.5f/255.0f);
         } else {
-            self.set_uniforms(call.uniform_offset, call.image);
+            self.set_uniforms(call.data.uniform_offset, call.data.image);
             check_error("stroke fill");
             // Draw Strokes
             for path in &self.paths[start..end] {
@@ -589,7 +556,7 @@ impl BackendGL {
         let call = unsafe { &mut *self.alloc_call() };
 
         call.kind = CallKind::TRIANGLES;
-        call.image = paint.image;
+        call.data.image = paint.image;
         call.blend_func = op.into();
 
         // Allocate vertices for all the paths.
@@ -599,8 +566,8 @@ impl BackendGL {
         copy_verts(&mut self.verts, call.triangle_offset, verts.len(), verts);
 
         // Fill shader
-        call.uniform_offset = self.alloc_frag_uniforms(1);
-        let frag = self.frag_uniform_mut(call.uniform_offset);
+        call.data.uniform_offset = self.alloc_frag_uniforms(1);
+        let frag = self.frag_uniform_mut(call.data.uniform_offset);
         self.convert_paint(frag, paint, scissor, 1.0, 1.0, -1.0);
         frag.set_type(SHADER_IMG);
     }
@@ -616,8 +583,8 @@ impl BackendGL {
         call.triangle_count = 4;
         call.path_offset = self.alloc_paths(paths.len());
         call.path_count = paths.len();
-        call.image = paint.image;
-        call.blend_func = blend_composite_op(composite);
+        call.data.image = paint.image;
+        call.blend_func = composite.into();
 
         if paths.len() == 1 && paths[0].convex {
             call.kind = CallKind::CONVEXFILL;
@@ -655,20 +622,20 @@ impl BackendGL {
             quad[2].set([bounds[0], bounds[3]], [0.5, 1.0]);
             quad[3].set([bounds[0], bounds[1]], [0.5, 1.0]);
 
-            call.uniform_offset = self.alloc_frag_uniforms(2);
+            call.data.uniform_offset = self.alloc_frag_uniforms(2);
 
             // Simple shader for stencil
-            let frag = self.frag_uniform_mut(call.uniform_offset);
+            let frag = self.frag_uniform_mut(call.data.uniform_offset);
             *frag = Default::default();
             frag.set_stroke_thr(-1.0);
             frag.set_type(SHADER_SIMPLE);
 
             // Fill shader
-            self.frag_uniform_mut(call.uniform_offset + 1)
+            self.frag_uniform_mut(call.data.uniform_offset + 1)
         } else {
-            call.uniform_offset = self.alloc_frag_uniforms(1);
+            call.data.uniform_offset = self.alloc_frag_uniforms(1);
             // Fill shader
-            self.frag_uniform_mut(call.uniform_offset)
+            self.frag_uniform_mut(call.data.uniform_offset)
         };
 
         self.convert_paint(a, paint, scissor, fringe, fringe, -1.0);
@@ -684,8 +651,8 @@ impl BackendGL {
         call.kind = CallKind::STROKE;
         call.path_offset = self.alloc_paths(paths.len());
         call.path_count = paths.len();
-        call.image = paint.image;
-        call.blend_func = blend_composite_op(composite);
+        call.data.image = paint.image;
+        call.blend_func = composite.into();
 
         // Allocate vertices for all the paths.
         let maxverts = max_vert_count(paths);
@@ -706,16 +673,16 @@ impl BackendGL {
 
         // Fill shader
         if self.flags.contains(NFlags::STENCIL_STROKES) {
-            call.uniform_offset = self.alloc_frag_uniforms(2);
+            call.data.uniform_offset = self.alloc_frag_uniforms(2);
 
-            let a = self.frag_uniform_mut(call.uniform_offset);
-            let b = self.frag_uniform_mut(call.uniform_offset + 1);
+            let a = self.frag_uniform_mut(call.data.uniform_offset);
+            let b = self.frag_uniform_mut(call.data.uniform_offset + 1);
 
             self.convert_paint(a, paint, scissor, stroke_width, fringe, -1.0);
             self.convert_paint(b, paint, scissor, stroke_width, fringe, 1.0 - 0.5/255.0);
         } else {
-            call.uniform_offset = self.alloc_frag_uniforms(1);
-            let a = self.frag_uniform_mut(call.uniform_offset);
+            call.data.uniform_offset = self.alloc_frag_uniforms(1);
+            let a = self.frag_uniform_mut(call.data.uniform_offset);
             self.convert_paint(a, paint, scissor, stroke_width, fringe, -1.0);
         }
     }
@@ -730,9 +697,10 @@ impl BackendGL {
             return;
         }
 
+        self.shader.bind();
+
         unsafe {
             // Setup require GL state.
-            glUseProgram(self.shader.prog);
 
             glEnable(GL_CULL_FACE);
             glCullFace(GL_BACK);
@@ -748,32 +716,20 @@ impl BackendGL {
             glBindTexture(GL_TEXTURE_2D, 0);
 
             // Upload vertex data
-            glBindBuffer(GL_ARRAY_BUFFER, self.vert_buf);
+            self.vert_buf.bind_and_upload(&self.verts);
             let size = mem::size_of::<Vertex>();
-            glBufferData(
-                GL_ARRAY_BUFFER,
-                self.verts.len() * size,
-                self.verts.as_ptr() as *const u8,
-                GL_STREAM_DRAW,
-            );
 
             glEnableVertexAttribArray(0);
             glEnableVertexAttribArray(1);
 
             glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, size as i32, 0);
-            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, size as i32, 2 * mem::size_of::<f32>());
+            glVertexAttribPointer(1, 2, GL_UNSIGNED_SHORT, GL_TRUE, size as i32, 2 * mem::size_of::<f32>());
 
             // Set view and texture just once per frame.
-            glUniform1i(self.shader.loc[LOC_TEX], 0);
-            glUniform2fv(self.shader.loc[LOC_VIEWSIZE], 1, self.view.as_ptr());
+            self.shader.bind_view(&self.view);
 
             for call in &self.calls {
-                glBlendFuncSeparate(
-                    call.blend_func.src_color,
-                    call.blend_func.dst_color,
-                    call.blend_func.src_alpha,
-                    call.blend_func.dst_alpha,
-                );
+                call.blend_func.bind();
 
                 match call.kind {
                     CallKind::FILL => self.fill(call),
@@ -788,10 +744,11 @@ impl BackendGL {
             glDisableVertexAttribArray(1);
 
             glDisable(GL_CULL_FACE);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-            glUseProgram(0);
 
             glBindTexture(GL_TEXTURE_2D, 0);
+
+            self.vert_buf.unbind();
+            self.shader.unbind();
         }
 
         // Reset calls
@@ -802,17 +759,12 @@ impl BackendGL {
         self.find_texture(image).map(|t| (t.width, t.height))
     }
 
-    pub fn update_texture(&mut self, image: Image, x: i32, y: i32, w: u32, h: u32, data: *const u8) -> bool {
+    pub fn update_texture(&mut self, image: Image, _x: i32, y: i32, _w: u32, h: u32, data: *const u8) -> bool {
         let tex = if let Some(tex) = self.find_texture(image) {
             tex
         } else {
             return false;
         };
-
-        unsafe {
-            glBindTexture(GL_TEXTURE_2D, tex.tex);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        }
 
         // No support for all of skip, need to update a whole row at a time.
         let (kind, stride) = if tex.kind == TEXTURE_RGBA {
@@ -828,6 +780,9 @@ impl BackendGL {
         let w = tex.width;
 
         unsafe {
+            glBindTexture(GL_TEXTURE_2D, tex.tex);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
             glTexSubImage2D(GL_TEXTURE_2D, 0, x,y, w as i32,h as i32, kind, GL_UNSIGNED_BYTE, data);
 
             glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
@@ -837,33 +792,23 @@ impl BackendGL {
         true
     }
 
-    pub fn delete_texture(&mut self, id: Image) -> bool {
-        for t in &mut self.textures {
-            if t.id == id {
-                if t.tex != 0 && !t.flags.contains(ImageFlags::NODELETE) {
-                    unsafe { glDeleteTextures(1, &t.tex); }
-                }
-                *t = Default::default();
-                return true;
-            }
-        }
-        false
+    pub fn delete_texture(&mut self, image: Image) -> bool {
+        self.textures.remove(image).is_some()
     }
 
     pub fn create_texture(&mut self, kind: i32, w: u32, h: u32, flags: ImageFlags, data: *const u8) -> Image {
-        let tex = self.alloc_texture();
-        let id = tex.id;
-
-        tex.width = w;
-        tex.height = h;
-        tex.kind = kind;
-        tex.flags = flags;
-
+        let mut tex = 0;
         unsafe {
-            glGenTextures(1, &mut tex.tex);
-            glBindTexture(GL_TEXTURE_2D, tex.tex);
+            glGenTextures(1, &mut tex);
+            glBindTexture(GL_TEXTURE_2D, tex);
             glPixelStorei(GL_UNPACK_ALIGNMENT,1);
         }
+
+        let id = self.textures.insert(Texture {
+            kind, flags, tex,
+            width: w,
+            height: h,
+        });
 
         // GL 1.4 and later has support for generating mipmaps using a tex parameter.
         if flags.contains(ImageFlags::GENERATE_MIPMAPS) {
@@ -929,148 +874,3 @@ impl BackendGL {
         id
     }
 }
-
-fn create_shader() -> Shader {
-    let (vshader, fshader) = (VERT.as_ptr(), FRAG.as_ptr());
-
-    unsafe {
-        let prog = glCreateProgram();
-        let vert = glCreateShader(GL_VERTEX_SHADER);
-        let frag = glCreateShader(GL_FRAGMENT_SHADER);
-        //str[2] = vshader;
-        glShaderSource(vert, 1, &vshader, null());
-        //str[2] = fshader;
-        glShaderSource(frag, 1, &fshader, null());
-
-        glCompileShader(vert);
-        /*
-        let mut status = 0;
-        glGetShaderiv(vert, GL_COMPILE_STATUS, &status);
-        assert!(status == 1);
-        */
-
-        glCompileShader(frag);
-        /*
-        glGetShaderiv(frag, GL_COMPILE_STATUS, &status);
-        assert!(status == 1);
-        */
-
-        glAttachShader(prog, vert);
-        glAttachShader(prog, frag);
-
-        glBindAttribLocation(prog, 0, b"vertex\0".as_ptr());
-        glBindAttribLocation(prog, 1, b"tcoord\0".as_ptr());
-
-        glLinkProgram(prog);
-        /*
-        glGetProgramiv(prog, GL_LINK_STATUS, &status);
-        assert!(status == 1);
-        */
-
-        Shader {
-            prog,
-            vert,
-            frag,
-            loc: [
-                glGetUniformLocation(prog, b"viewSize\0".as_ptr()),
-                glGetUniformLocation(prog, b"tex\0".as_ptr()),
-                glGetUniformLocation(prog, b"frag\0".as_ptr()),
-            ]
-        }
-    }
-}
-
-// TODO: mediump float may not be enough for GLES2 in iOS.
-// see the following discussion: https://github.com/memononen/nanovg/issues/46
-static VERT: &[u8] = b"
-uniform vec2 viewSize;
-attribute vec2 vertex;
-attribute vec2 tcoord;
-varying vec2 ftcoord;
-varying vec2 fpos;
-void main(void) {
-    ftcoord = tcoord;
-    fpos = vertex;
-    gl_Position = vec4(2.0*vertex.x/viewSize.x - 1.0, 1.0 - 2.0*vertex.y/viewSize.y, 0, 1);
-}
-\0";
-
-static FRAG: &[u8] = b"
-#define UNIFORMARRAY_SIZE 11
-
-//precision highp float;
-
-uniform vec4 frag[UNIFORMARRAY_SIZE];
-uniform sampler2D tex;
-varying vec2 ftcoord;
-varying vec2 fpos;
-
-#define scissorMat mat3(frag[0].xyz, frag[1].xyz, frag[2].xyz)
-#define paintMat mat3(frag[3].xyz, frag[4].xyz, frag[5].xyz)
-#define innerCol frag[6]
-#define outerCol frag[7]
-#define scissorExt frag[8].xy
-#define scissorScale frag[8].zw
-#define extent frag[9].xy
-#define radius frag[9].z
-#define feather frag[9].w
-#define strokeMult frag[10].x
-#define strokeThr frag[10].y
-#define texType int(frag[10].z)
-#define type int(frag[10].w)
-
-float sdroundrect(vec2 pt, vec2 ext, float rad) {
-    vec2 ext2 = ext - vec2(rad,rad);
-    vec2 d = abs(pt) - ext2;
-    return min(max(d.x,d.y),0.0) + length(max(d,0.0)) - rad;
-}
-
-// Scissoring
-float scissorMask(vec2 p) {
-    vec2 sc = (abs((scissorMat * vec3(p,1.0)).xy) - scissorExt);
-    sc = vec2(0.5,0.5) - sc * scissorScale;
-    return clamp(sc.x,0.0,1.0) * clamp(sc.y,0.0,1.0);
-}
-
-// Stroke - from [0..1] to clipped pyramid, where the slope is 1px.
-float strokeMask() {
-    return min(1.0, (1.0-abs(ftcoord.x*2.0-1.0))*strokeMult) * min(1.0, ftcoord.y);
-}
-
-void main(void) {
-    vec4 result;
-    float scissor = scissorMask(fpos);
-
-    float strokeAlpha = strokeMask();
-    if (strokeAlpha < strokeThr) discard;
-
-    if (type == 0) {            // Gradient
-        // Calculate gradient color using box gradient
-        vec2 pt = (paintMat * vec3(fpos,1.0)).xy;
-        float d = clamp((sdroundrect(pt, extent, radius) + feather*0.5) / feather, 0.0, 1.0);
-        vec4 color = mix(innerCol,outerCol,d);
-        // Combine alpha
-        color *= strokeAlpha * scissor;
-        result = color;
-    } else if (type == 1) {        // Image
-        // Calculate color fron texture
-        vec2 pt = (paintMat * vec3(fpos,1.0)).xy / extent;
-        vec4 color = texture2D(tex, pt);
-        if (texType == 1) color = vec4(color.xyz*color.w,color.w);
-        if (texType == 2) color = vec4(color.x);
-        // Apply color tint and alpha.
-        color *= innerCol;
-        // Combine alpha
-        color *= strokeAlpha * scissor;
-        result = color;
-    } else if (type == 2) {        // Stencil fill
-        result = vec4(1,1,1,1);
-    } else if (type == 3) {        // Textured tris
-        vec4 color = texture2D(tex, ftcoord);
-        if (texType == 1) color = vec4(color.xyz*color.w,color.w);
-        if (texType == 2) color = vec4(color.x);
-        color *= scissor;
-        result = color * innerCol;
-    }
-    gl_FragColor = result;
-}\0";

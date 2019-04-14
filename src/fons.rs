@@ -167,13 +167,13 @@ pub struct FONScontext {
 
 impl FONScontext {
     pub fn add_font(&mut self, name: &str, path: &str) -> i32 {
-        let name = CString::new(name).unwrap();
-        let path = CString::new(path).unwrap();
+        let name = CString::new(name).expect("add_font cstring");
+        let path = CString::new(path).expect("add_font cstring");
         unsafe { fonsAddFont(self, name.as_ptr(), path.as_ptr()) }
     }
 
     pub fn add_font_mem(&mut self, name: &str, data: *mut u8, ndata: i32, free_data: i32) -> i32 {
-        let name = CString::new(name).unwrap();
+        let name = CString::new(name).expect("add_font_mem cstring");
         unsafe { fonsAddFontMem(self, name.as_ptr(), data, ndata, free_data) }
     }
 

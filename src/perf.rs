@@ -1,5 +1,4 @@
 use std::fmt::Write;
-use std::time::{Instant, Duration};
 
 use arrayvec::ArrayString;
 
@@ -16,6 +15,8 @@ pub enum GraphStyle {
 
 const GRAPH_HISTORY_COUNT: usize = 100;
 
+/*
+use std::time::{Instant, Duration};
 struct Ticker(Instant);
 
 impl Ticker {
@@ -38,6 +39,7 @@ impl Ticker {
         dt.as_secs() as f64 + (dt.subsec_nanos() as f64 / 1.0e9)
     }
 }
+*/
 
 #[repr(C)]
 pub struct PerfGraph {
@@ -50,7 +52,8 @@ pub struct PerfGraph {
 #[no_mangle] extern "C"
 fn initGraph(fps: &mut PerfGraph, style: GraphStyle, name: *const i8) {
     let name = unsafe { std::ffi::CStr::from_ptr(name).to_string_lossy() };
-    *fps = PerfGraph::new(style, &name);
+    let old = std::mem::replace(fps, PerfGraph::new(style, &name));
+    std::mem::forget(old);
 }
 #[no_mangle] extern "C"
 fn updateGraph(fps: &mut PerfGraph, dt: f32) {

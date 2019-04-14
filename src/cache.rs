@@ -91,16 +91,20 @@ pub enum Winding {
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct Vertex {
-    pub x: f32,
-    pub y: f32,
-    pub u: f32,
-    pub v: f32,
+    pub pos: [f32; 2],
+    pub uv: [u16; 2],
 }
 
 impl Vertex {
+    #[inline(always)]
+    pub fn new(pos: [f32; 2], uv: [f32; 2]) -> Self {
+        let uv = crate::vg::utils::pack_uv(uv[0], uv[1]);
+        Self { pos, uv }
+    }
+
+    #[inline(always)]
     pub fn set(&mut self, pos: [f32; 2], uv: [f32; 2]) {
-        let ([x, y], [u, v]) = (pos, uv);
-        *self = Self { x, y, u, v };
+        *self = Self::new(pos, uv);
     }
 }
 
@@ -315,7 +319,7 @@ impl PathCache {
         };
 
         if path.count as usize > 0 && self.points.len() > 0 {
-            let pt = self.points.last_mut().unwrap();
+            let pt = self.points.last_mut().expect("last point");
             if pt_eq(pt.x,pt.y, x,y, dist_tol) {
                 pt.flags |= flags;
                 return;
@@ -652,8 +656,8 @@ impl PathCache {
                         dst.bevel_join(p0, p1, w, w, u0, u1, aa);
                     }
                 } else {
-                    dst.push(p1.x + (p1.dmx * w), p1.y + (p1.dmy * w), u0,1.0);
-                    dst.push(p1.x - (p1.dmx * w), p1.y - (p1.dmy * w), u1,1.0);
+                    dst.push([p1.x + (p1.dmx * w), p1.y + (p1.dmy * w)], u0,1.0);
+                    dst.push([p1.x - (p1.dmx * w), p1.y - (p1.dmy * w)], u1,1.0);
                 }
 
                 p0_idx = p1_idx;
@@ -663,8 +667,8 @@ impl PathCache {
             if looped {
                 // Loop it
                 let (v0, v1) = unsafe { (&*(verts.add(0)), &*(verts.add(1))) };
-                dst.push(v0.x, v0.y, u0,1.0);
-                dst.push(v1.x, v1.y, u1,1.0);
+                dst.push(v0.pos, u0,1.0);
+                dst.push(v1.pos, u1,1.0);
             } else {
                 // Add cap
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx % pts.len()]); // XXX
@@ -725,22 +729,22 @@ impl PathCache {
                         if p1.is_left() {
                             let lx = p1.x + p1.dmx * woff;
                             let ly = p1.y + p1.dmy * woff;
-                            dst.push(lx, ly, 0.5,1.0);
+                            dst.push([lx, ly], 0.5,1.0);
                         } else {
                             let lx0 = p1.x + dlx0 * woff;
                             let ly0 = p1.y + dly0 * woff;
                             let lx1 = p1.x + dlx1 * woff;
                             let ly1 = p1.y + dly1 * woff;
-                            dst.push(lx0, ly0, 0.5,1.0);
-                            dst.push(lx1, ly1, 0.5,1.0);
+                            dst.push([lx0, ly0], 0.5,1.0);
+                            dst.push([lx1, ly1], 0.5,1.0);
                         }
                     } else {
-                        dst.push(p1.x + (p1.dmx * woff), p1.y + (p1.dmy * woff), 0.5,1.0);
+                        dst.push([p1.x + (p1.dmx * woff), p1.y + (p1.dmy * woff)], 0.5,1.0);
                     }
                 }
             } else {
                 for p in pts {
-                    dst.push(p.x, p.y, 0.5,1.0);
+                    dst.push([p.x, p.y], 0.5,1.0);
                 }
             }
 
@@ -769,15 +773,15 @@ impl PathCache {
                     if p1.flags.intersects(PointFlags::BEVEL | PointFlags::INNERBEVEL) {
                         dst.bevel_join(p0, p1, lw, rw, lu, ru, self.fringe_width);
                     } else {
-                        dst.push(p1.x + (p1.dmx * lw), p1.y + (p1.dmy * lw), lu,1.0);
-                        dst.push(p1.x - (p1.dmx * rw), p1.y - (p1.dmy * rw), ru,1.0);
+                        dst.push([p1.x + (p1.dmx * lw), p1.y + (p1.dmy * lw)], lu,1.0);
+                        dst.push([p1.x - (p1.dmx * rw), p1.y - (p1.dmy * rw)], ru,1.0);
                     }
                 }
 
                 // Loop it
                 let (v0, v1) = unsafe { (&*(verts.add(0)), &*(verts.add(1))) };
-                dst.push(v0.x, v0.y, lu,1.0);
-                dst.push(v1.x, v1.y, ru,1.0);
+                dst.push(v0.pos, lu,1.0);
+                dst.push(v1.pos, ru,1.0);
 
                 path.nstroke = dst.count;
                 verts = dst.dst;
@@ -799,9 +803,10 @@ impl Verts {
         Self { dst, count: 0 }
     }
 
-    fn push(&mut self, x: f32, y: f32, u: f32, v: f32) {
+    #[inline]
+    fn push(&mut self, pos: [f32; 2], u: f32, v: f32) {
         unsafe {
-            *self.dst = Vertex { x, y, u, v };
+            *self.dst = Vertex::new(pos, [u, v]);
             self.dst = self.dst.add(1);
             self.count += 1;
         }
@@ -822,8 +827,8 @@ impl Verts {
             let mut a1 = (-dly1).atan2(-dlx1);
             if a1 > a0 { a1 -= PI*2.0; }
 
-            self.push(lx0, ly0, lu,1.0);
-            self.push(p1.x - dlx0*rw, p1.y - dly0*rw, ru,1.0);
+            self.push([lx0, ly0], lu,1.0);
+            self.push([p1.x - dlx0*rw, p1.y - dly0*rw], ru,1.0);
 
             let n = clampi((((a0 - a1) / PI) * ncap as f32).ceil() as i32, 2, ncap);
             for i in 0..n {
@@ -831,20 +836,20 @@ impl Verts {
                 let a = a0 + u*(a1-a0);
                 let rx = p1.x + a.cos() * rw;
                 let ry = p1.y + a.sin() * rw;
-                self.push(p1.x, p1.y, 0.5,1.0);
-                self.push(rx, ry, ru,1.0);
+                self.push([p1.x, p1.y], 0.5,1.0);
+                self.push([rx, ry], ru,1.0);
             }
 
-            self.push(lx1, ly1, lu,1.0);
-            self.push(p1.x - dlx1*rw, p1.y - dly1*rw, ru,1.0);
+            self.push([lx1, ly1], lu,1.0);
+            self.push([p1.x - dlx1*rw, p1.y - dly1*rw], ru,1.0);
         } else {
             let [rx0,ry0,rx1,ry1] = choose_bevel(p1.is_innerbevel(), p0, p1, -rw);
             let     a0 = (dly0).atan2(dlx0);
             let mut a1 = (dly1).atan2(dlx1);
             if a1 < a0 { a1 += PI*2.0; }
 
-            self.push(p1.x + dlx0*rw, p1.y + dly0*rw, lu,1.0);
-            self.push(rx0, ry0, ru,1.0);
+            self.push([p1.x + dlx0*rw, p1.y + dly0*rw], lu,1.0);
+            self.push([rx0, ry0], ru,1.0);
 
             let n = clampi((((a1 - a0) / PI) * ncap as f32).ceil() as i32, 2, ncap);
             for i in 0..n {
@@ -852,12 +857,12 @@ impl Verts {
                 let a = a0 + u*(a1-a0);
                 let lx = p1.x + a.cos() * lw;
                 let ly = p1.y + a.sin() * lw;
-                self.push(lx, ly, lu,1.0);
-                self.push(p1.x, p1.y, 0.5,1.0);
+                self.push([lx, ly], lu,1.0);
+                self.push([p1.x, p1.y], 0.5,1.0);
             }
 
-            self.push(p1.x + dlx1*rw, p1.y + dly1*rw, lu,1.0);
-            self.push(rx1, ry1, ru,1.0);
+            self.push([p1.x + dlx1*rw, p1.y + dly1*rw], lu,1.0);
+            self.push([rx1, ry1], ru,1.0);
         }
     }
 
@@ -873,59 +878,59 @@ impl Verts {
         if p1.is_left() {
             let [lx0, ly0,  lx1, ly1] = choose_bevel(p1.is_innerbevel(), p0, p1, lw);
 
-            self.push(lx0, ly0, lu,1.0);
-            self.push(p1.x - dlx0*rw, p1.y - dly0*rw, ru,1.0);
+            self.push([lx0, ly0], lu,1.0);
+            self.push([p1.x - dlx0*rw, p1.y - dly0*rw], ru,1.0);
 
             if p1.is_bevel() {
-                self.push(lx0, ly0, lu,1.0);
-                self.push(p1.x - dlx0*rw, p1.y - dly0*rw, ru,1.0);
+                self.push([lx0, ly0], lu,1.0);
+                self.push([p1.x - dlx0*rw, p1.y - dly0*rw], ru,1.0);
 
-                self.push(lx1, ly1, lu,1.0);
-                self.push(p1.x - dlx1*rw, p1.y - dly1*rw, ru,1.0);
+                self.push([lx1, ly1], lu,1.0);
+                self.push([p1.x - dlx1*rw, p1.y - dly1*rw], ru,1.0);
             } else {
                 let rx0 = p1.x - p1.dmx * rw;
                 let ry0 = p1.y - p1.dmy * rw;
 
-                self.push(p1.x, p1.y, 0.5,1.0);
-                self.push(p1.x - dlx0*rw, p1.y - dly0*rw, ru,1.0);
+                self.push([p1.x, p1.y], 0.5,1.0);
+                self.push([p1.x - dlx0*rw, p1.y - dly0*rw], ru,1.0);
 
-                self.push(rx0, ry0, ru,1.0);
-                self.push(rx0, ry0, ru,1.0);
+                self.push([rx0, ry0], ru,1.0);
+                self.push([rx0, ry0], ru,1.0);
 
-                self.push(p1.x, p1.y, 0.5,1.0);
-                self.push(p1.x - dlx1*rw, p1.y - dly1*rw, ru,1.0);
+                self.push([p1.x, p1.y], 0.5,1.0);
+                self.push([p1.x - dlx1*rw, p1.y - dly1*rw], ru,1.0);
             }
 
-            self.push(lx1, ly1, lu,1.0);
-            self.push(p1.x - dlx1*rw, p1.y - dly1*rw, ru,1.0);
+            self.push([lx1, ly1], lu,1.0);
+            self.push([p1.x - dlx1*rw, p1.y - dly1*rw], ru,1.0);
         } else {
             let [rx0, ry0, rx1, ry1] = choose_bevel(p1.is_innerbevel(), p0, p1, -rw);
 
-            self.push(p1.x + dlx0*lw, p1.y + dly0*lw, lu,1.0);
-            self.push(rx0, ry0, ru,1.0);
+            self.push([p1.x + dlx0*lw, p1.y + dly0*lw], lu,1.0);
+            self.push([rx0, ry0], ru,1.0);
 
             if p1.is_bevel() {
-                self.push(p1.x + dlx0*lw, p1.y + dly0*lw, lu,1.0);
-                self.push(rx0, ry0, ru,1.0);
+                self.push([p1.x + dlx0*lw, p1.y + dly0*lw], lu,1.0);
+                self.push([rx0, ry0], ru,1.0);
 
-                self.push(p1.x + dlx1*lw, p1.y + dly1*lw, lu,1.0);
-                self.push(rx1, ry1, ru,1.0);
+                self.push([p1.x + dlx1*lw, p1.y + dly1*lw], lu,1.0);
+                self.push([rx1, ry1], ru,1.0);
             } else {
                 let lx0 = p1.x + p1.dmx * lw;
                 let ly0 = p1.y + p1.dmy * lw;
 
-                self.push(p1.x + dlx0*lw, p1.y + dly0*lw, lu,1.0);
-                self.push(p1.x, p1.y, 0.5,1.0);
+                self.push([p1.x + dlx0*lw, p1.y + dly0*lw], lu,1.0);
+                self.push([p1.x, p1.y], 0.5,1.0);
 
-                self.push(lx0, ly0, lu,1.0);
-                self.push(lx0, ly0, lu,1.0);
+                self.push([lx0, ly0], lu,1.0);
+                self.push([lx0, ly0], lu,1.0);
 
-                self.push(p1.x + dlx1*lw, p1.y + dly1*lw, lu,1.0);
-                self.push(p1.x, p1.y, 0.5,1.0);
+                self.push([p1.x + dlx1*lw, p1.y + dly1*lw], lu,1.0);
+                self.push([p1.x, p1.y], 0.5,1.0);
             }
 
-            self.push(p1.x + dlx1*lw, p1.y + dly1*lw, lu,1.0);
-            self.push(rx1, ry1, ru,1.0);
+            self.push([p1.x + dlx1*lw, p1.y + dly1*lw], lu,1.0);
+            self.push([rx1, ry1], ru,1.0);
         }
     }
 
@@ -938,10 +943,10 @@ impl Verts {
         let py = p.y - dy*d;
         let dlx = dy;
         let dly = -dx;
-        self.push(px + dlx*w - dx*aa, py + dly*w - dy*aa, u0,0.0);
-        self.push(px - dlx*w - dx*aa, py - dly*w - dy*aa, u1,0.0);
-        self.push(px + dlx*w, py + dly*w, u0,1.0);
-        self.push(px - dlx*w, py - dly*w, u1,1.0);
+        self.push([px + dlx*w - dx*aa, py + dly*w - dy*aa], u0,0.0);
+        self.push([px - dlx*w - dx*aa, py - dly*w - dy*aa], u1,0.0);
+        self.push([px + dlx*w, py + dly*w], u0,1.0);
+        self.push([px - dlx*w, py - dly*w], u1,1.0);
     }
 
     fn butt_cap_end(
@@ -953,10 +958,10 @@ impl Verts {
         let py = p.y + dy*d;
         let dlx = dy;
         let dly = -dx;
-        self.push(px + dlx*w, py + dly*w, u0,1.0);
-        self.push(px - dlx*w, py - dly*w, u1,1.0);
-        self.push(px + dlx*w + dx*aa, py + dly*w + dy*aa, u0,0.0);
-        self.push(px - dlx*w + dx*aa, py - dly*w + dy*aa, u1,0.0);
+        self.push([px + dlx*w, py + dly*w], u0,1.0);
+        self.push([px - dlx*w, py - dly*w], u1,1.0);
+        self.push([px + dlx*w + dx*aa, py + dly*w + dy*aa], u0,0.0);
+        self.push([px - dlx*w + dx*aa, py - dly*w + dy*aa], u1,0.0);
     }
 
     fn round_cap_start(
@@ -972,11 +977,11 @@ impl Verts {
             let a = (i as f32) / ((ncap-1) as f32) * PI;
             let ax = a.cos() * w;
             let ay = a.sin() * w;
-            self.push(px - dlx*ax - dx*ay, py - dly*ax - dy*ay, u0,1.0);
-            self.push(px, py, 0.5,1.0);
+            self.push([px - dlx*ax - dx*ay, py - dly*ax - dy*ay], u0,1.0);
+            self.push([px, py], 0.5,1.0);
         }
-        self.push(px + dlx*w, py + dly*w, u0,1.0);
-        self.push(px - dlx*w, py - dly*w, u1,1.0);
+        self.push([px + dlx*w, py + dly*w], u0,1.0);
+        self.push([px - dlx*w, py - dly*w], u1,1.0);
     }
 
     fn round_cap_end(
@@ -988,14 +993,14 @@ impl Verts {
         let py = p.y;
         let dlx = dy;
         let dly = -dx;
-        self.push(px + dlx*w, py + dly*w, u0,1.0);
-        self.push(px - dlx*w, py - dly*w, u1,1.0);
+        self.push([px + dlx*w, py + dly*w], u0,1.0);
+        self.push([px - dlx*w, py - dly*w], u1,1.0);
         for i in 0..ncap {
             let a = (i as f32) / ((ncap-1) as f32) * PI;
             let ax = a.cos() * w;
             let ay = a.sin() * w;
-            self.push(px, py, 0.5,1.0);
-            self.push(px - dlx*ax + dx*ay, py - dly*ax + dy*ay, u0,1.0);
+            self.push([px, py], 0.5,1.0);
+            self.push([px - dlx*ax + dx*ay, py - dly*ax + dy*ay], u0,1.0);
         }
     }
 }

@@ -27,10 +27,13 @@ mod context;
 
 //mod wgpu;
 
+use slotmap::Key;
+
 use crate::{
     cache::{Winding, LineJoin, LineCap},
+    backend::{Image, ImageFlags},
     vg::{
-        Paint, Color, Image,
+        Paint, Color,
         utils::{
             deg2rad,
             clampf,
@@ -696,14 +699,13 @@ fn draw_thumbnails(vg: &mut Context, x: f32, y: f32, w: f32, h: f32, images: &[I
 
     let dv = 1.0 / (images.len()-1) as f32;
 
-    for i in 0..images.len() {
-        let image = images[i];
-
+    for (i, &image) in images.iter().enumerate() {
         let mut tx = x+10.0;
         let mut ty = y+10.0;
         tx += (thumb+10.0) * (i%2) as f32;
         ty += (thumb+10.0) * (i/2) as f32;
-        let (imgw, imgh) = vg.image_size(image);
+
+        let (imgw, imgh) = vg.image_size(image).expect("image_size");
         let (iw, ih, ix, iy);
         if imgw < imgh {
             iw = thumb;
@@ -1187,13 +1189,16 @@ fn draw_scissor(vg: &mut Context, x: f32, y: f32, t: f32) {
 
 #[no_mangle] extern "C"
 fn load_demo_data(vg: &mut Context, data: &mut DemoData) -> i32 {
+    log::debug!("load_demo_data");
+
     for i in 0..12 {
         let file = format!("assets/images/image{}.jpg", i+1);
-        data.images[i] = vg.create_image(&file, Default::default());
-        if data.images[i].0 == 0 {
+        let m = vg.create_image(&file, ImageFlags::empty());
+        if m.is_null() {
             println!("Could not load {}.", file);
             return -1;
         }
+        data.images[i] = m;
     }
 
     data.font_icons = vg.create_font("icons", "assets/entypo.ttf");
@@ -1207,6 +1212,8 @@ fn load_demo_data(vg: &mut Context, data: &mut DemoData) -> i32 {
 
     vg.add_fallback_font_id(data.font_normal, data.font_emoji);
     vg.add_fallback_font_id(data.font_bold, data.font_emoji);
+
+    log::debug!("load_demo_data ok");
 
     0
 }

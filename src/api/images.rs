@@ -1,8 +1,9 @@
 use crate::{
     context::Context,
-    backend::ImageFlags,
-    vg::Image,
+    backend::{Image, ImageFlags},
 };
+
+use slotmap::Key;
 
 pub const TEXTURE_ALPHA: i32 = 0x01;
 pub const TEXTURE_RGBA: i32 = 0x02;
@@ -25,7 +26,7 @@ impl Context {
             }
             Err(err) => {
                 log::warn!("Failed to load image - {:?}", err);
-                Image(0)
+                Image::null()
             }
         }
     }
@@ -42,7 +43,7 @@ impl Context {
             }
             Err(err) => {
                 log::warn!("Failed to load image - {:?}", err);
-                Image(0)
+                Image::null()
             }
         }
     }
@@ -55,13 +56,13 @@ impl Context {
 
     /// Updates image data specified by image handle.
     pub fn update_image(&mut self, image: Image, data: &[u8]) {
-        let (w, h) = self.params.texture_size(image).unwrap();
+        let (w, h) = self.params.texture_size(image).expect("update_image available");
         self.params.update_texture(image, 0, 0, w, h, data.as_ptr());
     }
 
     /// Returns the dimensions of a created image.
-    pub fn image_size(&mut self, image: Image) -> (u32, u32) {
-        self.params.texture_size(image).unwrap()
+    pub fn image_size(&mut self, image: Image) -> Option<(u32, u32)> {
+        self.params.texture_size(image)
     }
 
     /// Deletes created image.

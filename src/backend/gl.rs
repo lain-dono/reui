@@ -1,3 +1,6 @@
+
+use crate::vg::{CompositeState, BlendFactor};
+
 pub type GLuint = u32;
 pub type GLint = i32;
 pub type GLenum = u32;
@@ -56,6 +59,7 @@ pub const GL_TEXTURE0: GLenum = 0x84C0;
 pub const GL_TEXTURE_2D: GLenum = 0x0DE1;
 
 pub const GL_UNSIGNED_BYTE: GLenum = 0x1401;
+pub const GL_UNSIGNED_SHORT: GLenum = 0x1403;
 pub const GL_FLOAT: GLenum         = 0x1406;
 
 pub const GL_UNPACK_ALIGNMENT: GLenum = 0x0CF5;
@@ -90,9 +94,9 @@ extern "C" {
     pub fn glDisable(cap: GLenum);
 
     pub fn glStencilFunc(func: GLenum, _ref: GLint, mask: GLuint);
-    pub fn glStencilFuncSeparate(face: GLenum, func: GLenum, _ref: GLint, mask: GLuint);
+    //pub fn glStencilFuncSeparate(face: GLenum, func: GLenum, _ref: GLint, mask: GLuint);
     pub fn glStencilMask(mask: GLuint);
-    pub fn glStencilMaskSeparate(face: GLenum, mask: GLuint);
+    //pub fn glStencilMaskSeparate(face: GLenum, mask: GLuint);
     pub fn glStencilOp(fail: GLenum, zfail: GLenum, zpass: GLenum);
     pub fn glStencilOpSeparate(face: GLenum, sfail: GLenum, dpfail: GLenum, dppass: GLenum);
 
@@ -102,7 +106,7 @@ extern "C" {
     pub fn glBindTexture(target: GLenum, texture: GLuint);
     pub fn glActiveTexture(texture: GLenum);
 
-    pub fn glBufferData(target: GLenum, size: GLsizeiptr, data: *const u8, usage: GLenum);
+    fn glBufferData(target: GLenum, size: GLsizeiptr, data: *const u8, usage: GLenum);
 
     pub fn glEnableVertexAttribArray(index: GLuint);
     pub fn glDisableVertexAttribArray(index: GLuint);
@@ -125,10 +129,10 @@ extern "C" {
         pointer: usize);
 
     pub fn glGenTextures(n: GLsizei, textures: *mut GLuint);
-    pub fn glGenBuffers(n: GLsizei, buffers: *mut GLuint);
+    fn glGenBuffers(n: GLsizei, buffers: *mut GLuint);
 
     pub fn glDeleteTextures(n: GLsizei, textures: *const GLuint);
-    pub fn glDeleteBuffers(n: GLsizei, buffers: *const GLuint);
+    fn glDeleteBuffers(n: GLsizei, buffers: *const GLuint);
 
     pub fn glPixelStorei(pname: GLenum, param: GLint);
 
@@ -165,4 +169,114 @@ extern "C" {
 
     pub fn glBindAttribLocation(program: GLuint, index: GLuint, name: *const u8);
     pub fn glAttachShader(program: GLuint, shader: GLuint);
+}
+
+
+pub struct Buffer(GLuint);
+
+impl Drop for Buffer {
+    fn drop(&mut self) {
+        if self.0 != 0 {
+            unsafe { glDeleteBuffers(1, &self.0); }
+        }
+    }
+}
+
+impl Buffer {
+    pub fn new() -> Self {
+        let mut buf = 0;
+        // Create dynamic vertex array
+        unsafe {
+            glGenBuffers(1, &mut buf);
+            glFinish();
+        }
+        Buffer(buf)
+    }
+
+    pub fn bind_and_upload<T: Sized>(&self, data: &[T]) {
+        let size = std::mem::size_of::<T>();
+        unsafe {
+            glBindBuffer(GL_ARRAY_BUFFER, self.0);
+            glBufferData(
+                GL_ARRAY_BUFFER,
+                data.len() * size,
+                data.as_ptr() as *const u8,
+                GL_STREAM_DRAW,
+            );
+        }
+    }
+
+    pub fn unbind(&self) {
+        unsafe {
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+        }
+    }
+}
+
+
+pub struct Blend {
+    src_color: GLenum,
+    dst_color: GLenum,
+    src_alpha: GLenum,
+    dst_alpha: GLenum,
+}
+
+impl Blend {
+    pub fn bind(&self) {
+        unsafe {
+            glBlendFuncSeparate(
+                self.src_color,
+                self.dst_color,
+                self.src_alpha,
+                self.dst_alpha,
+            );
+        }
+    }
+}
+
+fn blend_factor(factor: BlendFactor) -> GLenum {
+    match factor {
+        BlendFactor::ZERO                   => GL_ZERO,
+        BlendFactor::ONE                    => GL_ONE,
+
+        BlendFactor::SRC_COLOR              => GL_SRC_COLOR,
+        BlendFactor::ONE_MINUS_SRC_COLOR    => GL_ONE_MINUS_SRC_COLOR,
+
+        BlendFactor::SRC_ALPHA              => GL_SRC_ALPHA,
+        BlendFactor::ONE_MINUS_SRC_ALPHA    => GL_ONE_MINUS_SRC_ALPHA,
+
+        BlendFactor::DST_ALPHA              => GL_DST_ALPHA,
+        BlendFactor::ONE_MINUS_DST_ALPHA    => GL_ONE_MINUS_DST_ALPHA,
+
+        BlendFactor::DST_COLOR              => GL_DST_COLOR,
+        BlendFactor::ONE_MINUS_DST_COLOR    => GL_ONE_MINUS_DST_COLOR,
+
+        BlendFactor::SRC_ALPHA_SATURATE     => GL_SRC_ALPHA_SATURATE,
+    }
+}
+
+fn blend_composite_op(op: CompositeState) -> Blend {
+    op.into()
+}
+
+impl From<CompositeState> for Blend {
+    fn from(op: CompositeState) -> Self {
+        Self {
+            src_color: blend_factor(op.src_color),
+            dst_color: blend_factor(op.dst_color),
+            src_alpha: blend_factor(op.src_alpha),
+            dst_alpha: blend_factor(op.dst_alpha),
+        }
+    }
+}
+
+impl Default for Blend {
+    fn default() -> Self {
+        Self {
+            src_color: GL_ONE,
+            dst_color: GL_ONE_MINUS_SRC_ALPHA,
+            src_alpha: GL_ONE,
+            dst_alpha: GL_ONE_MINUS_SRC_ALPHA,
+        }
+    }
 }

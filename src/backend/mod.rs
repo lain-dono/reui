@@ -1,7 +1,14 @@
 mod gl;
+mod gl_shader;
 mod params;
 
 pub use self::params::{BackendGL, NFlags};
+
+use slotmap::Key;
+
+slotmap::new_key_type! {
+    pub struct Image;
+}
 
 bitflags::bitflags!(
     #[derive(Default)]

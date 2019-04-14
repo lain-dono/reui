@@ -4,12 +4,13 @@ use crate::{
         States,
     },
     cache::PathCache,
-    backend::BackendGL,
+    backend::{BackendGL, Image},
     vg::Counters,
     fons::{FONScontext, FONSparams},
 };
 
 use std::ptr::null;
+use slotmap::Key;
 
 pub const TEXTURE_ALPHA: i32 = 0x01;
 pub const TEXTURE_RGBA: i32 = 0x02;
@@ -55,16 +56,16 @@ impl Context {
 
         let font_image = self.font_images[self.font_image_idx as usize];
         // delete images that smaller than current one
-        if font_image.0 == 0 {
+        if font_image.is_null() {
             return;
         }
 
-        let (iw, ih) = self.image_size(font_image);
+        let (iw, ih) = self.image_size(font_image).expect("font image in end_frame (1)");
         let mut j = 0;
         let font_images = self.font_images;
         for &m in &font_images {
-            if m.0 != 0 {
-                let (nw, nh) = self.image_size(m);
+            if !m.is_null() {
+                let (nw, nh) = self.image_size(m).expect("font image in end_frame (2)");
                 if nw < iw || nh < ih {
                     self.delete_image(m);
                 } else {
@@ -82,7 +83,7 @@ impl Context {
 
         // clear all images after j
         for i in j..MAX_FONTIMAGES {
-            self.font_images[i].0 = 0;
+            self.font_images[i] = Image::null();
         }
     }
 }
@@ -112,9 +113,9 @@ impl Context {
 
             font_images: [
                 font_image,
-                Default::default(),
-                Default::default(),
-                Default::default(),
+                Image::null(),
+                Image::null(),
+                Image::null(),
             ],
 
             commandx: 0.0,
@@ -123,9 +124,6 @@ impl Context {
             cache: PathCache::new(),
             commands: Vec::with_capacity(INIT_COMMANDS_SIZE),
 
-            //tess_tol: 0.25,
-            //dist_tol: 0.01,
-            //fringe_width: 1.0,
             device_px_ratio: 1.0,
 
             font_image_idx: 0,

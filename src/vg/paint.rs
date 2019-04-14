@@ -1,5 +1,7 @@
-use super::{Color, Image, utils::maxf};
+use super::{Color, utils::maxf};
+use crate::backend::Image;
 use crate::transform;
+use slotmap::Key;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -53,7 +55,7 @@ impl Paint {
             feather: maxf(1.0, d),
             inner_color,
             outer_color,
-            image: Default::default(),
+            image: Image::null(),
         }
     }
 
@@ -80,7 +82,7 @@ impl Paint {
             feather: maxf(1.0, f),
             inner_color,
             outer_color,
-            image: Default::default(),
+            image: Image::null(),
         }
     }
 
@@ -110,7 +112,7 @@ impl Paint {
             feather: maxf(1.0, f),
             inner_color,
             outer_color,
-            image: Default::default(),
+            image: Image::null(),
         }
     }
 
@@ -147,7 +149,7 @@ impl Paint {
             extent: [0.0, 0.0],
             radius: 0.0,
             feather: 1.0,
-            image: Default::default(),
+            image: Image::null(),
             inner_color: color,
             outer_color: color,
         }
