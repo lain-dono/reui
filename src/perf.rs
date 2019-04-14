@@ -145,7 +145,7 @@ impl PerfGraph {
         vg.fill_color(Color::new(0xFF_F0F0F0));
         match self.style {
             GraphStyle::Fps => {
-                s.write_fmt(format_args!("{:.2} FPS", 1.0 / avg));
+                let _ = s.write_fmt(format_args!("{:.2} FPS", 1.0 / avg));
                 vg.text(x+w-3.0,y+1.0, &s);
 
                 s.clear();
@@ -153,15 +153,15 @@ impl PerfGraph {
                 vg.font_size(15.0);
                 vg.text_align(Align::RIGHT|Align::BOTTOM);
                 vg.fill_color(Color::new(0xA0_f0f0f0));
-                s.write_fmt(format_args!("{:.2} ms", avg * 1000.0));
+                let _ = s.write_fmt(format_args!("{:.2} ms", avg * 1000.0));
                 vg.text(x+w-3.0,y+h-1.0, &s);
             },
             GraphStyle::Percent => {
-                s.write_fmt(format_args!("{:.1} %", avg * 1.0));
+                let _ = s.write_fmt(format_args!("{:.1} %", avg * 1.0));
                 vg.text(x+w-3.0,y+1.0, &s);
             },
             GraphStyle::Ms => {
-                s.write_fmt(format_args!("{:.2} ms", avg * 1000.0));
+                let _ = s.write_fmt(format_args!("{:.2} ms", avg * 1000.0));
                 vg.text(x+w-3.0,y+1.0, &s);
             },
         }

@@ -1,17 +1,15 @@
 use crate::{
     context::{
         Context,
-        States
+        States,
     },
     cache::PathCache,
-    params::Params,
+    backend::BackendGL,
     vg::Counters,
     fons::{FONScontext, FONSparams},
 };
 
-use std::{
-    ptr::null,
-};
+use std::ptr::null;
 
 pub const TEXTURE_ALPHA: i32 = 0x01;
 pub const TEXTURE_RGBA: i32 = 0x02;
@@ -41,12 +39,12 @@ impl Context {
         self.reset();
         self.set_dpi(dpi);
 
-        self.params.viewport(width, height, dpi);
+        self.params.set_viewport(width, height, dpi);
 
         self.counters.clear();
     }
     pub fn cancel_frame(&mut self) {
-        self.params.cancel()
+        self.params.reset()
     }
     pub fn end_frame(&mut self) {
         self.params.flush();
@@ -57,18 +55,18 @@ impl Context {
 
         let font_image = self.font_images[self.font_image_idx as usize];
         // delete images that smaller than current one
-        if font_image == 0 {
+        if font_image.0 == 0 {
             return;
         }
 
-        let (iw, ih) = self.image_size(font_image as u32);
+        let (iw, ih) = self.image_size(font_image);
         let mut j = 0;
         let font_images = self.font_images;
         for &m in &font_images {
-            if m != 0 {
-                let (nw, nh) = self.image_size(m as u32);
+            if m.0 != 0 {
+                let (nw, nh) = self.image_size(m);
                 if nw < iw || nh < ih {
-                    self.delete_image(m as u32);
+                    self.delete_image(m);
                 } else {
                     self.font_images[j] = m;
                     j += 1;
@@ -84,7 +82,7 @@ impl Context {
 
         // clear all images after j
         for i in j..MAX_FONTIMAGES {
-            self.font_images[i] = 0;
+            self.font_images[i].0 = 0;
         }
     }
 }
@@ -95,9 +93,7 @@ impl Context {
         self.device_px_ratio = ratio;
     }
 
-    pub fn new(mut params: Params) -> Self {
-        params.create();
-
+    pub fn new(mut params: BackendGL) -> Self {
         let fs_params = FONSparams::simple(INIT_FONTIMAGE_SIZE as i32, INIT_FONTIMAGE_SIZE as i32);
         let fs = unsafe { fonsCreateInternal(&fs_params) };
 
@@ -105,16 +101,21 @@ impl Context {
             TEXTURE_ALPHA,
             INIT_FONTIMAGE_SIZE as u32,
             INIT_FONTIMAGE_SIZE as u32,
-            0,
+            Default::default(),
             null(),
-        ) as i32;
+        );
 
         Self {
             params, fs,
 
             states: States::new(),
 
-            font_images: [font_image, 0, 0, 0],
+            font_images: [
+                font_image,
+                Default::default(),
+                Default::default(),
+                Default::default(),
+            ],
 
             commandx: 0.0,
             commandy: 0.0,

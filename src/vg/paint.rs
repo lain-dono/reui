@@ -1,4 +1,4 @@
-use super::{Color, utils::maxf};
+use super::{Color, Image, utils::maxf};
 use crate::transform;
 
 #[repr(C)]
@@ -10,7 +10,7 @@ pub struct Paint {
     pub feather: f32,
     pub inner_color: Color,
     pub outer_color: Color,
-    pub image: u32,
+    pub image: Image,
 }
 
 impl Paint {
@@ -53,7 +53,7 @@ impl Paint {
             feather: maxf(1.0, d),
             inner_color,
             outer_color,
-            image: 0,
+            image: Default::default(),
         }
     }
 
@@ -80,7 +80,7 @@ impl Paint {
             feather: maxf(1.0, f),
             inner_color,
             outer_color,
-            image: 0,
+            image: Default::default(),
         }
     }
 
@@ -110,7 +110,7 @@ impl Paint {
             feather: maxf(1.0, f),
             inner_color,
             outer_color,
-            image: 0,
+            image: Default::default(),
         }
     }
 
@@ -122,7 +122,7 @@ impl Paint {
     pub fn image_pattern(
         cx: f32, cy: f32,
         w: f32, h: f32, angle: f32,
-        image: u32, alpha: f32,
+        image: Image, alpha: f32,
     ) -> Self {
         let mut xform = transform::rotate(angle);
         xform[4] = cx;
@@ -147,7 +147,7 @@ impl Paint {
             extent: [0.0, 0.0],
             radius: 0.0,
             feather: 1.0,
-            image: 0,
+            image: Default::default(),
             inner_color: color,
             outer_color: color,
         }

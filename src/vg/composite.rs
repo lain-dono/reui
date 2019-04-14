@@ -1,21 +1,20 @@
 use crate::context::Context;
 
-bitflags::bitflags!(
-    #[repr(transparent)]
-    pub struct BlendFactor: i32 {
-	const ZERO                  = 1<<0;
-	const ONE                   = 1<<1;
-	const SRC_COLOR             = 1<<2;
-	const ONE_MINUS_SRC_COLOR   = 1<<3;
-	const DST_COLOR             = 1<<4;
-	const ONE_MINUS_DST_COLOR   = 1<<5;
-	const SRC_ALPHA             = 1<<6;
-	const ONE_MINUS_SRC_ALPHA   = 1<<7;
-	const DST_ALPHA             = 1<<8;
-	const ONE_MINUS_DST_ALPHA   = 1<<9;
-	const SRC_ALPHA_SATURATE    = 1<<10;
-    }
-);
+#[repr(i32)]
+#[derive(Clone, Copy)]
+pub enum BlendFactor {
+    ZERO                  = 0,
+    ONE                   = 1,
+    SRC_COLOR             = 2,
+    ONE_MINUS_SRC_COLOR   = 3,
+    DST_COLOR             = 4,
+    ONE_MINUS_DST_COLOR   = 5,
+    SRC_ALPHA             = 6,
+    ONE_MINUS_SRC_ALPHA   = 7,
+    DST_ALPHA             = 8,
+    ONE_MINUS_DST_ALPHA   = 9,
+    SRC_ALPHA_SATURATE    = 10,
+}
 
 #[repr(i32)]
 #[derive(Clone, Copy)]
@@ -32,7 +31,6 @@ pub enum CompositeOp {
     COPY            = 9,
     XOR             = 10,
 }
-
 
 #[repr(C)]
 #[derive(Clone, Copy)]

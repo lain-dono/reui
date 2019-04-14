@@ -2,10 +2,10 @@
 #![allow(dead_code)] 
 
 use std::{
-    ffi::{c_void, CStr, CString},
+    ffi::{c_void, CString},
     os::raw::c_char,
     mem::transmute,
-    ptr::{null, null_mut},
+    ptr::null_mut,
 };
 
 use crate::context::Align;

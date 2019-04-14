@@ -250,7 +250,7 @@ impl Context {
     pub fn fill(&mut self) {
         let state = self.states.last_mut();
 
-        let w = if self.params.edge_aa != 0 && state.shape_aa != 0 {
+        let w = if self.params.edge_aa() && state.shape_aa != 0 {
             self.cache.fringe_width
         } else {
             0.0
@@ -264,7 +264,7 @@ impl Context {
         paint.inner_color.a *= state.alpha;
         paint.outer_color.a *= state.alpha;
 
-        self.params.fill(
+        self.params.draw_fill(
             &paint,
             state.composite,
             &state.scissor,
@@ -300,7 +300,7 @@ impl Context {
         paint.inner_color.a *= state.alpha;
         paint.outer_color.a *= state.alpha;
 
-        let w = if self.params.edge_aa != 0 && state.shape_aa != 0 {
+        let w = if self.params.edge_aa() && state.shape_aa != 0 {
             self.cache.fringe_width
         } else {
             0.0
@@ -309,7 +309,7 @@ impl Context {
         self.cache.flatten_paths(&self.commands);
         self.cache.expand_stroke(stroke_width*0.5, w, state.line_cap, state.line_join, state.miter_limit);
 
-        self.params.stroke(
+        self.params.draw_stroke(
             &paint,
             state.composite,
             &state.scissor,

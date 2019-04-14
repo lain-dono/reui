@@ -2,17 +2,11 @@ mod images;
 
 use crate::{
     context::Context,
-    params::Params,
     cache::{Winding, LineJoin, LineCap},
     vg::*,
 };
 
-
-use std::{
-    ffi::{CStr, c_void},
-    os::raw::c_char,
-    slice::from_raw_parts,
-};
+use std::ffi::c_void;
 
 /// Begin drawing a new frame
 ///
@@ -437,7 +431,7 @@ fn nvgBoxGradient(_ctx: &mut c_void, x: f32, y: f32, w: f32, h: f32, r: f32, f: 
 /// (ex,ey) the size of one image, angle rotation around the top-left corner, image is handle to the image to render.
 /// The gradient is transformed by the current transform when it is passed to nvgFillPaint() or nvgStrokePaint().
 #[no_mangle] extern "C"
-fn nvgImagePattern(_ctx: &mut c_void, cx: f32, cy: f32, w: f32, h: f32, angle: f32, image: u32, alpha: f32) -> Paint {
+fn nvgImagePattern(_ctx: &mut c_void, cx: f32, cy: f32, w: f32, h: f32, angle: f32, image: Image, alpha: f32) -> Paint {
     Paint::image_pattern(cx, cy, w, h, angle, image, alpha)
 }
 
@@ -720,23 +714,3 @@ void nvgTextMetrics(ctx: &mut Context, float* ascender, float* descender, float*
 // Words longer than the max width are slit at nearest character (i.e. no hyphenation).
 int nvgTextBreakLines(ctx: &mut Context, const char* string, const char* end, float breakRowWidth, NVGtextRow* rows, int maxRows);
 */
-
-
-//
-// Internals
-//
-
-#[no_mangle] pub extern "C"
-fn nvgCreateInternal(params: &mut Params) -> Box<Context> {
-    Box::new(Context::new(*params))
-}
-
-#[no_mangle] pub extern "C"
-fn nvgInternalParams(ctx: &mut Context) -> *mut Params {
-    &mut ctx.params
-}
-
-#[no_mangle] pub extern "C"
-fn nvgDeleteInternal(_ctx: &mut Context) {
-    // FIXME: do nothings
-}

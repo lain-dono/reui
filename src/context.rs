@@ -5,7 +5,7 @@ use core::ptr::null_mut;
 use arrayvec::ArrayVec;
 
 use crate::{
-    params::Params,
+    backend::BackendGL,
     cache::{PathCache, LineCap, LineJoin},
     transform,
     vg::*,
@@ -33,9 +33,6 @@ extern "C" {
         positions: *mut GlyphPosition, max_positions: usize,
     ) -> usize;
 
-    fn nvgCreateImage(ctx: *mut Context, name: *const u8, flags: i32) -> u32;
-
-    fn nvgCreateFont(ctx: *mut Context, name: *const u8, path: *const u8) -> i32;
     fn nvgAddFallbackFontId(ctx: *mut Context, a: i32, b: i32);
 }
 
@@ -110,15 +107,6 @@ pub struct GlyphPosition {
     pub minx: f32,
     pub maxx: f32,
 }
-
-/*
-#[repr(i32)]
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum Solidity {
-    Solid = 1, // CCW
-    Hole = 2,  // CW
-}
-*/
 
 #[repr(C)]
 #[derive(Clone)]
@@ -206,21 +194,16 @@ pub struct Context {
     pub commandy: f32,
 
     pub states: States,
-
     pub cache: PathCache,
-
-    //pub tess_tol: f32,
-    //pub dist_tol: f32,
-    //pub fringe_width: f32,
     pub device_px_ratio: f32,
 
     pub fs: Box<FONScontext>,
-    pub font_images: [i32; 4],
+    pub font_images: [Image; 4],
     pub font_image_idx: i32,
 
     pub counters: Counters,
 
-    pub params: Params,
+    pub params: BackendGL,
 }
 
 impl Context {

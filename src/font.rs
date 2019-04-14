@@ -124,9 +124,9 @@ unsafe fn flush_text_texture(ctx: &mut Context) {
     let mut dirty = [0i32; 4];
 
     if ctx.fs.validate_texture(&mut dirty) {
-        let image = ctx.font_images[ctx.font_image_idx as usize] as u32;
+        let image = ctx.font_images[ctx.font_image_idx as usize];
         // Update texture
-        if image != 0 {
+        if image.0 != 0 {
             let (_, _, data) = ctx.fs.texture_data();
             let x = dirty[0];
             let y = dirty[1];
@@ -143,10 +143,10 @@ unsafe fn alloc_text_atlas(ctx: &mut Context) -> bool {
         return false;
     }
     // if next fontImage already have a texture
-    let (iw, ih) = if ctx.font_images[(ctx.font_image_idx+1) as usize] != 0 {
-        ctx.image_size(ctx.font_images[(ctx.font_image_idx+1) as usize] as u32)
+    let (iw, ih) = if ctx.font_images[(ctx.font_image_idx+1) as usize].0 != 0 {
+        ctx.image_size(ctx.font_images[(ctx.font_image_idx+1) as usize])
     } else { // calculate the new font image size and create it.
-        let (mut iw, mut ih) = ctx.image_size(ctx.font_images[ctx.font_image_idx as usize] as u32);
+        let (mut iw, mut ih) = ctx.image_size(ctx.font_images[ctx.font_image_idx as usize]);
         if iw > ih {
             ih *= 2;
         } else {
@@ -157,7 +157,7 @@ unsafe fn alloc_text_atlas(ctx: &mut Context) -> bool {
             ih = MAX_FONTIMAGE_SIZE as u32;
         }
         ctx.font_images[(ctx.font_image_idx+1) as usize] =
-            ctx.params.create_texture(TEXTURE_ALPHA, iw, ih, 0, null()) as i32;
+            ctx.params.create_texture(TEXTURE_ALPHA, iw, ih, Default::default(), null());
         (iw, ih)
     };
     ctx.font_image_idx += 1;
@@ -170,13 +170,13 @@ unsafe fn render_text(ctx: &mut Context, verts: &mut [Vertex]) {
     let mut paint = state.fill;
 
     // Render triangles.
-    paint.image = ctx.font_images[ctx.font_image_idx as usize] as u32;
+    paint.image = ctx.font_images[ctx.font_image_idx as usize];
 
     // Apply global alpha
     paint.inner_color.a *= state.alpha;
     paint.outer_color.a *= state.alpha;
 
-    ctx.params.triangles(
+    ctx.params.draw_triangles(
         &paint,
         state.composite,
         &state.scissor,

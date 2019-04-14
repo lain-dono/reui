@@ -13,12 +13,11 @@ mod perf;
 
 mod vg;
 
-mod gl;
+mod backend;
 
 mod fons;
 mod font;
 
-mod params;
 mod cache;
 
 mod draw_api;
@@ -31,7 +30,7 @@ mod context;
 use crate::{
     cache::{Winding, LineJoin, LineCap},
     vg::{
-        Paint, Color,
+        Paint, Color, Image,
         utils::{
             deg2rad,
             clampf,
@@ -67,7 +66,7 @@ pub struct DemoData {
     pub font_bold: i32,
     pub font_icons: i32,
     pub font_emoji: i32,
-    pub images: [u32; 12],
+    pub images: [Image; 12],
 }
 
 fn cp2utf8<'a>(mut cp: isize, s: &'a mut [u8; 8]) -> &'a [u8] {
@@ -659,7 +658,7 @@ fn draw_spinner(vg: &mut Context, cx: f32, cy: f32, r: f32, t: f32) {
     vg.restore();
 }
 
-fn draw_thumbnails(vg: &mut Context, x: f32, y: f32, w: f32, h: f32, images: &[u32], t: f32) {
+fn draw_thumbnails(vg: &mut Context, x: f32, y: f32, w: f32, h: f32, images: &[Image], t: f32) {
     let corner_radius = 3.0;
     let thumb = 60.0;
     let arry = 30.5;
@@ -1190,8 +1189,8 @@ fn draw_scissor(vg: &mut Context, x: f32, y: f32, t: f32) {
 fn load_demo_data(vg: &mut Context, data: &mut DemoData) -> i32 {
     for i in 0..12 {
         let file = format!("assets/images/image{}.jpg", i+1);
-        data.images[i] = vg.create_image(&file, 0);
-        if data.images[i] == 0 {
+        data.images[i] = vg.create_image(&file, Default::default());
+        if data.images[i].0 == 0 {
             println!("Could not load {}.", file);
             return -1;
         }
