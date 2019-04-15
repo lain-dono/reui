@@ -171,6 +171,17 @@ extern "C" {
     pub fn glAttachShader(program: GLuint, shader: GLuint);
 }
 
+pub fn gl_draw_strip(offset: usize, count: usize) {
+    unsafe {
+        glDrawArrays(GL_TRIANGLE_STRIP, offset as i32, count as i32);
+    }
+}
+
+pub fn gl_draw_triangles(offset: usize, count: usize) {
+    unsafe {
+        glDrawArrays(GL_TRIANGLES, offset as i32, count as i32);
+    }
+}
 
 pub struct Buffer(GLuint);
 
@@ -253,10 +264,6 @@ fn blend_factor(factor: BlendFactor) -> GLenum {
 
         BlendFactor::SRC_ALPHA_SATURATE     => GL_SRC_ALPHA_SATURATE,
     }
-}
-
-fn blend_composite_op(op: CompositeState) -> Blend {
-    op.into()
 }
 
 impl From<CompositeState> for Blend {

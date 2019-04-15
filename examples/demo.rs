@@ -1,48 +1,4 @@
-#![feature(ptr_offset_from, decl_macro, const_fn, const_int_conversion)]
-
-#![allow(improper_ctypes)]
-#![allow(non_snake_case)]
-#![allow(non_camel_case_types)]
-
-use core::ptr::null;
-use core::f32::consts::PI;
-
-mod api;
-
-mod perf;
-
-mod vg;
-
-mod backend;
-
-mod fons;
-mod font;
-
-mod cache;
-
-mod draw_api;
-mod mem;
-mod transform;
-mod context;
-
-//mod wgpu;
-
-use slotmap::Key;
-
-use crate::{
-    cache::{Winding, LineJoin, LineCap},
-    backend::{Image, ImageFlags},
-    vg::{
-        Paint, Color,
-        utils::{
-            deg2rad,
-            clampf,
-            minf,
-            maxf,
-        },
-    },
-    context::*,
-};
+extern crate oni2d;
 
 #[link(name = "nvg")]
 extern "C" {
@@ -55,6 +11,28 @@ fn main() {
     //return wgpu::run();
     unsafe { run(); }
 }
+
+use slotmap::Key;
+
+use std::ptr::null;
+use std::f32::consts::PI;
+
+use oni2d::{
+    Winding, LineJoin, LineCap,
+    Image, ImageFlags,
+    Paint, Color,
+    Context, Align,
+    TextRow, GlyphPosition,
+    utils::{
+        deg2rad,
+        clampf,
+        minf,
+        maxf,
+        itoa10,
+        slice_start_end,
+    },
+};
+
 
 const ICON_SEARCH: isize = 0x1F50D;
 const ICON_CIRCLED_CROSS: isize = 0x2716;

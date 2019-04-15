@@ -1,5 +1,36 @@
 use std::f32::consts::PI;
 
+pub fn itoa10(dst: &mut [u8], mut value: isize) -> &[u8] {
+    if value == 0 {
+        dst[0] = b'0';
+        return &dst[..1];
+    }
+
+    let mut count = 0;
+
+    if value < 0 {
+        value *= -1;
+        dst[0] = b'-';
+        count += 1;
+    }
+
+    let mut tmp = value;
+    while tmp>0 {
+        dst[count] = b'0' + (tmp%10) as u8;
+        count += 1;
+        tmp /= 10;
+    }
+    &dst[..count]
+}
+
+pub fn slice_start_end(b: &[u8]) -> (*const u8, *const u8) {
+    unsafe {
+        let start = b.as_ptr();
+        let end = start.add(b.len());
+        (start, end)
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Pt {
     pub x: f32,

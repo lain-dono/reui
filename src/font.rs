@@ -11,7 +11,7 @@ use crate::context::{
 };
 use crate::cache::Vertex;
 use crate::fons::*;
-use crate::mem::{MAX_FONTIMAGE_SIZE, MAX_FONTIMAGES, TEXTURE_ALPHA};
+use crate::context::{MAX_FONTIMAGE_SIZE, MAX_FONTIMAGES, TEXTURE_ALPHA};
 use crate::transform::transform_point;
 use crate::vg::utils::{
     min, max,

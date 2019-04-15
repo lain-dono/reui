@@ -67,7 +67,7 @@ pub const fn scale(sx: f32, sy: f32) -> [f32; 6] {
 pub fn rotate(a: f32) -> [f32; 6] {
     let (sn, cs) = a.sin_cos();
     [
-            cs,  sn,
+        cs,  sn,
         -sn,  cs,
         0.0, 0.0,
     ]

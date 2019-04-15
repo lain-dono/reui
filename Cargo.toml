@@ -1,0 +1,36 @@
+[package]
+name = "oni2d"
+version = "0.1.0"
+authors = ["Lain-dono <lain.dono@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+libc = "0.2"
+rlibc = "1"
+bitflags = "1"
+env_logger = "0.5"
+log = "0.4"
+arrayvec = "0.4"
+
+wgpu-native = "0.2"
+wgpu = "0.2"
+
+[dependencies.slotmap]
+version = "0.3"
+features = ["unstable"]
+
+[dependencies.image]
+version = "*"
+default-features = false
+features = ["jpeg", "png_codec"]
+
+[features]
+default = []
+local = ["wgpu-native/local"]
+metal = ["wgpu/metal"]
+dx11 = ["wgpu/dx11"]
+dx12 = ["wgpu/dx12"]
+vulkan = ["wgpu/vulkan"]
+
+[[example]]
+name = "demo"
