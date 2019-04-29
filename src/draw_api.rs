@@ -13,7 +13,7 @@ use crate::vg::utils::{
 };
 
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.
-const KAPPA90: f32 = 0.552_284_749_3;
+const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
 
 pub const MOVETO: i32 = 0;
 pub const LINETO: i32 = 1;
@@ -203,29 +203,29 @@ impl Context {
             let halfw = w.abs()*0.5;
             let halfh = h.abs()*0.5;
             let sign = if w < 0.0 { -1.0 } else { 1.0 };
-            let rxBL = sign * min(halfw, bottom_left );
-            let ryBL = sign * min(halfh, bottom_left );
-            let rxBR = sign * min(halfw, bottom_right);
-            let ryBR = sign * min(halfh, bottom_right);
-            let rxTR = sign * min(halfw, top_right   );
-            let ryTR = sign * min(halfh, top_right   );
-            let rxTL = sign * min(halfw, top_left    );
-            let ryTL = sign * min(halfh, top_left    );
+            let rx_bl = sign * min(halfw, bottom_left );
+            let ry_bl = sign * min(halfh, bottom_left );
+            let rx_br = sign * min(halfw, bottom_right);
+            let ry_br = sign * min(halfh, bottom_right);
+            let rx_tr = sign * min(halfw, top_right   );
+            let ry_tr = sign * min(halfh, top_right   );
+            let rx_tl = sign * min(halfw, top_left    );
+            let ry_tl = sign * min(halfh, top_left    );
             let kappa = 1.0 - KAPPA90;
             self.append_commands(&mut [
-                MOVETO as f32, x, y + ryTL,
-                LINETO as f32, x, y + h - ryBL,
+                MOVETO as f32, x, y + ry_tl,
+                LINETO as f32, x, y + h - ry_bl,
                 BEZIERTO as f32,
-                x, y + h - ryBL*kappa, x + rxBL*kappa, y + h, x + rxBL, y + h,
-                LINETO as f32, x + w - rxBR, y + h,
+                x, y + h - ry_bl*kappa, x + rx_bl*kappa, y + h, x + rx_bl, y + h,
+                LINETO as f32, x + w - rx_br, y + h,
                 BEZIERTO as f32,
-                x + w - rxBR*kappa, y + h, x + w, y + h - ryBR*kappa, x + w, y + h - ryBR,
-                LINETO as f32, x + w, y + ryTR,
+                x + w - rx_br*kappa, y + h, x + w, y + h - ry_br*kappa, x + w, y + h - ry_br,
+                LINETO as f32, x + w, y + ry_tr,
                 BEZIERTO as f32,
-                x + w, y + ryTR*kappa, x + w - rxTR*kappa, y, x + w - rxTR, y,
-                LINETO as f32, x + rxTL, y,
+                x + w, y + ry_tr*kappa, x + w - rx_tr*kappa, y, x + w - rx_tr, y,
+                LINETO as f32, x + rx_tl, y,
                 BEZIERTO as f32,
-                x + rxTL*kappa, y, x, y + ryTL*kappa, x, y + ryTL,
+                x + rx_tl*kappa, y, x, y + ry_tl*kappa, x, y + ry_tl,
                 CLOSE as f32,
             ]);
         }

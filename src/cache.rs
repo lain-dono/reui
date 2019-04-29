@@ -1,5 +1,3 @@
-
-#![allow(improper_ctypes)]
 #![allow(clippy::too_many_arguments)]
 
 use std::{

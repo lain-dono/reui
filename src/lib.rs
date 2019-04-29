@@ -1,9 +1,5 @@
 #![feature(ptr_offset_from, decl_macro, const_fn, const_int_conversion)]
 
-#![allow(improper_ctypes)]
-#![allow(non_snake_case)]
-#![allow(non_camel_case_types)]
-
 #![warn(clippy::all)]
 
 mod api;

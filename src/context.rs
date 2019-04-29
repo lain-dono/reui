@@ -1,5 +1,3 @@
-#![allow(improper_ctypes)]
-
 use arrayvec::ArrayVec;
 
 use crate::{
@@ -23,11 +21,6 @@ pub const MAX_FONTIMAGES: usize = 4;
 
 extern "C" {
     fn fonsCreateInternal(params: &FONSparams) -> Box<FONScontext>;
-}
-
-extern "C" {
-    fn nvgFontFace(ctx: *mut Context, face: *const u8);
-    fn nvgAddFallbackFontId(ctx: *mut Context, a: i32, b: i32);
 }
 
 bitflags::bitflags!(
@@ -104,7 +97,7 @@ impl State {
             fill: Paint::with_color(Color::new(0xFF_FFFFFF)),
             stroke: Paint::with_color(Color::new(0xFF_000000)),
 
-            composite: CompositeOp::SOURCE_OVER.into(),
+            composite: CompositeOp::SrcOver.into(),
             shape_aa: 1,
             stroke_width: 1.0,
             miter_limit: 10.0,
@@ -195,12 +188,16 @@ impl Context {
         *state = State::new();
     }
 
-    pub fn add_fallback_font_id(&mut self, a: i32, b: i32) {
-        unsafe { nvgAddFallbackFontId(self, a, b) }
+    pub fn add_fallback_font_id(&mut self, base: i32, fallback: i32) -> bool{
+        if base == -1 || fallback == -1 {
+            false
+        } else {
+            self.fs.add_fallback_font(base, fallback) != 0
+        }
     }
 
-    pub fn font_face(&mut self, face: &[u8]) {
-        unsafe { nvgFontFace(self, face.as_ptr()); }
+    pub fn font_face(&mut self, name: &[u8]) {
+        self.states.last_mut().font_id = self.fs.font_by_name(name.as_ptr());
     }
 
     // State setting

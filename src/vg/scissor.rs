@@ -58,7 +58,6 @@ impl Context {
     }
 }
 
-
 fn isect_rects(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
     let [ax, ay, aw, ah] = a;
     let [bx, by, bw, bh] = b;

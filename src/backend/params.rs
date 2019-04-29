@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::{
     slice::from_raw_parts_mut,
     mem,
@@ -10,7 +8,7 @@ use crate::{
     vg::{Scissor, Paint, CompositeState},
 };
 
-use super::{Image, ImageFlags};
+use super::{Image, ImageFlags, TEXTURE_RGBA};
 use super::gl::*;
 use super::gl_shader::Shader;
 
@@ -72,21 +70,12 @@ bitflags::bitflags!(
     }
 );
 
-
-const TEXTURE_ALPHA: i32 = 0x01;
-const TEXTURE_RGBA: i32 = 0x02;
-
-const IMAGE_PREMULTIPLIED: i32 = 1<<4;
+//const IMAGE_PREMULTIPLIED: i32 = 1<<4;
 
 const SHADER_FILLGRAD: f32 = 0.0;
 const SHADER_FILLIMG: f32 = 1.0;
 const SHADER_SIMPLE: f32 = 2.0;
 const SHADER_IMG: f32 = 3.0;
-
-const LOC_VIEWSIZE: usize = 0;
-const LOC_TEX: usize = 1;
-const LOC_FRAG: usize = 2;
-const MAX_LOCS: usize = 3;
 
 #[repr(C, align(4))]
 struct FragUniforms {
@@ -363,15 +352,6 @@ impl BackendGL {
         self.textures.get(image)
     }
 
-    fn find_texture_mut<'a>(&mut self, image: Image) -> Option<&'a mut Texture> {
-        if let Some(tex) = self.textures.get_mut(image) {
-            let tex: *mut Texture = tex;
-            Some(unsafe { &mut *tex })
-        } else {
-            None
-        }
-    }
-
     fn convert_paint(
         &mut self, frag: &mut FragUniforms, paint: &Paint,
         scissor: &Scissor, width: f32, fringe: f32, stroke_thr: f32,
@@ -583,7 +563,7 @@ impl BackendGL {
 
             //convertPaint(
             //  gl,
-            //  self.frag_uniformPtr(gl, uniform_offset + 1), paint, scissor, strokeWidth, fringe, 1.0f - 0.5f/255.0f);
+            //  self.frag_uniform_mut(gl, uniform_offset + 1), paint, scissor, strokeWidth, fringe, 1.0f - 0.5f/255.0f);
         } else {
             self.set_uniforms(data.uniform_offset, data.image);
             check_error("stroke fill");
@@ -751,7 +731,7 @@ impl BackendGL {
         })
     }
 
-    pub fn set_viewport(&mut self, width: f32, height: f32, _devicePixelRatio: f32) {
+    pub fn set_viewport(&mut self, width: f32, height: f32, _pixel_ratio: f32) {
         self.view = [width, height];
     }
 

@@ -3,33 +3,33 @@ use crate::context::Context;
 #[repr(i32)]
 #[derive(Clone, Copy)]
 pub enum BlendFactor {
-    ZERO                  = 0,
-    ONE                   = 1,
-    SRC_COLOR             = 2,
-    ONE_MINUS_SRC_COLOR   = 3,
-    DST_COLOR             = 4,
-    ONE_MINUS_DST_COLOR   = 5,
-    SRC_ALPHA             = 6,
-    ONE_MINUS_SRC_ALPHA   = 7,
-    DST_ALPHA             = 8,
-    ONE_MINUS_DST_ALPHA   = 9,
-    SRC_ALPHA_SATURATE    = 10,
+    Zero                  = 0,
+    One                   = 1,
+    SrcColor             = 2,
+    OneMinusSrcColor   = 3,
+    DstColor             = 4,
+    OneMinusDstColor   = 5,
+    SrcAlpha             = 6,
+    OneMinusSrcAlpha   = 7,
+    DstAlpha             = 8,
+    OneMinusDstAlpha   = 9,
+    SrcAlphaSaturate    = 10,
 }
 
 #[repr(i32)]
 #[derive(Clone, Copy)]
 pub enum CompositeOp {
-    SOURCE_OVER     = 0,
-    SOURCE_IN       = 1,
-    SOURCE_OUT      = 2,
-    ATOP            = 3,
-    DESTINATION_OVER= 4,
-    DESTINATION_IN  = 5,
-    DESTINATION_OUT = 6,
-    DESTINATION_ATOP= 7,
-    LIGHTER         = 8,
-    COPY            = 9,
-    XOR             = 10,
+    SrcOver = 0,
+    SrcIn   = 1,
+    SrcOut  = 2,
+    Atop    = 3,
+    DstOver = 4,
+    DstIn   = 5,
+    DstOut  = 6,
+    DstAtop = 7,
+    Lighter = 8,
+    Copy    = 9,
+    Xor     = 10,
 }
 
 #[repr(C)]
@@ -77,42 +77,42 @@ pub fn composite_operation_state(op: i32) -> CompositeState  {
 
     let (sfactor, dfactor);
 
-    if op == SOURCE_OVER as i32 {
-        sfactor = BlendFactor::ONE;
-        dfactor = BlendFactor::ONE_MINUS_SRC_ALPHA;
-    } else if op == SOURCE_IN as i32 {
-        sfactor = BlendFactor::DST_ALPHA;
-        dfactor = BlendFactor::ZERO;
-    } else if op == SOURCE_OUT as i32 {
-        sfactor = BlendFactor::ONE_MINUS_DST_ALPHA;
-        dfactor = BlendFactor::ZERO;
-    } else if op == ATOP as i32 {
-        sfactor = BlendFactor::DST_ALPHA;
-        dfactor = BlendFactor::ONE_MINUS_SRC_ALPHA;
-    } else if op == DESTINATION_OVER as i32 {
-        sfactor = BlendFactor::ONE_MINUS_DST_ALPHA;
-        dfactor = BlendFactor::ONE;
-    } else if op == DESTINATION_IN as i32 {
-        sfactor = BlendFactor::ZERO;
-        dfactor = BlendFactor::SRC_ALPHA;
-    } else if op == DESTINATION_OUT as i32 {
-        sfactor = BlendFactor::ZERO;
-        dfactor = BlendFactor::ONE_MINUS_SRC_ALPHA;
-    } else if op == DESTINATION_ATOP as i32 {
-        sfactor = BlendFactor::ONE_MINUS_DST_ALPHA;
-        dfactor = BlendFactor::SRC_ALPHA;
-    } else if op == LIGHTER as i32 {
-        sfactor = BlendFactor::ONE;
-        dfactor = BlendFactor::ONE;
-    } else if op == COPY as i32 {
-        sfactor = BlendFactor::ONE;
-        dfactor = BlendFactor::ZERO;
-    } else if op == XOR as i32 {
-        sfactor = BlendFactor::ONE_MINUS_DST_ALPHA;
-        dfactor = BlendFactor::ONE_MINUS_SRC_ALPHA;
+    if op == SrcOver as i32 {
+        sfactor = BlendFactor::One;
+        dfactor = BlendFactor::OneMinusSrcAlpha;
+    } else if op == SrcIn as i32 {
+        sfactor = BlendFactor::DstAlpha;
+        dfactor = BlendFactor::Zero;
+    } else if op == SrcOut as i32 {
+        sfactor = BlendFactor::OneMinusDstAlpha;
+        dfactor = BlendFactor::Zero;
+    } else if op == Atop as i32 {
+        sfactor = BlendFactor::DstAlpha;
+        dfactor = BlendFactor::OneMinusSrcAlpha;
+    } else if op == DstOver as i32 {
+        sfactor = BlendFactor::OneMinusDstAlpha;
+        dfactor = BlendFactor::One;
+    } else if op == DstIn as i32 {
+        sfactor = BlendFactor::Zero;
+        dfactor = BlendFactor::SrcAlpha;
+    } else if op == DstOut as i32 {
+        sfactor = BlendFactor::Zero;
+        dfactor = BlendFactor::OneMinusSrcAlpha;
+    } else if op == DstAtop as i32 {
+        sfactor = BlendFactor::OneMinusDstAlpha;
+        dfactor = BlendFactor::SrcAlpha;
+    } else if op == Lighter as i32 {
+        sfactor = BlendFactor::One;
+        dfactor = BlendFactor::One;
+    } else if op == Copy as i32 {
+        sfactor = BlendFactor::One;
+        dfactor = BlendFactor::Zero;
+    } else if op == Xor as i32 {
+        sfactor = BlendFactor::OneMinusDstAlpha;
+        dfactor = BlendFactor::OneMinusSrcAlpha;
     } else {
-        sfactor = BlendFactor::ONE;
-        dfactor = BlendFactor::ZERO;
+        sfactor = BlendFactor::One;
+        dfactor = BlendFactor::Zero;
     }
 
     CompositeState {

@@ -573,9 +573,9 @@ fn nvgRoundedRect(ctx: &mut Context, x: f32, y: f32, w: f32, h: f32, r: f32) {
 fn nvgRoundedRectVarying(
     ctx: &mut Context,
     x: f32, y: f32, w: f32, h: f32,
-    radTopLeft: f32, radTopRight: f32, radBottomRight: f32, radBottomLeft: f32,
+    tl: f32, tr: f32, br: f32, bl: f32,
 ) {
-    ctx.rrect_varying(x, y, w, h, radTopLeft, radTopRight, radBottomRight, radBottomLeft);
+    ctx.rrect_varying(x, y, w, h, tl, tr, br, bl);
 }
 
 /// Creates new ellipse shaped sub-path.
@@ -689,11 +689,7 @@ fn nvgFindFont(ctx: &mut Context, name: *const u8) -> i32 {
 // Adds a fallback font by handle.
 #[no_mangle] extern "C"
 fn nvgAddFallbackFontId(ctx: &mut Context, base: i32, fallback: i32) -> i32 {
-    if base == -1 || fallback == -1 {
-        0
-    } else {
-        ctx.fs.add_fallback_font(base, fallback)
-    }
+    ctx.add_fallback_font_id(base, fallback) as i32
 }
 
 // Adds a fallback font by name.
@@ -742,8 +738,9 @@ fn nvgFontFaceId(ctx: &mut Context, font_id: i32) {
 
 // Sets the font face based on specified name of current text style.
 #[no_mangle] extern "C"
-fn nvgFontFace(ctx: &mut Context, font: *const u8) {
-    ctx.states.last_mut().font_id = ctx.fs.font_by_name(font);
+fn nvgFontFace(ctx: &mut Context, font: *const i8) {
+    let font = unsafe { CStr::from_ptr(font).to_string_lossy() };
+    ctx.font_face(font.as_bytes())
 }
 
 

@@ -1,6 +1,3 @@
-#![allow(unused_unsafe)]
-#![allow(dead_code)] 
-
 use slotmap::Key;
 use std::ptr::null;
 

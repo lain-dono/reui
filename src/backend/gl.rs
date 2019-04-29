@@ -261,22 +261,22 @@ impl Blend {
 
 fn blend_factor(factor: BlendFactor) -> GLenum {
     match factor {
-        BlendFactor::ZERO                   => GL_ZERO,
-        BlendFactor::ONE                    => GL_ONE,
+        BlendFactor::Zero               => GL_ZERO,
+        BlendFactor::One                => GL_ONE,
 
-        BlendFactor::SRC_COLOR              => GL_SRC_COLOR,
-        BlendFactor::ONE_MINUS_SRC_COLOR    => GL_ONE_MINUS_SRC_COLOR,
+        BlendFactor::SrcColor           => GL_SRC_COLOR,
+        BlendFactor::OneMinusSrcColor   => GL_ONE_MINUS_SRC_COLOR,
 
-        BlendFactor::SRC_ALPHA              => GL_SRC_ALPHA,
-        BlendFactor::ONE_MINUS_SRC_ALPHA    => GL_ONE_MINUS_SRC_ALPHA,
+        BlendFactor::SrcAlpha           => GL_SRC_ALPHA,
+        BlendFactor::OneMinusSrcAlpha   => GL_ONE_MINUS_SRC_ALPHA,
 
-        BlendFactor::DST_ALPHA              => GL_DST_ALPHA,
-        BlendFactor::ONE_MINUS_DST_ALPHA    => GL_ONE_MINUS_DST_ALPHA,
+        BlendFactor::DstAlpha           => GL_DST_ALPHA,
+        BlendFactor::OneMinusDstAlpha   => GL_ONE_MINUS_DST_ALPHA,
 
-        BlendFactor::DST_COLOR              => GL_DST_COLOR,
-        BlendFactor::ONE_MINUS_DST_COLOR    => GL_ONE_MINUS_DST_COLOR,
+        BlendFactor::DstColor           => GL_DST_COLOR,
+        BlendFactor::OneMinusDstColor   => GL_ONE_MINUS_DST_COLOR,
 
-        BlendFactor::SRC_ALPHA_SATURATE     => GL_SRC_ALPHA_SATURATE,
+        BlendFactor::SrcAlphaSaturate   => GL_SRC_ALPHA_SATURATE,
     }
 }
 
