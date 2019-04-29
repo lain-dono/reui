@@ -76,7 +76,7 @@ impl Color {
 
     /// Sets transparency of a color value.
     pub fn trans(mut self, a: u8) -> Self {
-        self.a = (a as f32) / 255.0;
+        self.a = f32::from(a) / 255.0;
         self
     }
 
@@ -106,7 +106,7 @@ impl Color {
             r: clampf(hue(h + 1.0/3.0, m1, m2), 0.0, 1.0),
             g: clampf(hue(h, m1, m2), 0.0, 1.0),
             b: clampf(hue(h - 1.0/3.0, m1, m2), 0.0, 1.0),
-            a: (a as f32) / 255.0,
+            a: f32::from(a) / 255.0,
         }
     }
 
