@@ -5,7 +5,7 @@
 #![allow(non_camel_case_types)]
 
 mod api;
-mod perf;
+pub mod perf;
 mod vg;
 mod backend;
 mod fons;
@@ -17,18 +17,13 @@ mod context;
 
 //mod wgpu;
 
-#[link(name = "nvg")]
-extern "C" {
-    fn run();
-}
-
 pub use crate::{
     cache::{Winding, LineJoin, LineCap},
-    backend::{Image, ImageFlags},
+    backend::{BackendGL, NFlags, Image, ImageFlags, gl},
     vg::{
         Paint,
         Color,
         utils,
     },
-    context::{Context, Align, TextRow, GlyphPosition, },
+    context::{Context, Align, TextRow, GlyphPosition},
 };

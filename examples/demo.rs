@@ -9,7 +9,173 @@ fn main() {
     env_logger::init();
     log::info!("start");
     //return wgpu::run();
-    unsafe { run(); }
+    unsafe { _run(); }
+}
+
+#[no_mangle] extern "C" fn errorcb(error: i32, desc: *const i8) {
+    let desc = unsafe {
+        std::ffi::CStr::from_ptr(desc)
+    };
+    println!("GLFW error {}: {:?}\n", error, desc);
+}
+
+#[no_mangle] pub static mut BLOWUP: i32 = 0;
+#[no_mangle] pub static mut SCREENSHOT: i32 = 0;
+#[no_mangle] pub static mut PREMULT: i32 = 0;
+
+struct GLFWwindow(usize);
+struct GLFWmonitor(usize);
+
+extern "C" {
+    fn glfwInit() -> bool;
+    fn glfwTerminate();
+    fn glfwSetWindowShouldClose(window: *mut GLFWwindow, value: i32);
+    fn glfwSetErrorCallback(errorcb: extern fn(error: i32, desc: *const i8));
+
+    fn glfwWindowHint(hint: i32, value: i32);
+
+    fn glfwCreateWindow(
+        width: i32, height: i32, title: *const u8,
+        monitor: *const GLFWmonitor, share: *const GLFWwindow,
+    ) -> *mut GLFWwindow;
+    fn glfwSetKeyCallback(
+        window: *mut GLFWwindow,
+        key: extern fn(window: *mut GLFWwindow, key: i32, _scancode: i32, action: i32, _mods: i32),
+    );
+    
+    fn glfwMakeContextCurrent(window: *mut GLFWwindow);
+
+    fn glfwSwapInterval(interval: i32);
+
+    fn glfwSetTime(time: f64);
+    fn glfwGetTime() -> f64;
+    fn glfwWindowShouldClose(window: *mut GLFWwindow) -> bool;
+    fn glfwGetCursorPos(window: *mut GLFWwindow, xpos: &mut f64, ypos: &mut f64);
+    fn glfwGetWindowSize(window: *mut GLFWwindow, w: &mut i32, h: &mut i32);
+    fn glfwGetFramebufferSize(window: *mut GLFWwindow, w: &mut i32, h: &mut i32);
+    
+    fn glfwSwapBuffers(window: *mut GLFWwindow);
+    fn glfwPollEvents();
+}
+
+extern "C" fn key(window: *mut GLFWwindow, key: i32, _scancode: i32, action: i32, _mods: i32) {
+    const GLFW_KEY_SPACE: i32 = 32;
+    const GLFW_KEY_ESCAPE: i32 = 256;
+    const GLFW_PRESS: i32 = 1;
+    const GLFW_KEY_P: i32 = 80;
+    const GLFW_KEY_S: i32 = 83;
+    unsafe {
+        if key == GLFW_KEY_ESCAPE && action == GLFW_PRESS {
+            glfwSetWindowShouldClose(window, 1);
+        }
+        if key == GLFW_KEY_SPACE && action == GLFW_PRESS {
+            BLOWUP = !BLOWUP;
+        }
+        if key == GLFW_KEY_S && action == GLFW_PRESS {
+            SCREENSHOT = 1;
+        }
+        if key == GLFW_KEY_P && action == GLFW_PRESS {
+            PREMULT = !PREMULT;
+        }
+    }
+}
+
+unsafe fn _run() {
+    use oni2d::{
+        perf::{GraphStyle, PerfGraph},
+        //Context,
+        BackendGL,
+        NFlags,
+        gl,
+    };
+
+    const GLFW_CONTEXT_VERSION_MAJOR: i32 = 0x00022002;
+    const GLFW_CONTEXT_VERSION_MINOR: i32 = 0x00022003;
+
+    assert!(glfwInit(), "Failed to init GLFW.");
+
+    let mut fps = PerfGraph::new(GraphStyle::Fps, "Frame Time");
+
+    glfwSetErrorCallback(errorcb);
+
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+
+    let window = glfwCreateWindow(1000, 600, b"NanoVG\0".as_ptr(), null(), null());
+    //window = glfwCreateWindow(1000, 600, "NanoVG", glfwGetPrimaryMonitor(), NULL);
+    if window.is_null() {
+        glfwTerminate();
+        panic!("cant create window");
+    }
+
+    glfwSetKeyCallback(window, key);
+    glfwMakeContextCurrent(window);
+
+    let flags = NFlags::ANTIALIAS | NFlags::STENCIL_STROKES | NFlags::DEBUG;
+    let mut vg = Context::new(BackendGL::new(flags));
+
+    let data = DemoData::new(&mut vg);
+
+    glfwSwapInterval(0);;
+
+    glfwSetTime(0.0);
+    let mut prevt = glfwGetTime();
+
+    while !glfwWindowShouldClose(window) {
+        let t = glfwGetTime();
+        let dt = t - prevt;
+        prevt = t;
+    
+        fps.update(dt as f32);
+        let (mut mx, mut my) = (0.0, 0.0);
+        glfwGetCursorPos(window, &mut mx, &mut my);
+        let (mut win_w, mut win_h) = (0, 0);
+        glfwGetWindowSize(window, &mut win_w, &mut win_h);
+        let (mut fb_w, mut fb_h) = (0, 0);
+        glfwGetFramebufferSize(window, &mut fb_w, &mut fb_h);
+
+        // Calculate pixel ration for hi-dpi devices.
+        let px_ratio = (fb_w as f32) / (win_w as f32);
+
+        // Update and render
+        gl::glViewport(0, 0, fb_w, fb_h);
+        if PREMULT != 0 {
+            gl::glClearColor(0.0,0.0,0.0,0.0);
+        } else {
+            gl::glClearColor(0.3, 0.3, 0.32, 1.0);
+        }
+
+        gl::glClear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT | gl::GL_STENCIL_BUFFER_BIT);
+
+        vg.begin_frame(win_w as f32, win_h as f32, px_ratio);
+
+        render_demo(
+            &mut vg,
+            mx as f32,my as f32,
+            win_w as f32,win_h as f32,
+            t as f32, BLOWUP != 0, &data,
+        );
+        fps.render(&mut vg, 5.0, 5.0);
+
+        vg.end_frame();
+
+        /*
+        if (screenshot) {
+            screenshot = 0;
+            save_screenshot(fbWidth, fbHeight, premult, "dump.png");
+        }
+        */
+        
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+    }
+
+    /*
+    free_demo_data(vg, &data);
+    nvgDeleteGL2(vg);
+    */
+
+    glfwTerminate();
 }
 
 use slotmap::Key;
@@ -33,7 +199,6 @@ use oni2d::{
     },
 };
 
-
 const ICON_SEARCH: isize = 0x1F50D;
 const ICON_CIRCLED_CROSS: isize = 0x2716;
 const ICON_CHEVRON_RIGHT: isize = 0xE75E;
@@ -48,6 +213,44 @@ pub struct DemoData {
     pub font_icons: i32,
     pub font_emoji: i32,
     pub images: [Image; 12],
+}
+impl DemoData {
+    fn new(vg: &mut Context) -> Self {
+        let mut images = [Image::null(); 12];
+        
+        for i in 0..12 {
+            let file = format!("assets/images/image{}.jpg", i+1);
+            let m = vg.create_image(&file, ImageFlags::empty());
+            assert!(!m.is_null(), "Could not load {}.", file);
+            images[i] = m;
+        }
+
+        let font_icons = vg.create_font("icons", "assets/entypo.ttf");
+        assert_ne!(font_icons, -1, "Could not add font icons.");
+        let font_normal = vg.create_font("sans", "assets/Roboto-Regular.ttf");
+        assert_ne!(font_normal, -1, "Could not add font italic.");
+        let font_bold = vg.create_font("sans-bold", "assets/Roboto-Bold.ttf");
+        assert_ne!(font_bold, -1, "Could not add font bold.");
+        let font_emoji = vg.create_font("emoji", "assets/NotoEmoji-Regular.ttf");
+        assert_ne!(font_emoji, -1, "Could not add font emoji.");
+
+        vg.add_fallback_font_id(font_normal, font_emoji);
+        vg.add_fallback_font_id(font_bold, font_emoji);
+
+        Self {
+            font_normal,
+            font_bold,
+            font_icons,
+            font_emoji,
+            images
+        }
+    }
+}
+
+#[no_mangle] extern "C"
+fn load_demo_data(vg: &mut Context, data: &mut DemoData) -> i32 {
+    *data = DemoData::new(vg);
+    0
 }
 
 fn cp2utf8<'a>(mut cp: isize, s: &'a mut [u8; 8]) -> &'a [u8] {
@@ -1163,37 +1366,6 @@ fn draw_scissor(vg: &mut Context, x: f32, y: f32, t: f32) {
     vg.fill();
 
     vg.restore();
-}
-
-#[no_mangle] extern "C"
-fn load_demo_data(vg: &mut Context, data: &mut DemoData) -> i32 {
-    log::debug!("load_demo_data");
-
-    for i in 0..12 {
-        let file = format!("assets/images/image{}.jpg", i+1);
-        let m = vg.create_image(&file, ImageFlags::empty());
-        if m.is_null() {
-            println!("Could not load {}.", file);
-            return -1;
-        }
-        data.images[i] = m;
-    }
-
-    data.font_icons = vg.create_font("icons", "assets/entypo.ttf");
-    assert_ne!(data.font_icons, -1, "Could not add font icons.");
-    data.font_normal = vg.create_font("sans", "assets/Roboto-Regular.ttf");
-    assert_ne!(data.font_normal, -1, "Could not add font italic.");
-    data.font_bold = vg.create_font("sans-bold", "assets/Roboto-Bold.ttf");
-    assert_ne!(data.font_bold, -1, "Could not add font bold.");
-    data.font_emoji = vg.create_font("emoji", "assets/NotoEmoji-Regular.ttf");
-    assert_ne!(data.font_emoji, -1, "Could not add font emoji.");
-
-    vg.add_fallback_font_id(data.font_normal, data.font_emoji);
-    vg.add_fallback_font_id(data.font_bold, data.font_emoji);
-
-    log::debug!("load_demo_data ok");
-
-    0
 }
 
 #[no_mangle] extern "C"

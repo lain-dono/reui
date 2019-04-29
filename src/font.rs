@@ -19,6 +19,7 @@ use crate::vg::utils::{
 };
 use slotmap::Key;
 
+#[link(name = "nvg")]
 extern "C" {
     fn fonsTextIterInit(
         s: *mut FONScontext, iter: *mut FONStextIter,

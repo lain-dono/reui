@@ -1,10 +1,8 @@
-mod gl;
+pub mod gl;
 mod gl_shader;
 mod params;
 
 pub use self::params::{BackendGL, NFlags};
-
-use slotmap::Key;
 
 slotmap::new_key_type! {
     pub struct Image;
@@ -25,7 +23,7 @@ bitflags::bitflags!(
 );
 
 #[no_mangle] extern "C"
-fn nvgDeleteGL2(ctx: *const u8) {
+fn nvgDeleteGL2(_ctx: *const u8) {
 }
 
 #[no_mangle] extern "C"

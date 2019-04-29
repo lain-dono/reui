@@ -72,8 +72,8 @@ pub const GL_CLAMP_TO_EDGE: i32 = 0x812F;
 pub const GL_NEAREST: i32 = 0x2600;
 pub const GL_LINEAR: i32 = 0x2601;
 pub const GL_NEAREST_MIPMAP_NEAREST: i32 = 0x2700;
-pub const GL_LINEAR_MIPMAP_NEAREST : i32 = 0x2701;
-pub const GL_NEAREST_MIPMAP_LINEAR : i32 = 0x2702;
+//pub const GL_LINEAR_MIPMAP_NEAREST : i32 = 0x2701;
+//pub const GL_NEAREST_MIPMAP_LINEAR : i32 = 0x2702;
 pub const GL_LINEAR_MIPMAP_LINEAR  : i32 = 0x2703;
 
 pub const GL_TEXTURE_MAG_FILTER    : GLenum = 0x2800;
@@ -87,6 +87,10 @@ pub const GL_NO_ERROR: GLenum = 0;
 
 pub const GL_FRAGMENT_SHADER: GLenum = 0x8B30;
 pub const GL_VERTEX_SHADER: GLenum = 0x8B31;
+
+pub const GL_DEPTH_BUFFER_BIT: GLenum = 0x00000100;
+pub const GL_STENCIL_BUFFER_BIT: GLenum = 0x00000400;
+pub const GL_COLOR_BUFFER_BIT: GLenum = 0x00004000;
 
 extern "C" {
     pub fn glDrawArrays(mode: GLenum, first: GLint, count: GLsizei);
@@ -169,6 +173,10 @@ extern "C" {
 
     pub fn glBindAttribLocation(program: GLuint, index: GLuint, name: *const u8);
     pub fn glAttachShader(program: GLuint, shader: GLuint);
+
+    pub fn glViewport(a: GLint, b: GLint, c: GLsizei, d: GLsizei);
+    pub fn glClearColor(r: GLfloat, g: GLfloat, b: GLfloat, a: GLfloat);
+    pub fn glClear(bits: GLenum);
 }
 
 pub fn gl_draw_strip(offset: usize, count: usize) {
