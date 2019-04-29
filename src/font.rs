@@ -19,7 +19,6 @@ use crate::{
         min, max,
         average_scale,
         str_start_end,
-        slice_start_end,
         raw_slice,
     },
 };
@@ -140,7 +139,7 @@ impl Context {
         let mut iter = self.fs.text_iter_required(x*scale, y*scale, start, end);
         let mut prev_iter = iter;
         while let Some(mut q) = iter.next() {
-            if iter.iter().prev_glyph_index == -1 { // can not retrieve glyph?
+            if iter.prev_glyph_index == -1 { // can not retrieve glyph?
                 if nverts != 0 {
                     self.render_text(&mut verts[..nverts]);
                     nverts = 0;
@@ -150,7 +149,7 @@ impl Context {
                 }
                 iter = prev_iter;
                 q = iter.next().unwrap(); // try again
-                if iter.iter().prev_glyph_index == -1 { // still can not find glyph?
+                if iter.prev_glyph_index == -1 { // still can not find glyph?
                     break;
                 }
             }
@@ -177,7 +176,7 @@ impl Context {
         // TODO: add back-end bit to do this just once per frame.
         self.flush_text_texture();
         self.render_text(&mut verts[..nverts]);
-        iter.iter().nextx / scale
+        iter.nextx / scale
     }
 
     pub fn text_bounds(&mut self, x: f32, y: f32, text: &str) -> (f32, [f32; 4]) {
@@ -263,19 +262,18 @@ impl Context {
             return &[];
         }
 
-        let (mut start, end) = str_start_end(text);
+        let (start, end) = str_start_end(text);
         self.fs.sync_state(state, scale);
 
         let mut iter = self.fs.text_iter_optional(x*scale, y*scale, start, end);
         let mut prev_iter = iter;
 
         while let Some(mut q) = iter.next() {
-            if iter.iter().prev_glyph_index < 0 && self.alloc_text_atlas() { // can not retrieve glyph?
+            if iter.prev_glyph_index < 0 && self.alloc_text_atlas() { // can not retrieve glyph?
                 iter = prev_iter;
                 q = iter.next().unwrap(); // try again
             }
             prev_iter = iter;
-            let iter = iter.iter();
             positions[npos].s = iter.str;
             positions[npos].x = iter.x * invscale;
             positions[npos].minx = min(iter.x, q.x0) * invscale;
@@ -436,13 +434,11 @@ fn nvgTextBreakLines(
     let mut prev_iter = iter;
 
     while let Some(mut q) = iter.next() {
-        if iter.iter().prev_glyph_index < 0 && ctx.alloc_text_atlas() { // can not retrieve glyph?
+        if iter.prev_glyph_index < 0 && ctx.alloc_text_atlas() { // can not retrieve glyph?
             iter = prev_iter;
             q = iter.next().unwrap(); // try again
         }
         prev_iter = iter;
-
-        let iter = iter.iter();
 
         let cp = iter.codepoint;
         let _type = if [9, 11, 12, 32, 0x00a0].contains(&cp) {

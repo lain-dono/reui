@@ -40,11 +40,6 @@ extern "C" {
         ctx: *mut Context,
         start: *const u8, end: *const u8,
         break_row_width: f32, rows: *mut TextRow, max_rows: usize) -> usize;
-    fn nvgTextGlyphPositions(
-        ctx: *mut Context, x: f32, y: f32,
-        start: *const u8, end: *const u8,
-        positions: *mut GlyphPosition, max_positions: usize,
-    ) -> usize;
 
     fn nvgAddFallbackFontId(ctx: *mut Context, a: i32, b: i32);
 }

@@ -1,6 +1,3 @@
-#![allow(unused_unsafe)]
-#![allow(dead_code)] 
-
 use std::{
     ffi::{c_void, CString},
     os::raw::c_char,
@@ -25,16 +22,16 @@ extern "C" {
     fn fonsResetAtlas(s: *mut FONScontext, width: u32, height: u32) -> i32;
 
     fn fonsSetSize(s: *mut FONScontext, size: f32);
-    fn fonsSetColor(s: *mut FONScontext, color: u32);
+    //fn fonsSetColor(s: *mut FONScontext, color: u32);
     fn fonsSetSpacing(s: *mut FONScontext, spacing: f32);
     fn fonsSetBlur(s: *mut FONScontext, blur: f32);
     fn fonsSetAlign(s: *mut FONScontext, align: Align);
     fn fonsSetFont(s: *mut FONScontext, font: i32);
 
     fn fonsTextIterInit(
-        s: *mut FONScontext, iter: *mut FONStextIter,
+        s: *mut FONScontext, iter: *mut TextIter,
         x: f32, y: f32, str: *const u8, end: *const u8, bitmap_option: i32) -> i32;
-    fn fonsTextIterNext(s: *mut FONScontext, iter: *mut FONStextIter, quad: *mut FONSquad) -> bool;
+    fn fonsTextIterNext(s: *mut FONScontext, iter: *mut TextIter, quad: *mut FONSquad) -> bool;
 
     fn fonsTextBounds(s: *mut FONScontext, x: f32, y: f32, start: *const u8, end: *const u8, bounds: *mut f32) -> f32;
     fn fonsLineBounds(s: *mut FONScontext, y: f32, miny: *mut f32, maxy: *mut f32);
@@ -49,17 +46,17 @@ pub struct Metrics {
 
 pub const FONS_INVALID: i32 = -1;
 
-const SCRATCH_BUF_SIZE: usize = 96000;
-const HASH_LUT_SIZE: usize = 256;
-const INIT_FONTS: usize = 4;
-const INIT_GLYPHS: usize = 256;
-const INIT_ATLAS_NODES: usize = 256;
+//const SCRATCH_BUF_SIZE: usize = 96000;
+//const HASH_LUT_SIZE: usize = 256;
+//const INIT_FONTS: usize = 4;
+//const INIT_GLYPHS: usize = 256;
+//const INIT_ATLAS_NODES: usize = 256;
 const VERTEX_COUNT: usize = 1024;
 const MAX_STATES: usize = 20;
-const MAX_FALLBACKS: usize = 20;
+//const MAX_FALLBACKS: usize = 20;
 
 pub const ZERO_TOPLEFT: u8 = 1;
-pub const ZERO_BOTTOMLEFT: u8 = 2;
+//pub const ZERO_BOTTOMLEFT: u8 = 2;
 
 pub const GLYPH_BITMAP_OPTIONAL: i32 = 1;
 pub const GLYPH_BITMAP_REQUIRED: i32 = 2;
@@ -94,7 +91,7 @@ pub struct FONSquad {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct FONStextIter {
+pub struct TextIter {
     pub x: f32,
     pub y: f32,
     pub nextx: f32,
@@ -111,6 +108,23 @@ pub struct FONStextIter {
     pub end: *const u8,
     pub utf8state: u32,
     pub bitmap_option: i32,
+
+    fs: *mut FONScontext,
+}
+
+impl Iterator for TextIter {
+    type Item = FONSquad;
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            let mut q = std::mem::uninitialized();
+            let ok = fonsTextIterNext(self.fs, self, &mut q);
+            if ok {
+                Some(q)
+            } else {
+                None
+            }
+        }
+    }
 }
 
 #[repr(C)]
@@ -255,46 +269,23 @@ impl FONScontext {
         x: f32, y: f32,
         start: *const u8, end: *const u8,
     ) -> TextIter {
-        let mut iter: FONStextIter = unsafe { std::mem::zeroed() };
+        let mut iter: TextIter = unsafe { std::mem::zeroed() };
         unsafe {
             fonsTextIterInit(self, &mut iter, x, y, start, end, GLYPH_BITMAP_OPTIONAL);
         }
-        TextIter { fs: self, iter }
+        iter.fs = self;
+        iter
     }
     
     pub fn text_iter_required(&mut self,
         x: f32, y: f32,
         start: *const u8, end: *const u8,
     ) -> TextIter {
-        let mut iter: FONStextIter = unsafe { std::mem::zeroed() };
+        let mut iter: TextIter = unsafe { std::mem::zeroed() };
         unsafe {
             fonsTextIterInit(self, &mut iter, x, y, start, end, GLYPH_BITMAP_REQUIRED);
         }
-        TextIter { fs: self, iter }
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct TextIter {
-    fs: *mut FONScontext,
-    iter: FONStextIter,
-}
-
-impl TextIter {
-    pub fn iter(&self) -> &FONStextIter { &self.iter }
-}
-
-impl Iterator for TextIter {
-    type Item = FONSquad;
-    fn next(&mut self) -> Option<Self::Item> {
-        unsafe {
-            let mut q = std::mem::uninitialized();
-            let ok = fonsTextIterNext(self.fs, &mut self.iter, &mut q);
-            if ok {
-                Some(q)
-            } else {
-                None
-            }
-        }
+        iter.fs = self;
+        iter
     }
 }

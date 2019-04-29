@@ -430,29 +430,29 @@ impl PathCache {
         // Flatten
         let mut i = 0;
         while i < commands.len() {
-            let cmd = commands[i] as i32;
-            match cmd {
+            let cmd = &commands[i..];
+            let kind = cmd[0] as i32;
+            match kind {
             MOVETO => {
                 self.add_path();
-                let p = &commands[i+1..];
-                self.add_point(p[0], p[1], self.dist_tol, PointFlags::CORNER);
+                let [x, y] = [cmd[1], cmd[2]];
+                self.add_point(x, y, self.dist_tol, PointFlags::CORNER);
                 i += 3;
             }
             LINETO => {
-                let p = &commands[i+1..];
-                self.add_point(p[0], p[1], self.dist_tol, PointFlags::CORNER);
+                let [x, y] = [cmd[1], cmd[2]];
+                self.add_point(x, y, self.dist_tol, PointFlags::CORNER);
                 i += 3;
             }
             BEZIERTO => {
                 if let Some(last) = self.points.last() {
-                    let cp1 = &commands[i+1..];
-                    let cp2 = &commands[i+3..];
-                    let p = &commands[i+5..];
+                    let p1 = [last.x, last.y];
+                    let p2 = [cmd[1], cmd[2]];
+                    let p3 = [cmd[3], cmd[4]];
+                    let p4 = [cmd[5], cmd[6]];
+
                     self.tesselate_bezier(
-                        [last.x, last.y],
-                        [cp1[0], cp1[1]],
-                        [cp2[0], cp2[1]],
-                        [p[0], p[1]],
+                        p1, p2, p3, p4,
                         0, PointFlags::CORNER,
                     );
                 }
@@ -463,7 +463,7 @@ impl PathCache {
                 i += 1;
             }
             WINDING => {
-                self.path_winding(match commands[i+1] as i32 {
+                self.path_winding(match cmd[1] as i32 {
                     1 => Winding::CCW,
                     2 => Winding::CW,
                     _ => unreachable!(),
