@@ -56,14 +56,14 @@ fn fan2strip(i: usize, len: usize) -> usize {
 }
 
 fn max_vert_count(paths: &[Path]) -> usize {
-    paths.into_iter().fold(0, |acc, path| acc + path.nfill + path.nstroke)
+    paths.iter().fold(0, |acc, path| acc + path.nfill + path.nstroke)
 }
 
 bitflags::bitflags!(
     #[repr(transparent)]
     pub struct NFlags: i32 {
         // Flag indicating if geometry based anti-aliasing is used (may not be needed when using MSAA).
-        const ANTIALIAS = 1<<0;
+        const ANTIALIAS = 1;
         // Flag indicating if strokes should be drawn using stencil buffer. The rendering will be a little
         // slower, but path overlaps (i.e. self-intersecting or sharp turns) will be drawn just once.
         const STENCIL_STROKES = 1<<1;
@@ -624,15 +624,11 @@ impl BackendGL {
         let path_offset = self.alloc_paths(paths.len());
         let path_count = paths.len();
 
-        let kind;
-        let triangle_count; 
-        if paths.len() == 1 && paths[0].convex {
-            kind = CallKind::CONVEXFILL;
-            triangle_count = 0; // Bounding box fill quad not needed for convex fill
+        let (kind, triangle_count) = if paths.len() == 1 && paths[0].convex {
+            (CallKind::CONVEXFILL, 0) // Bounding box fill quad not needed for convex fill
         } else {
-            kind = CallKind::FILL;
-            triangle_count = 4;
-        }
+            (CallKind::FILL, 4)
+        };
 
         // Allocate vertices for all the paths.
         let maxverts = max_vert_count(paths) + triangle_count;
@@ -760,7 +756,7 @@ impl BackendGL {
     }
 
     pub fn flush(&mut self) {
-        if self.calls.len() == 0 {
+        if self.calls.is_empty() {
             self.reset();
             return;
         }
@@ -777,9 +773,9 @@ impl BackendGL {
             glDisable(GL_DEPTH_TEST);
             glDisable(GL_SCISSOR_TEST);
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-            glStencilMask(0xffffffff);
+            glStencilMask(0xffff_ffff);
             glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-            glStencilFunc(GL_ALWAYS, 0, 0xffffffff);
+            glStencilFunc(GL_ALWAYS, 0, 0xffff_ffff);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, 0);
         }
@@ -888,10 +884,11 @@ impl BackendGL {
     pub fn create_texture(&mut self, kind: i32, w: u32, h: u32, flags: ImageFlags, data: *const u8) -> Image {
         // GL 1.4 and later has support for generating mipmaps using a tex parameter.
         let mipmaps = if flags.contains(ImageFlags::GENERATE_MIPMAPS) {
-            GL_TRUE as i32
+            GL_TRUE
         } else {
-            GL_FALSE as i32
+            GL_FALSE
         };
+        let mipmaps = i32::from(mipmaps);
 
         let kind_tex = if kind == TEXTURE_RGBA {
             GL_RGBA
@@ -905,9 +902,9 @@ impl BackendGL {
             } else {
                 GL_LINEAR_MIPMAP_LINEAR
             }
-        } else {
-            if flags.contains(ImageFlags::NEAREST) { GL_NEAREST } else { GL_LINEAR }
-        };
+        } else if flags.contains(ImageFlags::NEAREST) {
+            GL_NEAREST
+        } else { GL_LINEAR };
 
         let mag = if flags.contains(ImageFlags::NEAREST) { GL_NEAREST } else { GL_LINEAR };
         let wrap_s = if flags.contains(ImageFlags::REPEATX) { GL_REPEAT } else { GL_CLAMP_TO_EDGE };

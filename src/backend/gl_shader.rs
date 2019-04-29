@@ -79,10 +79,10 @@ impl Shader {
         }
     }
 
-    pub fn bind_view(&self, view: &[f32; 2]) {
+    pub fn bind_view(&self, view: *const [f32; 2]) {
         unsafe {
             glUniform1i(self.loc_tex, 0);
-            glUniform2fv(self.loc_viewsize, 1, view.as_ptr());
+            glUniform2fv(self.loc_viewsize, 1, view as *const f32);
         }
     }
 }

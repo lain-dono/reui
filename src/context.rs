@@ -1,7 +1,5 @@
 #![allow(improper_ctypes)]
 
-use core::ptr::null_mut;
-
 use arrayvec::ArrayVec;
 
 use crate::{
@@ -11,7 +9,7 @@ use crate::{
     transform,
     vg::*,
     fons::*,
-    vg::utils::{raw_str, str_start_end},
+    vg::utils::raw_str,
 };
 
 use std::ptr::null;
@@ -29,7 +27,6 @@ extern "C" {
 
 extern "C" {
     fn nvgFontFace(ctx: *mut Context, face: *const u8);
-    fn nvgTextBounds(ctx: *mut Context, x: f32, y: f32, s: *const u8, end: *const u8, bounds: *mut f32) -> f32;
     fn nvgAddFallbackFontId(ctx: *mut Context, a: i32, b: i32);
 }
 
@@ -104,8 +101,8 @@ pub struct State {
 impl State {
     fn new() -> Self {
         Self {
-            fill: Paint::color(Color::new(0xFF_FFFFFF)),
-            stroke: Paint::color(Color::new(0xFF_000000)),
+            fill: Paint::with_color(Color::new(0xFF_FFFFFF)),
+            stroke: Paint::with_color(Color::new(0xFF_000000)),
 
             composite: CompositeOp::SOURCE_OVER.into(),
             shape_aa: 1,
@@ -143,7 +140,7 @@ impl States {
         Self { states }
     }
     pub(crate) fn last(&self) -> &State {
-        self.states.last().expect("last state") //[(self.states.len()-1) as usize]
+        self.states.last().expect("last state")
     }
     pub(crate) fn last_mut(&mut self) -> &mut State {
         self.states.last_mut().expect("last_mut state")
@@ -205,26 +202,9 @@ impl Context {
     pub fn font_face(&mut self, face: &[u8]) {
         unsafe { nvgFontFace(self, face.as_ptr()); }
     }
-}
 
-impl Context {
-    pub fn text_bounds_raw_simple(&mut self, x: f32, y: f32, start: *const u8, end: *const u8) -> f32 {
-        unsafe { nvgTextBounds(self, x, y, start, end, null_mut()) }
-    }
-    pub fn text_bounds_raw(&mut self, x: f32, y: f32, start: *const u8, end: *const u8) -> (f32, [f32; 4]) {
-        let mut bounds = [0f32; 4];
-        let uw = unsafe { nvgTextBounds(self, x, y, start, end, bounds.as_mut_ptr()) };
-        (uw, bounds)
-    }
+    // State setting
 
-    pub fn text_bounds_simple(&mut self, x: f32, y: f32, text: &str) -> f32 {
-        let (a, b) = str_start_end(text);
-        self.text_bounds_raw_simple(x, y, a, b)
-    }
-}
-
-// State setting
-impl Context {
     pub fn shape_anti_alias(&mut self, enabled: bool) {
         self.states.last_mut().shape_aa = enabled as i32;
     }

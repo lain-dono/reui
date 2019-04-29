@@ -411,10 +411,10 @@ impl PathCache {
                 }
 
                 // Check to see if the corner needs to be beveled.
-                if p1.is_corner() {
-                    if dmr2 * miter_limit * miter_limit < 1.0 || line_join != LineJoin::Miter {
-                        p1.flags |= PointFlags::BEVEL;
-                    }
+                if p1.is_corner() &&
+                    (dmr2 * miter_limit * miter_limit < 1.0 || line_join != LineJoin::Miter)
+                {
+                    p1.flags |= PointFlags::BEVEL;
                 }
 
                 if p1.flags.intersects(PointFlags::BEVEL | PointFlags::INNERBEVEL) {

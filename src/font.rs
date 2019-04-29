@@ -113,8 +113,8 @@ impl Context {
         self.counters.text_call(verts.len() / 3);
     }
 
-    pub fn text_raw(&mut self, x: f32, y: f32, start: *const u8, end: *const u8) -> f32 {
-        self.text_slice(x, y, unsafe { raw_slice(start, end) })
+    pub unsafe fn text_raw(&mut self, x: f32, y: f32, start: *const u8, end: *const u8) -> f32 {
+        self.text_slice(x, y, raw_slice(start, end))
     }
 
     pub fn text_slice(&mut self, x: f32, y: f32, text: &[u8]) -> f32 {
@@ -162,20 +162,22 @@ impl Context {
             }
             prev_iter = iter;
 
-            // Transform corners.
-            let a = transform_point(&xform, q.x0*invscale, q.y0*invscale);
-            let b = transform_point(&xform, q.x1*invscale, q.y0*invscale);
-            let c = transform_point(&xform, q.x1*invscale, q.y1*invscale);
-            let d = transform_point(&xform, q.x0*invscale, q.y1*invscale);
-
             // Create triangles
             if nverts+6 <= cverts {
-                verts[nverts + 0].set(a, [q.s0, q.t0]); // 01
-                verts[nverts + 1].set(c, [q.s1, q.t1]); // 45
-                verts[nverts + 2].set(b, [q.s1, q.t0]); // 23
-                verts[nverts + 3].set(a, [q.s0, q.t0]); // 01
-                verts[nverts + 4].set(d, [q.s0, q.t1]); // 67
-                verts[nverts + 5].set(c, [q.s1, q.t1]); // 45
+                // Transform corners.
+                let pts = (
+                    transform_point(&xform, q.x0*invscale, q.y0*invscale),
+                    transform_point(&xform, q.x1*invscale, q.y0*invscale),
+                    transform_point(&xform, q.x1*invscale, q.y1*invscale),
+                    transform_point(&xform, q.x0*invscale, q.y1*invscale),
+                );
+
+                verts[nverts    ].set(pts.0, [q.s0, q.t0]); // 01
+                verts[nverts + 1].set(pts.2, [q.s1, q.t1]); // 45
+                verts[nverts + 2].set(pts.1, [q.s1, q.t0]); // 23
+                verts[nverts + 3].set(pts.0, [q.s0, q.t0]); // 01
+                verts[nverts + 4].set(pts.3, [q.s0, q.t1]); // 67
+                verts[nverts + 5].set(pts.2, [q.s1, q.t1]); // 45
                 nverts += 6;
             }
         }
@@ -240,12 +242,14 @@ impl Context {
             let rows = self.text_break_lines(text, break_row_width, &mut rows);
             if rows.is_empty() { break }
             for row in rows {
-                if haling.contains(Align::LEFT) {
-                    self.text_raw(x, y, row.start, row.end);
-                } else if haling.contains(Align::CENTER) {
-                    self.text_raw(x + break_row_width*0.5 - row.width*0.5, y, row.start, row.end);
-                } else if haling.contains(Align::RIGHT) {
-                    self.text_raw(x + break_row_width - row.width, y, row.start, row.end);
+                unsafe {
+                    if haling.contains(Align::LEFT) {
+                        self.text_raw(x, y, row.start, row.end);
+                    } else if haling.contains(Align::CENTER) {
+                        self.text_raw(x + break_row_width*0.5 - row.width*0.5, y, row.start, row.end);
+                    } else if haling.contains(Align::RIGHT) {
+                        self.text_raw(x + break_row_width - row.width, y, row.start, row.end);
+                    }
                 }
                 y += lineh * line_height;
             }
@@ -265,7 +269,7 @@ impl Context {
 
         let mut npos = 0;
 
-        if text.len() == 0 || state.font_id == FONS_INVALID {
+        if text.is_empty() || state.font_id == FONS_INVALID {
             return &[];
         }
 
@@ -439,18 +443,16 @@ impl Context {
                 if pcodepoint == 10 { Codepoint::Space } else { Codepoint::Newline }
             } else if cp == 0x0085 { // NEL
                 Codepoint::Newline
+            } else if  (cp >= 0x4E00 && cp <= 0x9FFF) ||
+                (cp >= 0x3000 && cp <= 0x30FF) ||
+                (cp >= 0xFF00 && cp <= 0xFFEF) ||
+                (cp >= 0x1100 && cp <= 0x11FF) ||
+                (cp >= 0x3130 && cp <= 0x318F) ||
+                (cp >= 0xAC00 && cp <= 0xD7AF)
+            {
+                Codepoint::CjkChar
             } else {
-                if  (cp >= 0x4E00 && cp <= 0x9FFF) ||
-                    (cp >= 0x3000 && cp <= 0x30FF) ||
-                    (cp >= 0xFF00 && cp <= 0xFFEF) ||
-                    (cp >= 0x1100 && cp <= 0x11FF) ||
-                    (cp >= 0x3130 && cp <= 0x318F) ||
-                    (cp >= 0xAC00 && cp <= 0xD7AF)
-                {
-                    Codepoint::CjkChar
-                } else {
-                    Codepoint::Char
-                }
+                Codepoint::Char
             };
 
             if _type == Codepoint::Newline {
@@ -477,107 +479,104 @@ impl Context {
                 row_width = 0.0;
                 row_minx = 0.0;
                 row_maxx = 0.0;
-            } else {
-                if row_start.is_null() {
-                    // Skip white space until the beginning of the line
-                    if _type == Codepoint::Char || _type == Codepoint::CjkChar {
-                        // The current char is the row so far
-                        row_startx = iter.x;
-                        row_start = iter.str;
-                        row_end = iter.next;
-                        row_width = iter.nextx - row_startx; // q.x1 - rowStartX;
-                        row_minx = q.x0 - row_startx;
-                        row_maxx = q.x1 - row_startx;
+            } else if row_start.is_null() {
+            // Skip white space until the beginning of the line
+            if _type == Codepoint::Char || _type == Codepoint::CjkChar {
+                // The current char is the row so far
+                row_startx = iter.x;
+                row_start = iter.str;
+                row_end = iter.next;
+                row_width = iter.nextx - row_startx; // q.x1 - rowStartX;
+                row_minx = q.x0 - row_startx;
+                row_maxx = q.x1 - row_startx;
 
-                        word_start = iter.str;
-                        word_startx = iter.x;
-                        word_minx = q.x0 - row_startx;
-                        // Set null break point
-                        break_end = row_start;
-                        break_width = 0.0;
-                        break_maxx = 0.0;
-                    }
-                } else {
-                    let next_width = iter.nextx - row_startx;
-
-                    // track last non-white space character
-                    if _type == Codepoint::Char || _type == Codepoint::CjkChar {
-                        row_end = iter.next;
-                        row_width = iter.nextx - row_startx;
-                        row_maxx = q.x1 - row_startx;
-                    }
-                    // track last end of a word
-                    if ((ptype == Codepoint::Char || ptype == Codepoint::CjkChar) && _type == Codepoint::Space)
-                        || _type == Codepoint::CjkChar {
-                        break_end = iter.str;
-                        break_width = row_width;
-                        break_maxx = row_maxx;
-                    }
-                    // track last beginning of a word
-                    if (ptype == Codepoint::Space && (_type == Codepoint::Char || _type == Codepoint::CjkChar))
-                        || _type == Codepoint::CjkChar {
-                        word_start = iter.str;
-                        word_startx = iter.x;
-                        word_minx = q.x0 - row_startx;
-                    }
-
-                    // Break to new line when a character is beyond break width.
-                    if (_type == Codepoint::Char || _type == Codepoint::CjkChar) && next_width > break_row_width {
-                        // The run length is too long, need to break to new line.
-                        if break_end == row_start {
-                            // The current word is longer than the row length, just break it from here.
-                            rows[nrows] = TextRow {
-                                start: row_start,
-                                end: iter.str,
-                                width: row_width * invscale,
-                                minx:  row_minx * invscale,
-                                maxx:  row_maxx * invscale,
-                                next: iter.str,
-                            };
-                            nrows += 1;
-                            if nrows >= rows.len() {
-                                return &rows[..nrows];
-                            }
-                            row_startx = iter.x;
-                            row_start = iter.str;
-                            row_end = iter.next;
-                            row_width = iter.nextx - row_startx;
-                            row_minx = q.x0 - row_startx;
-                            row_maxx = q.x1 - row_startx;
-
-                            word_start = iter.str;
-                            word_startx = iter.x;
-                            word_minx = q.x0 - row_startx;
-                        } else {
-                            // Break the line from the end of the last word,
-                            // and start new line from the beginning of the new.
-                            rows[nrows] = TextRow {
-                                start: row_start,
-                                end: break_end,
-                                width: break_width * invscale,
-                                minx: row_minx * invscale,
-                                maxx: break_maxx * invscale,
-                                next: word_start,
-                            };
-                            nrows += 1;
-                            if nrows >= rows.len() {
-                                return &rows[..nrows];
-                            }
-                            row_startx = word_startx;
-                            row_start = word_start;
-                            row_end = iter.next;
-                            row_width = iter.nextx - row_startx;
-                            row_minx = word_minx;
-                            row_maxx = q.x1 - row_startx;
-                            // No change to the word start
-                        }
-                        // Set null break point
-                        break_end = row_start;
-                        break_width = 0.0;
-                        break_maxx = 0.0;
-                    }
-                }
+                word_start = iter.str;
+                word_startx = iter.x;
+                word_minx = q.x0 - row_startx;
+                // Set null break point
+                break_end = row_start;
+                break_width = 0.0;
+                break_maxx = 0.0;
             }
+        } else {
+            let next_width = iter.nextx - row_startx;
+
+            // track last non-white space character
+            if _type == Codepoint::Char || _type == Codepoint::CjkChar {
+                row_end = iter.next;
+                row_width = iter.nextx - row_startx;
+                row_maxx = q.x1 - row_startx;
+            }
+            // track last end of a word
+            if ((ptype == Codepoint::Char || ptype == Codepoint::CjkChar) && _type == Codepoint::Space)
+                || _type == Codepoint::CjkChar {
+                break_end = iter.str;
+                break_width = row_width;
+                break_maxx = row_maxx;
+            }
+            // track last beginning of a word
+            if ptype == Codepoint::Space && _type == Codepoint::Char || _type == Codepoint::CjkChar {
+                word_start = iter.str;
+                word_startx = iter.x;
+                word_minx = q.x0 - row_startx;
+            }
+
+            // Break to new line when a character is beyond break width.
+            if (_type == Codepoint::Char || _type == Codepoint::CjkChar) && next_width > break_row_width {
+                // The run length is too long, need to break to new line.
+                if break_end == row_start {
+                    // The current word is longer than the row length, just break it from here.
+                    rows[nrows] = TextRow {
+                        start: row_start,
+                        end: iter.str,
+                        width: row_width * invscale,
+                        minx:  row_minx * invscale,
+                        maxx:  row_maxx * invscale,
+                        next: iter.str,
+                    };
+                    nrows += 1;
+                    if nrows >= rows.len() {
+                        return &rows[..nrows];
+                    }
+                    row_startx = iter.x;
+                    row_start = iter.str;
+                    row_end = iter.next;
+                    row_width = iter.nextx - row_startx;
+                    row_minx = q.x0 - row_startx;
+                    row_maxx = q.x1 - row_startx;
+
+                    word_start = iter.str;
+                    word_startx = iter.x;
+                    word_minx = q.x0 - row_startx;
+                } else {
+                    // Break the line from the end of the last word,
+                    // and start new line from the beginning of the new.
+                    rows[nrows] = TextRow {
+                        start: row_start,
+                        end: break_end,
+                        width: break_width * invscale,
+                        minx: row_minx * invscale,
+                        maxx: break_maxx * invscale,
+                        next: word_start,
+                    };
+                    nrows += 1;
+                    if nrows >= rows.len() {
+                        return &rows[..nrows];
+                    }
+                    row_startx = word_startx;
+                    row_start = word_start;
+                    row_end = iter.next;
+                    row_width = iter.nextx - row_startx;
+                    row_minx = word_minx;
+                    row_maxx = q.x1 - row_startx;
+                    // No change to the word start
+                }
+                // Set null break point
+                break_end = row_start;
+                break_width = 0.0;
+                break_maxx = 0.0;
+            }
+        }
 
             pcodepoint = iter.codepoint;
             ptype = _type;

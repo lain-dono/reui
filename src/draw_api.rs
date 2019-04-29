@@ -127,13 +127,11 @@ impl Context {
                     da += PI*2.0;
                 }
             }
+        } else if da.abs() >= PI*2.0 {
+            da = -PI*2.0;
         } else {
-            if da.abs() >= PI*2.0 {
-                da = -PI*2.0;
-            } else {
-                while da > 0.0 {
-                    da -= PI*2.0;
-                }
+            while da > 0.0 {
+                da -= PI*2.0;
             }
         }
 
@@ -156,12 +154,12 @@ impl Context {
             let tany = dx*r*kappa;
 
             if i == 0 {
-                vals[nvals + 0] = mov as f32;
+                vals[nvals    ] = mov as f32;
                 vals[nvals + 1] = x;
                 vals[nvals + 2] = y;
                 nvals += 3;
             } else {
-                vals[nvals + 0] = BEZIERTO as f32;
+                vals[nvals    ] = BEZIERTO as f32;
                 vals[nvals + 1] = px+ptanx;
                 vals[nvals + 2] = py+ptany;
                 vals[nvals + 3] = x-tanx;

@@ -88,9 +88,9 @@ pub const GL_NO_ERROR: GLenum = 0;
 pub const GL_FRAGMENT_SHADER: GLenum = 0x8B30;
 pub const GL_VERTEX_SHADER: GLenum = 0x8B31;
 
-pub const GL_DEPTH_BUFFER_BIT: GLenum = 0x00000100;
-pub const GL_STENCIL_BUFFER_BIT: GLenum = 0x00000400;
-pub const GL_COLOR_BUFFER_BIT: GLenum = 0x00004000;
+pub const GL_DEPTH_BUFFER_BIT: GLenum = 0x0000_0100;
+pub const GL_STENCIL_BUFFER_BIT: GLenum = 0x0000_0400;
+pub const GL_COLOR_BUFFER_BIT: GLenum = 0x0000_4000;
 
 extern "C" {
     pub fn glDrawArrays(mode: GLenum, first: GLint, count: GLsizei);
@@ -201,8 +201,8 @@ impl Drop for Buffer {
     }
 }
 
-impl Buffer {
-    pub fn new() -> Self {
+impl Default for Buffer {
+    fn default() -> Self {
         let mut buf = 0;
         // Create dynamic vertex array
         unsafe {
@@ -210,6 +210,12 @@ impl Buffer {
             glFinish();
         }
         Buffer(buf)
+    }
+}
+
+impl Buffer {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn bind_and_upload<T: Sized>(&self, data: &[T]) {

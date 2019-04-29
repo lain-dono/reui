@@ -748,7 +748,7 @@ fn nvgFontFace(ctx: &mut Context, font: *const u8) {
 
 
 // Draws text string at specified location. If end is specified only the sub-string up to the end is drawn.
-#[no_mangle] extern "C"
+#[no_mangle] unsafe extern "C"
 fn nvgText(ctx: &mut Context, x: f32, y: f32, start: *const u8, end: *const u8) -> f32 {
     ctx.text_raw(x, y, start, end)
 }
