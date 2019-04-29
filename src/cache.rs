@@ -194,9 +194,11 @@ impl Path {
         PairIter::new(self.points(pts), p0, p1)
     }
 
+    /*
     fn pts_mut<'a>(&self, pts: &'a mut [Point], p0: usize, p1: usize) -> PairIterMut<'a> {
         PairIterMut::new(self.points_mut(pts), p0, p1)
     }
+    */
 
     pub fn fill(&self) -> &[Vertex] {
         unsafe { from_raw_parts(self.fill, self.nfill) }
@@ -234,6 +236,7 @@ impl<'a> Iterator for PairIter<'a> {
     }
 }
 
+/*
 struct PairIterMut<'a> {
     pts: &'a mut [Point],
     idx: usize,
@@ -266,6 +269,7 @@ impl<'a> Iterator for PairIterMut<'a> {
         }
     }
 }
+*/
 
 #[repr(C)]
 pub struct PathCache {

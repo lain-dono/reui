@@ -11,6 +11,7 @@ use std::{
 use crate::context::Align;
 use crate::context::State;
 
+#[link(name = "nvg")]
 extern "C" {
     fn fonsAddFont(s: *mut FONScontext, name: *const c_char, path: *const c_char) -> i32;
     fn fonsAddFontMem(s: *mut FONScontext, name: *const c_char, data: *mut u8, ndata: i32, free_data: i32) -> i32;
@@ -38,6 +39,12 @@ extern "C" {
     fn fonsTextBounds(s: *mut FONScontext, x: f32, y: f32, start: *const u8, end: *const u8, bounds: *mut f32) -> f32;
     fn fonsLineBounds(s: *mut FONScontext, y: f32, miny: *mut f32, maxy: *mut f32);
     fn fonsVertMetrics(s: *mut FONScontext, ascender: *mut f32, descender: *mut f32, lineh: *mut f32);
+}
+
+pub struct Metrics {
+    pub ascender: f32,
+    pub descender: f32,
+    pub line_height: f32,
 }
 
 pub const FONS_INVALID: i32 = -1;
@@ -222,14 +229,72 @@ impl FONScontext {
         }
     }
 
-    /*
-    fn fonsTextIterInit(
-        s: *mut FONScontext, iter: *mut FONStextIter,
-        x: f32, y: f32, str: *const u8, end: *const u8, bitmap_option: i32) -> i32;
-    fn fonsTextIterNext(s: *mut FONScontext, iter: *mut FONStextIter, quad: *mut FONSquad) -> bool;
+    pub fn metrics(&mut self) -> Metrics {
+        let (mut ascender, mut descender, mut line_height) = (0.0, 0.0, 0.0);
+        unsafe {
+            fonsVertMetrics(self, &mut ascender, &mut descender, &mut line_height);
+        }
+        Metrics { ascender, descender, line_height }
+    }
 
-    fn fonsTextBounds(s: *mut FONScontext, x: f32, y: f32, start: *const u8, end: *const u8, bounds: *mut f32) -> f32;
-    fn fonsLineBounds(s: *mut FONScontext, y: f32, miny: *mut f32, maxy: *mut f32);
-    fn fonsVertMetrics(s: *mut FONScontext, ascender: *mut f32, descender: *mut f32, lineh: *mut f32);
-    */
+    pub fn line_bounds(&mut self, y: f32) -> (f32, f32) {
+        let (mut miny, mut maxy) = (0.0, 0.0);
+        unsafe {
+            fonsLineBounds(self, y, &mut miny, &mut maxy);
+        }
+        (miny, maxy)
+    }
+
+    pub fn text_bounds(&mut self, x: f32, y: f32, start: *const u8, end: *const u8, bounds: *mut f32) -> f32 {
+        unsafe {
+            fonsTextBounds(self, x, y, start, end, bounds)
+        }
+    }
+
+    pub fn text_iter_optional(&mut self,
+        x: f32, y: f32,
+        start: *const u8, end: *const u8,
+    ) -> TextIter {
+        let mut iter: FONStextIter = unsafe { std::mem::zeroed() };
+        unsafe {
+            fonsTextIterInit(self, &mut iter, x, y, start, end, GLYPH_BITMAP_OPTIONAL);
+        }
+        TextIter { fs: self, iter }
+    }
+    
+    pub fn text_iter_required(&mut self,
+        x: f32, y: f32,
+        start: *const u8, end: *const u8,
+    ) -> TextIter {
+        let mut iter: FONStextIter = unsafe { std::mem::zeroed() };
+        unsafe {
+            fonsTextIterInit(self, &mut iter, x, y, start, end, GLYPH_BITMAP_REQUIRED);
+        }
+        TextIter { fs: self, iter }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct TextIter {
+    fs: *mut FONScontext,
+    iter: FONStextIter,
+}
+
+impl TextIter {
+    pub fn iter(&self) -> &FONStextIter { &self.iter }
+}
+
+impl Iterator for TextIter {
+    type Item = FONSquad;
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            let mut q = std::mem::uninitialized();
+            let ok = fonsTextIterNext(self.fs, &mut self.iter, &mut q);
+            if ok {
+                Some(q)
+            } else {
+                None
+            }
+        }
+    }
 }

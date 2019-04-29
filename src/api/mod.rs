@@ -1,13 +1,26 @@
+#![allow(unused_attributes)]
+
 mod images;
 
 use crate::{
-    context::Context,
-    backend::Image,
+    context::{Context, Align, GlyphPosition},
+    backend::{Image, BackendGL, NFlags},
     cache::{Winding, LineJoin, LineCap},
     vg::*,
+    utils::{raw_slice},
 };
 
-use std::ffi::c_void;
+use std::ffi::{c_void, CStr};
+use std::os::raw::{c_char};
+
+#[no_mangle] extern "C"
+fn nvgDeleteGL2(_ctx: *const u8) {
+}
+
+#[no_mangle] extern "C"
+fn nvgCreateGL2(flags: NFlags) -> Box<crate::context::Context> {
+    Box::new(crate::context::Context::new(BackendGL::new(flags)))
+}
 
 /// Begin drawing a new frame
 ///
@@ -611,7 +624,6 @@ fn nvgDebugDumpPathCache(ctx: &mut Context) {
 */
 
 
-/* TODO
 //
 // Text
 //
@@ -647,71 +659,178 @@ fn nvgDebugDumpPathCache(ctx: &mut Context) {
 
 // Creates font by loading it from the disk from specified file name.
 // Returns handle to the font.
-int nvgCreateFont(ctx: &mut Context, const char* name, const char* filename);
+#[no_mangle] extern "C"
+fn nvgCreateFont(ctx: &mut Context, name: *const c_char, path: *const c_char) -> i32 {
+    let name = unsafe { CStr::from_ptr(name).to_string_lossy() };
+    let path = unsafe { CStr::from_ptr(path).to_string_lossy() };
+    ctx.create_font(&name, &path)
+}
 
 // Creates font by loading it from the specified memory chunk.
 // Returns handle to the font.
-int nvgCreateFontMem(ctx: &mut Context, const char* name, unsigned char* data, int ndata, int freeData);
+#[no_mangle] extern "C"
+fn nvgCreateFontMem(ctx: &mut Context, name: *const c_char, data: *mut u8, ndata: i32, free_data: i32) -> i32 {
+    let name = unsafe { CStr::from_ptr(name).to_string_lossy() };
+    ctx.fs.add_font_mem(&name, data, ndata, free_data)
+}
+
 
 // Finds a loaded font of specified name, and returns handle to it, or -1 if the font is not found.
-int nvgFindFont(ctx: &mut Context, const char* name);
+#[no_mangle] extern "C"
+fn nvgFindFont(ctx: &mut Context, name: *const u8) -> i32 {
+    if name.is_null() {
+        -1
+    } else {
+        ctx.fs.font_by_name(name)
+    }
+}
 
 // Adds a fallback font by handle.
-int nvgAddFallbackFontId(ctx: &mut Context, int baseFont, int fallbackFont);
+#[no_mangle] extern "C"
+fn nvgAddFallbackFontId(ctx: &mut Context, base: i32, fallback: i32) -> i32 {
+    if base == -1 || fallback == -1 {
+        0
+    } else {
+        ctx.fs.add_fallback_font(base, fallback)
+    }
+}
 
 // Adds a fallback font by name.
-int nvgAddFallbackFont(ctx: &mut Context, const char* baseFont, const char* fallbackFont);
+#[no_mangle] extern "C"
+fn nvgAddFallbackFont(ctx: &mut Context, base: *const u8, fallback: *const u8) -> i32 {
+    let base = nvgFindFont(ctx, base);
+    let fallback = nvgFindFont(ctx, fallback);
+    nvgAddFallbackFontId(ctx, base, fallback)
+}
 
 // Sets the font size of current text style.
-void nvgFontSize(ctx: &mut Context, float size);
+#[no_mangle] extern "C"
+fn nvgFontSize(ctx: &mut Context, size: f32) {
+    ctx.states.last_mut().font_size = size;
+}
 
 // Sets the blur of current text style.
-void nvgFontBlur(ctx: &mut Context, float blur);
+#[no_mangle] extern "C"
+fn nvgFontBlur(ctx: &mut Context, blur: f32) {
+    ctx.states.last_mut().font_blur = blur;
+}
 
 // Sets the letter spacing of current text style.
-void nvgTextLetterSpacing(ctx: &mut Context, float spacing);
+#[no_mangle] extern "C"
+fn nvgTextLetterSpacing(ctx: &mut Context, spacing: f32) {
+    ctx.states.last_mut().letter_spacing = spacing;
+}
 
 // Sets the proportional line height of current text style. The line height is specified as multiple of font size.
-void nvgTextLineHeight(ctx: &mut Context, float lineHeight);
+#[no_mangle] extern "C"
+fn nvgTextLineHeight(ctx: &mut Context, line_height: f32) {
+    ctx.states.last_mut().line_height = line_height;
+}
 
 // Sets the text align of current text style, see NVGalign for options.
-void nvgTextAlign(ctx: &mut Context, int align);
+#[no_mangle] extern "C"
+fn nvgTextAlign(ctx: &mut Context, align: Align) {
+    ctx.states.last_mut().text_align = align;
+}
 
 // Sets the font face based on specified id of current text style.
-void nvgFontFaceId(ctx: &mut Context, int font);
+#[no_mangle] extern "C"
+fn nvgFontFaceId(ctx: &mut Context, font_id: i32) {
+    ctx.states.last_mut().font_id = font_id;
+}
 
 // Sets the font face based on specified name of current text style.
-void nvgFontFace(ctx: &mut Context, const char* font);
+#[no_mangle] extern "C"
+fn nvgFontFace(ctx: &mut Context, font: *const u8) {
+    ctx.states.last_mut().font_id = ctx.fs.font_by_name(font);
+}
+
+
 
 // Draws text string at specified location. If end is specified only the sub-string up to the end is drawn.
-float nvgText(ctx: &mut Context, float x, float y, const char* string, const char* end);
+#[no_mangle] extern "C"
+fn nvgText(ctx: &mut Context, x: f32, y: f32, start: *const u8, mut end: *const u8) -> f32 {
+    ctx.text_raw(x, y, start, end)
+}
 
 // Draws multi-line text string at specified location wrapped at the specified width. If end is specified only the sub-string up to the end is drawn.
 // White space is stripped at the beginning of the rows, the text is split at word boundaries or when new-line characters are encountered.
 // Words longer than the max width are slit at nearest character (i.e. no hyphenation).
-void nvgTextBox(ctx: &mut Context, float x, float y, float breakRowWidth, const char* string, const char* end);
+#[no_mangle] unsafe extern "C"
+fn nvgTextBox(ctx: &mut Context, x: f32, mut y: f32, break_row_width: f32, mut start: *const u8, end: *const u8) {
+    let slice = raw_slice(start, end);
+    let text = unsafe { std::str::from_utf8_unchecked(slice) };
+    ctx.text_box(x, y, break_row_width, text)
+}
 
 // Measures the specified text string. Parameter bounds should be a pointer to float[4],
 // if the bounding box of the text should be returned. The bounds value are [xmin,ymin, xmax,ymax]
 // Returns the horizontal advance of the measured text (i.e. where the next character should drawn).
 // Measured values are returned in local coordinate space.
-float nvgTextBounds(ctx: &mut Context, float x, float y, const char* string, const char* end, float* bounds);
+#[no_mangle] unsafe extern "C"
+fn nvgTextBounds(ctx: &mut Context, x: f32, y: f32, start: *const u8, end: *const u8, bounds: *mut [f32; 4]) -> f32 {
+    let text = raw_slice(start, end);
+    let text = unsafe { std::str::from_utf8_unchecked(text) };
+    let (w, b) = ctx.text_bounds(x, y, text);
+    if !bounds.is_null() {
+        *bounds = b;
+    }
+    w
+}
 
 // Measures the specified multi-text string. Parameter bounds should be a pointer to float[4],
 // if the bounding box of the text should be returned. The bounds value are [xmin,ymin, xmax,ymax]
 // Measured values are returned in local coordinate space.
-void nvgTextBoxBounds(ctx: &mut Context, float x, float y, float breakRowWidth, const char* string, const char* end, float* bounds);
+#[no_mangle] unsafe extern "C"
+fn nvgTextBoxBounds(
+    ctx: &mut Context, x: f32, mut y: f32, break_row_width: f32,
+    mut start: *const u8, end: *const u8, bounds: *mut [f32; 4],
+) {
+    let slice = raw_slice(start, end);
+    let text = unsafe { std::str::from_utf8_unchecked(slice) };
+    if !bounds.is_null() {
+        *bounds = ctx.text_box_bounds(x, y, break_row_width, text);
+    }
+}
 
 // Calculates the glyph x positions of the specified text. If end is specified only the sub-string will be used.
 // Measured values are returned in local coordinate space.
-int nvgTextGlyphPositions(ctx: &mut Context, float x, float y, const char* string, const char* end, NVGglyphPosition* positions, int maxPositions);
+#[no_mangle] unsafe extern "C"
+fn nvgTextGlyphPositions(
+    ctx: &mut Context, x: f32, y: f32,
+    start: *const u8, mut end: *const u8,
+    positions: *mut GlyphPosition,
+    max_positions: i32,
+) -> usize {
+    let text = raw_slice(start, end);
+    let text = unsafe { std::str::from_utf8_unchecked(text) };
+
+    let positions = unsafe { std::slice::from_raw_parts_mut(positions, max_positions as usize) };
+
+    ctx.text_glyph_positions(x, y, text, positions).len()
+}
 
 // Returns the vertical metrics based on the current text style.
 // Measured values are returned in local coordinate space.
-void nvgTextMetrics(ctx: &mut Context, float* ascender, float* descender, float* lineh);
+#[no_mangle] unsafe extern "C"
+fn nvgTextMetrics(ctx: &mut Context, ascender: *mut f32, descender: *mut f32, lineh: *mut f32) {
+    if let Some(m) = ctx.text_metrics() {
+        if !ascender.is_null() {
+            *ascender = m.ascender;
+        }
+        if !descender.is_null() {
+            *descender = m.descender;
+        }
+        if !lineh.is_null() {
+            *lineh = m.line_height;
+        }
+    }
+}
 
+/*
 // Breaks the specified text into lines. If end is specified only the sub-string will be used.
 // White space is stripped at the beginning of the rows, the text is split at word boundaries or when new-line characters are encountered.
 // Words longer than the max width are slit at nearest character (i.e. no hyphenation).
 int nvgTextBreakLines(ctx: &mut Context, const char* string, const char* end, float breakRowWidth, NVGtextRow* rows, int maxRows);
+
 */

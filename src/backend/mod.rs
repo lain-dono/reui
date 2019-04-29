@@ -8,6 +8,9 @@ slotmap::new_key_type! {
     pub struct Image;
 }
 
+pub const TEXTURE_ALPHA: i32 = 0x01;
+pub const TEXTURE_RGBA: i32 = 0x02;
+
 bitflags::bitflags!(
     #[derive(Default)]
     pub struct ImageFlags: i32 {
@@ -21,12 +24,3 @@ bitflags::bitflags!(
         const NODELETE          = 1<<16;// Do not delete GL texture handle.
     }
 );
-
-#[no_mangle] extern "C"
-fn nvgDeleteGL2(_ctx: *const u8) {
-}
-
-#[no_mangle] extern "C"
-fn nvgCreateGL2(flags: NFlags) -> Box<crate::context::Context> {
-    Box::new(crate::context::Context::new(BackendGL::new(flags)))
-}

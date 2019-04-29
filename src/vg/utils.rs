@@ -31,6 +31,21 @@ pub fn slice_start_end(b: &[u8]) -> (*const u8, *const u8) {
     }
 }
 
+pub fn str_start_end(s: &str) -> (*const u8, *const u8) {
+    slice_start_end(s.as_bytes())
+}
+
+pub fn raw_slice<'a>(start: *const u8, end: *const u8) -> &'a [u8] {
+    unsafe {
+        let len = if end.is_null() {
+            libc::strlen(start as *const i8)
+        } else {
+            end.offset_from(start) as usize
+        };
+        std::slice::from_raw_parts(start, len)
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Pt {
     pub x: f32,

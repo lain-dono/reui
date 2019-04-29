@@ -49,25 +49,6 @@ pub struct PerfGraph {
     name: String,
 }
 
-#[no_mangle] extern "C"
-fn initGraph(fps: &mut PerfGraph, style: GraphStyle, name: *const i8) {
-    let name = unsafe { std::ffi::CStr::from_ptr(name).to_string_lossy() };
-    let old = std::mem::replace(fps, PerfGraph::new(style, &name));
-    std::mem::forget(old);
-}
-#[no_mangle] extern "C"
-fn updateGraph(fps: &mut PerfGraph, dt: f32) {
-    fps.update(dt);
-}
-#[no_mangle] extern "C"
-fn renderGraph(vg: &mut Context, x: f32, y: f32, fps: &PerfGraph) {
-    fps.render(vg, x, y);
-}
-#[no_mangle] extern "C"
-fn getGraphAverage(fps: &PerfGraph) -> f32 {
-    fps.average()
-}
-
 impl PerfGraph {
     pub fn new(style: GraphStyle, name: &str) -> Self {
         Self {

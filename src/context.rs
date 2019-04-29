@@ -5,20 +5,17 @@ use core::ptr::null_mut;
 use arrayvec::ArrayVec;
 
 use crate::{
-    backend::{BackendGL, Image},
+    backend::{BackendGL, Image, TEXTURE_ALPHA},
     cache::{PathCache, LineCap, LineJoin},
     vg::Counters,
     transform,
     vg::*,
     fons::*,
-    vg::utils::slice_start_end,
+    vg::utils::{raw_slice, str_start_end},
 };
 
 use std::ptr::null;
 use slotmap::Key;
-
-pub const TEXTURE_ALPHA: i32 = 0x01;
-pub const TEXTURE_RGBA: i32 = 0x02;
 
 const INIT_COMMANDS_SIZE: usize = 256;
 
@@ -33,14 +30,12 @@ extern "C" {
 extern "C" {
     fn nvgFontFace(ctx: *mut Context, face: *const u8);
 
-    fn nvgText(ctx: *mut Context, x: f32, y: f32, start: *const u8, end: *const u8) -> f32;
     fn nvgTextBox(ctx: *mut Context, x: f32, y: f32, break_row_width: f32, start: *const u8, end: *const u8);
 
     fn nvgTextBounds(ctx: *mut Context, x: f32, y: f32, s: *const u8, end: *const u8, bounds: *mut f32) -> f32;
     fn nvgTextBoxBounds(
         ctx: *mut Context, x: f32, y: f32, break_row_width: f32,
         start: *const u8, end: *const u8, bounds: *mut f32);
-    fn nvgTextMetrics(ctx: *mut Context, ascender: *mut f32, descender: *mut f32, lineh: *mut f32);
     fn nvgTextBreakLines(
         ctx: *mut Context,
         start: *const u8, end: *const u8,
@@ -52,10 +47,6 @@ extern "C" {
     ) -> usize;
 
     fn nvgAddFallbackFontId(ctx: *mut Context, a: i32, b: i32);
-}
-
-fn str_start_end(s: &str) -> (*const u8, *const u8) {
-    slice_start_end(s.as_bytes())
 }
 
 bitflags::bitflags!(
@@ -84,6 +75,13 @@ pub struct TextRow {
     // Logical with and bounds can differ because of kerning and some parts over extending.
     pub minx: f32,
     pub maxx: f32,
+}
+
+impl TextRow {
+    pub fn text(&self) -> &str {
+        let text = raw_slice(self.start, self.end);
+        unsafe { std::str::from_utf8_unchecked(text) }
+    }
 }
 
 #[repr(C)]
@@ -198,8 +196,8 @@ impl Context {
         if self.states.states.len() >= self.states.states.capacity() {
             return;
         }
-        if let Some(state) = self.states.states.last() {
-            self.states.states.push(state.clone());
+        if let Some(state) = self.states.states.last().cloned() {
+            self.states.states.push(state);
         }
     }
 
@@ -249,11 +247,6 @@ impl Context {
         self.text_bounds_raw_simple(x, y, a, b)
     }
 
-    pub fn text_bounds(&mut self, x: f32, y: f32, text: &str) -> (f32, [f32; 4]) {
-        let (a, b) = str_start_end(text);
-        self.text_bounds_raw(x, y, a, b)
-    }
-
     pub fn text_box_raw(&mut self, x: f32, y: f32, break_row_width: f32, start: *const u8, end: *const u8) {
         unsafe { nvgTextBox(self, x, y, break_row_width, start, end) }
     }
@@ -271,39 +264,6 @@ impl Context {
     ) -> &'a [TextRow] {
         let n = unsafe { nvgTextBreakLines(self, start, end, break_row_width, rows.as_mut_ptr(), rows.len()) };
         &rows[..n]
-    }
-
-    pub fn text_glyph_positions<'a>(
-        &mut self, x: f32, y: f32, start: *const u8, end: *const u8, positions: &'a mut [GlyphPosition]
-    ) -> &'a [GlyphPosition] {
-        let n = unsafe {
-            nvgTextGlyphPositions(self, x, y, start, end, positions.as_mut_ptr(), positions.len())
-        };
-        &positions[..n]
-    }
-
-    pub fn text_metrics(&mut self) -> (f32, f32, f32) {
-        let mut ascender = 0.0;
-        let mut descender = 0.0;
-        let mut lineh = 0.0;
-
-        unsafe { nvgTextMetrics(self, &mut ascender, &mut descender, &mut lineh) }
-        (ascender, descender, lineh)
-    }
-}
-
-
-impl Context {
-    pub fn text_raw(&mut self, x: f32, y: f32, start: *const u8, end: *const u8) -> f32 {
-        unsafe { nvgText(self, x, y, start, end) }
-    }
-    pub fn text(&mut self, x: f32, y: f32, text: &str) -> f32 {
-        let (a, b) = str_start_end(text);
-        self.text_raw(x, y, a, b)
-    }
-    pub fn text_slice(&mut self, x: f32, y: f32, text: &[u8]) -> f32 {
-        let (a, b) = slice_start_end(text);
-        self.text_raw(x, y, a, b)
     }
 }
 

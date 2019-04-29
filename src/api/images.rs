@@ -1,12 +1,9 @@
 use crate::{
     context::Context,
-    backend::{Image, ImageFlags},
+    backend::{Image, ImageFlags, TEXTURE_RGBA},
 };
 
 use slotmap::Key;
-
-pub const TEXTURE_ALPHA: i32 = 0x01;
-pub const TEXTURE_RGBA: i32 = 0x02;
 
 /// Images
 ///

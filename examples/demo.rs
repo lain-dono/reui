@@ -12,16 +12,6 @@ fn main() {
     unsafe { _run(); }
 }
 
-#[no_mangle] extern "C" fn errorcb(error: i32, desc: *const i8) {
-    let desc = unsafe {
-        std::ffi::CStr::from_ptr(desc)
-    };
-    println!("GLFW error {}: {:?}\n", error, desc);
-}
-
-#[no_mangle] pub static mut BLOWUP: i32 = 0;
-#[no_mangle] pub static mut SCREENSHOT: i32 = 0;
-#[no_mangle] pub static mut PREMULT: i32 = 0;
 
 struct GLFWwindow(usize);
 struct GLFWmonitor(usize);
@@ -56,6 +46,17 @@ extern "C" {
     
     fn glfwSwapBuffers(window: *mut GLFWwindow);
     fn glfwPollEvents();
+}
+
+pub static mut BLOWUP: i32 = 0;
+pub static mut SCREENSHOT: i32 = 0;
+pub static mut PREMULT: i32 = 0;
+
+extern "C" fn errorcb(error: i32, desc: *const i8) {
+    let desc = unsafe {
+        std::ffi::CStr::from_ptr(desc)
+    };
+    println!("GLFW error {}: {:?}\n", error, desc);
 }
 
 extern "C" fn key(window: *mut GLFWwindow, key: i32, _scancode: i32, action: i32, _mods: i32) {
@@ -214,6 +215,7 @@ pub struct DemoData {
     pub font_emoji: i32,
     pub images: [Image; 12],
 }
+
 impl DemoData {
     fn new(vg: &mut Context) -> Self {
         let mut images = [Image::null(); 12];
@@ -1160,7 +1162,7 @@ fn draw_paragraph(vg: &mut Context, x: f32, mut y: f32, width: f32, _height: f32
     vg.font_size(18.0);
     vg.font_face(b"sans\0");
     vg.text_align(Align::LEFT|Align::TOP);
-    let (_, _, lineh) = vg.text_metrics();
+    let lineh = vg.text_metrics().unwrap().line_height;
 
     // The text break API can be used to fill a large buffer of rows,
     // or to iterate over the text just few lines (or just one) at a time.
@@ -1198,7 +1200,7 @@ fn draw_paragraph(vg: &mut Context, x: f32, mut y: f32, width: f32, _height: f32
                 } else {
                     x+row.width
                 };
-                let glyphs = vg.text_glyph_positions(x, y, row.start, row.end, &mut glyphs);
+                let glyphs = vg.text_glyph_positions(x, y, row.text(), &mut glyphs);
 
                 let mut px = x;
                 for j in 0..glyphs.len() {
