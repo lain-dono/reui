@@ -1,27 +1,8 @@
-use std::f32::consts::PI;
-
-pub fn itoa10(dst: &mut [u8], mut value: isize) -> &[u8] {
-    if value == 0 {
-        dst[0] = b'0';
-        return &dst[..1];
-    }
-
-    let mut count = 0;
-
-    if value < 0 {
-        value *= -1;
-        dst[0] = b'-';
-        count += 1;
-    }
-
-    let mut tmp = value;
-    while tmp>0 {
-        dst[count] = b'0' + (tmp%10) as u8;
-        count += 1;
-        tmp /= 10;
-    }
-    &dst[..count]
-}
+use std::{
+    f32::consts::PI,
+    str::from_utf8_unchecked,
+    slice::from_raw_parts,
+};
 
 pub fn slice_start_end(b: &[u8]) -> (*const u8, *const u8) {
     unsafe {
@@ -35,15 +16,17 @@ pub fn str_start_end(s: &str) -> (*const u8, *const u8) {
     slice_start_end(s.as_bytes())
 }
 
-pub fn raw_slice<'a>(start: *const u8, end: *const u8) -> &'a [u8] {
-    unsafe {
-        let len = if end.is_null() {
-            libc::strlen(start as *const i8)
-        } else {
-            end.offset_from(start) as usize
-        };
-        std::slice::from_raw_parts(start, len)
-    }
+pub unsafe fn raw_str<'a>(start: *const u8, end: *const u8) -> &'a str {
+    from_utf8_unchecked(raw_slice(start, end))
+}
+
+pub unsafe fn raw_slice<'a>(start: *const u8, end: *const u8) -> &'a [u8] {
+    let len = if end.is_null() {
+        libc::strlen(start as *const i8)
+    } else {
+        end.offset_from(start) as usize
+    };
+    from_raw_parts(start, len)
 }
 
 #[derive(Clone, Copy)]
