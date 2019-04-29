@@ -11,7 +11,7 @@ use crate::{
     transform,
     vg::*,
     fons::*,
-    vg::utils::{raw_slice, str_start_end},
+    vg::utils::{raw_str, str_start_end},
 };
 
 use std::ptr::null;
@@ -29,25 +29,14 @@ extern "C" {
 
 extern "C" {
     fn nvgFontFace(ctx: *mut Context, face: *const u8);
-
-    fn nvgTextBox(ctx: *mut Context, x: f32, y: f32, break_row_width: f32, start: *const u8, end: *const u8);
-
     fn nvgTextBounds(ctx: *mut Context, x: f32, y: f32, s: *const u8, end: *const u8, bounds: *mut f32) -> f32;
-    fn nvgTextBoxBounds(
-        ctx: *mut Context, x: f32, y: f32, break_row_width: f32,
-        start: *const u8, end: *const u8, bounds: *mut f32);
-    fn nvgTextBreakLines(
-        ctx: *mut Context,
-        start: *const u8, end: *const u8,
-        break_row_width: f32, rows: *mut TextRow, max_rows: usize) -> usize;
-
     fn nvgAddFallbackFontId(ctx: *mut Context, a: i32, b: i32);
 }
 
 bitflags::bitflags!(
     #[repr(C)]
     pub struct Align: i32 {
-        const LEFT      = 1<<0;    // Default, align text horizontally to left.
+        const LEFT      = 1;       // Default, align text horizontally to left.
         const CENTER    = 1<<1;    // Align text horizontally to center.
         const RIGHT     = 1<<2;    // Align text horizontally to right.
 
@@ -74,8 +63,7 @@ pub struct TextRow {
 
 impl TextRow {
     pub fn text(&self) -> &str {
-        let text = raw_slice(self.start, self.end);
-        unsafe { std::str::from_utf8_unchecked(text) }
+        unsafe { raw_str(self.start, self.end) }
     }
 }
 
@@ -210,14 +198,6 @@ impl Context {
         *state = State::new();
     }
 
-    /*
-    pub fn create_font(&mut self, name: &str, path: &str) -> i32 {
-        let name = name.as_bytes().as_ptr();
-        let path = path.as_bytes().as_ptr();
-        unsafe { nvgCreateFont(self, name, path) }
-    }
-    */
-
     pub fn add_fallback_font_id(&mut self, a: i32, b: i32) {
         unsafe { nvgAddFallbackFontId(self, a, b) }
     }
@@ -240,25 +220,6 @@ impl Context {
     pub fn text_bounds_simple(&mut self, x: f32, y: f32, text: &str) -> f32 {
         let (a, b) = str_start_end(text);
         self.text_bounds_raw_simple(x, y, a, b)
-    }
-
-    pub fn text_box_raw(&mut self, x: f32, y: f32, break_row_width: f32, start: *const u8, end: *const u8) {
-        unsafe { nvgTextBox(self, x, y, break_row_width, start, end) }
-    }
-
-    pub fn text_box_bounds_raw(
-        &mut self, x: f32, y: f32, break_row_width: f32, start: *const u8, end: *const u8,
-    ) -> [f32; 4] {
-        let mut bounds = [0f32; 4];
-        unsafe { nvgTextBoxBounds(self, x, y, break_row_width, start, end, bounds.as_mut_ptr()) }
-        bounds
-    }
-
-    pub fn text_break_lines<'a>(
-        &mut self, start: *const u8, end: *const u8, break_row_width: f32,rows: &'a mut [TextRow]
-    ) -> &'a [TextRow] {
-        let n = unsafe { nvgTextBreakLines(self, start, end, break_row_width, rows.as_mut_ptr(), rows.len()) };
-        &rows[..n]
     }
 }
 
@@ -439,7 +400,7 @@ impl Context {
 
         let xform = &self.states.last().xform;
 
-        if vals[0] != CLOSE as f32 && vals[0] != WINDING as f32 {
+        if vals[0] as i32 != CLOSE && vals[0] as i32 != WINDING {
             self.commandx = vals[vals.len()-2];
             self.commandy = vals[vals.len()-1];
         }

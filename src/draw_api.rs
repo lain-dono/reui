@@ -13,7 +13,7 @@ use crate::vg::utils::{
 };
 
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.
-const KAPPA90: f32 = 0.5522847493;
+const KAPPA90: f32 = 0.552_284_749_3;
 
 pub const MOVETO: i32 = 0;
 pub const LINETO: i32 = 1;
@@ -64,7 +64,7 @@ impl Context {
         let x0 = self.commandx;
         let y0 = self.commandy;
 
-        if self.commands.len() == 0 {
+        if self.commands.is_empty() {
             return;
         }
 
@@ -115,7 +115,7 @@ impl Context {
     }
 
     pub fn arc(&mut self, cx: f32, cy: f32, r: f32, a0: f32, a1: f32, dir: Winding) {
-        let mov = if self.commands.len() > 0 { LINETO } else { MOVETO };
+        let mov = if !self.commands.is_empty() { LINETO } else { MOVETO };
 
         // Clamp angles
         let mut da = a1 - a0;

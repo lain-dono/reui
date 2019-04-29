@@ -79,39 +79,39 @@ impl PerfGraph {
 
     pub fn render(&self, vg: &mut Context, x: f32, y: f32) {
         let avg = self.average();
-        let w = 200.0;
-        let h = 35.0;
+        let width = 200.0;
+        let height = 35.0;
 
         vg.begin_path();
-        vg.rect(x,y, w,h);
+        vg.rect(x,y, width,height);
         vg.fill_color(Color::new(0x80_000000));
         vg.fill();
 
         vg.begin_path();
-        vg.move_to(x, y+h);
+        vg.move_to(x, y+height);
 
         match self.style {
             GraphStyle::Fps => for i in 0..self.values.len() {
                 let v = min(1.0 / (0.00001 + self.get(i)), 80.0);
-                let vx = x + (i as f32 / (GRAPH_HISTORY_COUNT-1) as f32) * w;
-                let vy = y + h - ((v / 80.0) * h);
+                let vx = x + (i as f32 / (GRAPH_HISTORY_COUNT-1) as f32) * width;
+                let vy = y + height - ((v / 80.0) * height);
                 vg.line_to(vx, vy);
             },
             GraphStyle::Percent => for i in 0..self.values.len() {
                 let v = min(self.get(i) * 1.0, 100.0);
-                let vx = x + (i as f32 / (GRAPH_HISTORY_COUNT-1) as f32) * w;
-                let vy = y + h - ((v / 100.0) * h);
+                let vx = x + (i as f32 / (GRAPH_HISTORY_COUNT-1) as f32) * width;
+                let vy = y + height - ((v / 100.0) * height);
                 vg.line_to(vx, vy);
             },
             GraphStyle::Ms => for i in 0..self.values.len() {
                 let v = min(self.get(i) * 1000.0, 20.0);
-                let vx = x + (i as f32 / (GRAPH_HISTORY_COUNT-1) as f32) * w;
-                let vy = y + h - ((v / 20.0) * h);
+                let vx = x + (i as f32 / (GRAPH_HISTORY_COUNT-1) as f32) * width;
+                let vy = y + height - ((v / 20.0) * height);
                 vg.line_to(vx, vy);
             },
         }
 
-        vg.line_to(x+w, y+h);
+        vg.line_to(x+width, y+height);
         vg.fill_color(Color::new(0x80_FFC000));
         vg.fill();
 
@@ -130,23 +130,23 @@ impl PerfGraph {
         match self.style {
             GraphStyle::Fps => {
                 let _ = s.write_fmt(format_args!("{:.2} FPS", 1.0 / avg));
-                vg.text(x+w-3.0,y+1.0, &s);
+                vg.text(x+width-3.0,y+1.0, &s);
 
                 s.clear();
 
                 vg.font_size(15.0);
                 vg.text_align(Align::RIGHT|Align::BOTTOM);
-                vg.fill_color(Color::new(0xA0_f0f0f0));
+                vg.fill_color(Color::new(0xA0_F0F0F0));
                 let _ = s.write_fmt(format_args!("{:.2} ms", avg * 1000.0));
-                vg.text(x+w-3.0,y+h-1.0, &s);
+                vg.text(x+width-3.0,y+height-1.0, &s);
             },
             GraphStyle::Percent => {
                 let _ = s.write_fmt(format_args!("{:.1} %", avg * 1.0));
-                vg.text(x+w-3.0,y+1.0, &s);
+                vg.text(x+width-3.0,y+1.0, &s);
             },
             GraphStyle::Ms => {
                 let _ = s.write_fmt(format_args!("{:.2} ms", avg * 1000.0));
-                vg.text(x+w-3.0,y+1.0, &s);
+                vg.text(x+width-3.0,y+1.0, &s);
             },
         }
     }

@@ -283,18 +283,24 @@ pub struct PathCache {
     pub fringe_width: f32,
 }
 
-impl PathCache {
-    pub fn new() -> Self {
+impl Default for PathCache {
+    fn default() -> Self {
         Self {
             points: Vec::with_capacity(INIT_POINTS_SIZE),
             paths: Vec::with_capacity(INIT_PATHS_SIZE),
             verts: Vec::with_capacity(INIT_VERTS_SIZE),
             bounds: [0.0; 4],
-            
+
             tess_tol: 0.25,
             dist_tol: 0.01,
             fringe_width: 1.0,
         }
+    }
+}
+
+impl PathCache {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn set_dpi(&mut self, ratio: f32) {
@@ -322,7 +328,7 @@ impl PathCache {
             None => return,
         };
 
-        if path.count as usize > 0 && self.points.len() > 0 {
+        if path.count as usize > 0 && !self.points.is_empty() {
             let pt = self.points.last_mut().expect("last point");
             if pt_eq(pt.x,pt.y, x,y, dist_tol) {
                 pt.flags |= flags;
@@ -423,9 +429,7 @@ impl PathCache {
     }
 
     pub(crate) fn flatten_paths(&mut self, commands: &[f32]) {
-        if self.paths.len() > 0 {
-            return;
-        }
+        if !self.paths.is_empty() { return; }
 
         // Flatten
         let mut i = 0;

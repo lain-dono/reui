@@ -1,10 +1,8 @@
 use crate::context::Context;
 
 impl Context {
-    pub fn transform(&mut self, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
-        premul(&mut self.states.last_mut().xform, &[
-            a, b, c, d, e, f,
-        ]);
+    pub fn transform(&mut self, m: [f32; 6]) {
+        premul(&mut self.states.last_mut().xform, &m)
     }
     pub fn reset_transform(&mut self) {
         self.states.last_mut().xform = identity();
@@ -117,12 +115,12 @@ pub fn premul(t: &mut [f32; 6], s: &[f32; 6]) {
 /// Returns `true` if the inverse could be calculated, else `false`.
 pub fn inverse_checked(inv: &mut [f32; 6], t: &[f32; 6]) -> bool {
     let t = [
-        t[0] as f64,
-        t[1] as f64,
-        t[2] as f64,
-        t[3] as f64,
-        t[4] as f64,
-        t[5] as f64,
+        f64::from(t[0]),
+        f64::from(t[1]),
+        f64::from(t[2]),
+        f64::from(t[3]),
+        f64::from(t[4]),
+        f64::from(t[5]),
     ];
 
     let det = t[0] * t[3] - t[2] * t[1];
@@ -143,12 +141,12 @@ pub fn inverse_checked(inv: &mut [f32; 6], t: &[f32; 6]) -> bool {
 
 pub fn inverse(t: &[f32; 6]) -> [f32; 6] {
     let t = [
-        t[0] as f64,
-        t[1] as f64,
-        t[2] as f64,
-        t[3] as f64,
-        t[4] as f64,
-        t[5] as f64,
+        f64::from(t[0]),
+        f64::from(t[1]),
+        f64::from(t[2]),
+        f64::from(t[3]),
+        f64::from(t[4]),
+        f64::from(t[5]),
     ];
 
     let det = t[0] * t[3] - t[2] * t[1];

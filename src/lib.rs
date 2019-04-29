@@ -4,6 +4,8 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 
+#![warn(clippy::all)]
+
 mod api;
 pub mod perf;
 mod vg;

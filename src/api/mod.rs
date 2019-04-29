@@ -3,11 +3,11 @@
 mod images;
 
 use crate::{
-    context::{Context, Align, GlyphPosition},
+    context::{Context, Align, GlyphPosition, TextRow},
     backend::{Image, BackendGL, NFlags},
     cache::{Winding, LineJoin, LineCap},
     vg::*,
-    utils::{raw_slice},
+    utils::{raw_str},
 };
 
 use std::ffi::{c_void, CStr};
@@ -270,7 +270,7 @@ fn nvgResetTransform(ctx: &mut Context) {
 ///   [0 0 1]
 #[no_mangle] extern "C"
 fn nvgTransform(ctx: &mut Context, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
-    ctx.transform(a, b, c, d, e, f)
+    ctx.transform([a, b, c, d, e, f])
 }
 
 /// Translates current coordinate system.
@@ -749,7 +749,7 @@ fn nvgFontFace(ctx: &mut Context, font: *const u8) {
 
 // Draws text string at specified location. If end is specified only the sub-string up to the end is drawn.
 #[no_mangle] extern "C"
-fn nvgText(ctx: &mut Context, x: f32, y: f32, start: *const u8, mut end: *const u8) -> f32 {
+fn nvgText(ctx: &mut Context, x: f32, y: f32, start: *const u8, end: *const u8) -> f32 {
     ctx.text_raw(x, y, start, end)
 }
 
@@ -757,10 +757,8 @@ fn nvgText(ctx: &mut Context, x: f32, y: f32, start: *const u8, mut end: *const 
 // White space is stripped at the beginning of the rows, the text is split at word boundaries or when new-line characters are encountered.
 // Words longer than the max width are slit at nearest character (i.e. no hyphenation).
 #[no_mangle] unsafe extern "C"
-fn nvgTextBox(ctx: &mut Context, x: f32, mut y: f32, break_row_width: f32, mut start: *const u8, end: *const u8) {
-    let slice = raw_slice(start, end);
-    let text = unsafe { std::str::from_utf8_unchecked(slice) };
-    ctx.text_box(x, y, break_row_width, text)
+fn nvgTextBox(ctx: &mut Context, x: f32, y: f32, break_row_width: f32, start: *const u8, end: *const u8) {
+    ctx.text_box(x, y, break_row_width, raw_str(start, end))
 }
 
 // Measures the specified text string. Parameter bounds should be a pointer to float[4],
@@ -769,9 +767,7 @@ fn nvgTextBox(ctx: &mut Context, x: f32, mut y: f32, break_row_width: f32, mut s
 // Measured values are returned in local coordinate space.
 #[no_mangle] unsafe extern "C"
 fn nvgTextBounds(ctx: &mut Context, x: f32, y: f32, start: *const u8, end: *const u8, bounds: *mut [f32; 4]) -> f32 {
-    let text = raw_slice(start, end);
-    let text = unsafe { std::str::from_utf8_unchecked(text) };
-    let (w, b) = ctx.text_bounds(x, y, text);
+    let (w, b) = ctx.text_bounds(x, y, raw_str(start, end));
     if !bounds.is_null() {
         *bounds = b;
     }
@@ -783,13 +779,11 @@ fn nvgTextBounds(ctx: &mut Context, x: f32, y: f32, start: *const u8, end: *cons
 // Measured values are returned in local coordinate space.
 #[no_mangle] unsafe extern "C"
 fn nvgTextBoxBounds(
-    ctx: &mut Context, x: f32, mut y: f32, break_row_width: f32,
-    mut start: *const u8, end: *const u8, bounds: *mut [f32; 4],
+    ctx: &mut Context, x: f32, y: f32, break_row_width: f32,
+    start: *const u8, end: *const u8, bounds: *mut [f32; 4],
 ) {
-    let slice = raw_slice(start, end);
-    let text = unsafe { std::str::from_utf8_unchecked(slice) };
     if !bounds.is_null() {
-        *bounds = ctx.text_box_bounds(x, y, break_row_width, text);
+        *bounds = ctx.text_box_bounds(x, y, break_row_width, raw_str(start, end));
     }
 }
 
@@ -798,15 +792,12 @@ fn nvgTextBoxBounds(
 #[no_mangle] unsafe extern "C"
 fn nvgTextGlyphPositions(
     ctx: &mut Context, x: f32, y: f32,
-    start: *const u8, mut end: *const u8,
+    start: *const u8, end: *const u8,
     positions: *mut GlyphPosition,
     max_positions: i32,
 ) -> usize {
-    let text = raw_slice(start, end);
-    let text = unsafe { std::str::from_utf8_unchecked(text) };
-
-    let positions = unsafe { std::slice::from_raw_parts_mut(positions, max_positions as usize) };
-
+    let text = raw_str(start, end);
+    let positions = std::slice::from_raw_parts_mut(positions, max_positions as usize);
     ctx.text_glyph_positions(x, y, text, positions).len()
 }
 
@@ -827,10 +818,15 @@ fn nvgTextMetrics(ctx: &mut Context, ascender: *mut f32, descender: *mut f32, li
     }
 }
 
-/*
 // Breaks the specified text into lines. If end is specified only the sub-string will be used.
 // White space is stripped at the beginning of the rows, the text is split at word boundaries or when new-line characters are encountered.
 // Words longer than the max width are slit at nearest character (i.e. no hyphenation).
-int nvgTextBreakLines(ctx: &mut Context, const char* string, const char* end, float breakRowWidth, NVGtextRow* rows, int maxRows);
-
-*/
+#[no_mangle] unsafe extern "C"
+fn nvgTextBreakLines(
+    ctx: &mut Context, start: *const u8, end: *const u8,
+    break_row_width: f32, rows: *mut TextRow, max_rows: usize,
+) -> usize {
+    let text = raw_str(start, end);
+    let rows = std::slice::from_raw_parts_mut(rows, max_rows);
+    ctx.text_break_lines(text, break_row_width, rows).len()
+}

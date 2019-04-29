@@ -1,20 +1,17 @@
 extern crate oni2d;
 
 #[link(name = "nvg")]
-extern "C" {
-    fn run();
-}
+extern "C" {}
 
 fn main() {
     env_logger::init();
     log::info!("start");
-    //return wgpu::run();
     unsafe { _run(); }
 }
 
 
-struct GLFWwindow(usize);
-struct GLFWmonitor(usize);
+#[repr(C)] struct GLFWwindow(usize);
+#[repr(C)] struct GLFWmonitor(usize);
 
 extern "C" {
     fn glfwInit() -> bool;
@@ -195,7 +192,6 @@ use oni2d::{
         clampf,
         minf,
         maxf,
-        itoa10,
         slice_start_end,
     },
 };
@@ -249,13 +245,7 @@ impl DemoData {
     }
 }
 
-#[no_mangle] extern "C"
-fn load_demo_data(vg: &mut Context, data: &mut DemoData) -> i32 {
-    *data = DemoData::new(vg);
-    0
-}
-
-fn cp2utf8<'a>(mut cp: isize, s: &'a mut [u8; 8]) -> &'a [u8] {
+fn cp2utf8<'a>(mut cp: isize, s: &'a mut [u8; 8]) -> &'a str {
     let n = if cp < 0x80 { 1 }
     else if cp <  0x00000800 { 2 }
     else if cp <  0x00010000 { 3 }
@@ -273,11 +263,10 @@ fn cp2utf8<'a>(mut cp: isize, s: &'a mut [u8; 8]) -> &'a [u8] {
     if n >= 2 { s[1] = 0x80 | (cp & 0x3f) as u8; cp = cp >> 6; cp |= 0x000000c0; }
     if n >= 1 { s[0] = cp as u8; }
 
-    &s[..n]
+    unsafe { std::str::from_utf8_unchecked(&s[..n]) }
 }
 
-#[no_mangle]
-pub extern fn render_demo(
+pub fn render_demo(
     vg: &mut Context, mx: f32, my: f32, width: f32, height: f32,
     t: f32, blowup: bool, data: &DemoData,
 ) {
@@ -423,7 +412,7 @@ fn draw_search_box(vg: &mut Context, text: &str, x: f32, y: f32, w: f32, h: f32)
     vg.font_face(b"icons\0");
     vg.fill_color(Color::rgba(255,255,255,64));
     vg.text_align(Align::CENTER|Align::MIDDLE);
-    vg.text_slice(x+h*0.55, y+h*0.55, cp2utf8(ICON_SEARCH, &mut icon));
+    vg.text(x+h*0.55, y+h*0.55, cp2utf8(ICON_SEARCH, &mut icon));
 
     vg.font_size(20.0);
     vg.font_face(b"sans\0");
@@ -436,7 +425,7 @@ fn draw_search_box(vg: &mut Context, text: &str, x: f32, y: f32, w: f32, h: f32)
     vg.font_face(b"icons\0");
     vg.fill_color(Color::rgba(255,255,255,32));
     vg.text_align(Align::CENTER|Align::MIDDLE);
-    vg.text_slice(x+w-h*0.55, y+h*0.55, cp2utf8(ICON_CIRCLED_CROSS, &mut icon));
+    vg.text(x+w-h*0.55, y+h*0.55, cp2utf8(ICON_CIRCLED_CROSS, &mut icon));
 }
 
 fn draw_drop_down(vg: &mut Context, text: &str, x: f32, y: f32, w: f32, h: f32) {
@@ -467,7 +456,7 @@ fn draw_drop_down(vg: &mut Context, text: &str, x: f32, y: f32, w: f32, h: f32) 
     vg.font_face(b"icons\0");
     vg.fill_color(Color::rgba(255,255,255,64));
     vg.text_align(Align::CENTER|Align::MIDDLE);
-    vg.text_slice(x+w-h*0.5, y+h*0.5, cp2utf8(ICON_CHEVRON_RIGHT, &mut icon));
+    vg.text(x+w-h*0.5, y+h*0.5, cp2utf8(ICON_CHEVRON_RIGHT, &mut icon));
 }
 
 fn draw_label(vg: &mut Context, text: &str, x: f32, y: f32, _w: f32, h: f32) {
@@ -512,7 +501,7 @@ fn draw_edit_box(vg: &mut Context, text: &str, x: f32, y: f32, w: f32, h: f32) {
 fn draw_edit_box_num(vg: &mut Context, text: &str, units: &str, x: f32, y: f32, w: f32, h: f32) {
     draw_edit_box_base(vg, x,y, w,h);
 
-    let uw = vg.text_bounds_simple(0.0,0.0, units);
+    let (uw, _) = vg.text_bounds(0.0,0.0, units);
 
     vg.font_size(18.0);
     vg.font_face(b"sans\0");
@@ -551,7 +540,7 @@ fn draw_checkbox(vg: &mut Context, text: &str, x: f32, y: f32, _w: f32, h: f32) 
     vg.font_face(b"icons\0");
     vg.fill_color(Color::rgba(255,255,255,128));
     vg.text_align(Align::CENTER|Align::MIDDLE);
-    vg.text_slice(x+9.0+2.0, y+h*0.5, cp2utf8(ICON_CHECK, &mut icon));
+    vg.text(x+9.0+2.0, y+h*0.5, cp2utf8(ICON_CHECK, &mut icon));
 }
 
 fn draw_button(
@@ -584,20 +573,20 @@ fn draw_button(
 
     vg.font_size(20.0);
     vg.font_face(b"sans-bold\0");
-    let tw = vg.text_bounds_simple(0.0,0.0, text);
+    let (tw, _) = vg.text_bounds(0.0,0.0, text);
     let mut iw = 0.0;
 
     if preicon != 0 {
         vg.font_size(h*1.3);
         vg.font_face(b"icons\0");
-        iw = vg.text_bounds_raw_simple(0.0,0.0, cp2utf8(preicon, &mut icon).as_ptr(), null());
+        iw = vg.text_bounds(0.0,0.0, cp2utf8(preicon, &mut icon)).0;
         iw += h*0.15;
 
         vg.font_size(h*1.3);
         vg.font_face(b"icons\0");
         vg.fill_color(Color::rgba(255,255,255,96));
         vg.text_align(Align::LEFT|Align::MIDDLE);
-        vg.text_slice(x+w*0.5-tw*0.5-iw*0.75, y+h*0.5, cp2utf8(preicon, &mut icon));
+        vg.text(x+w*0.5-tw*0.5-iw*0.75, y+h*0.5, cp2utf8(preicon, &mut icon));
     }
 
     vg.font_size(20.0);
@@ -1180,7 +1169,8 @@ fn draw_paragraph(vg: &mut Context, x: f32, mut y: f32, width: f32, _height: f32
     let mut gutter = 0isize;
 
     loop {
-        let rows = vg.text_break_lines(start, end, width, &mut rows);
+        let text = unsafe { oni2d::utils::raw_str(start, end) };
+        let rows = vg.text_break_lines(text, width, &mut rows);
         if rows.len() == 0 { break }
 
         for row in rows {
@@ -1192,7 +1182,7 @@ fn draw_paragraph(vg: &mut Context, x: f32, mut y: f32, width: f32, _height: f32
             vg.fill();
 
             vg.fill_color(Color::rgba(255,255,255,255));
-            vg.text_raw(x, y, row.start, row.end);
+            vg.text(x, y, row.text());
 
             if hit {
                 let mut caretx = if mx < x+row.width/2.0 {
@@ -1230,12 +1220,14 @@ fn draw_paragraph(vg: &mut Context, x: f32, mut y: f32, width: f32, _height: f32
     }
 
     if gutter != 0 {
-        let mut txt = [0u8; 16];
-        let txt = itoa10(&mut txt, gutter);
+        use std::fmt::Write;
+        let mut txt = arrayvec::ArrayString::<[_; 16]>::new();
+        txt.write_fmt(format_args!("{}", gutter)).unwrap();
+
         vg.font_size(13.0);
         vg.text_align(Align::RIGHT|Align::MIDDLE);
 
-        let (_, bounds) = vg.text_bounds_raw(gx,gy, txt.as_ptr(), null());
+        let (_, bounds) = vg.text_bounds(gx,gy, &txt);
 
         vg.begin_path();
         vg.fill_color(Color::rgba(255,192,0,255));
@@ -1249,7 +1241,7 @@ fn draw_paragraph(vg: &mut Context, x: f32, mut y: f32, width: f32, _height: f32
         vg.fill();
 
         vg.fill_color(Color::rgba(32,32,32,255));
-        vg.text_slice(gx,gy, txt);
+        vg.text(gx,gy, &txt);
     }
     vg.line_height(1.2);
 
@@ -1258,8 +1250,7 @@ fn draw_paragraph(vg: &mut Context, x: f32, mut y: f32, width: f32, _height: f32
     vg.font_size(13.0);
     vg.text_align(Align::LEFT|Align::TOP);
 
-    let s = b"Hover your mouse over the text to see calculated caret position.\0";
-    let bounds = vg.text_box_bounds_raw(x,y, 150.0, s.as_ptr(), null());
+    let bounds = vg.text_box_bounds(x,y, 150.0, "Hover your mouse over the text to see calculated caret position.");
 
     // Fade the tooltip out when close to it.
     let gx = ((mx - (bounds[0]+bounds[2])*0.5) / (bounds[0] - bounds[2])).abs();
@@ -1282,8 +1273,7 @@ fn draw_paragraph(vg: &mut Context, x: f32, mut y: f32, width: f32, _height: f32
     vg.fill();
 
     vg.fill_color(Color::rgba(0,0,0,220));
-    let s = b"Hover your mouse over the text to see calculated caret position.\0";
-    vg.text_box_raw(x,y, 150.0, s.as_ptr(), null());
+    vg.text_box(x,y, 150.0, "Hover your mouse over the text to see calculated caret position.");
 
     vg.restore();
 }

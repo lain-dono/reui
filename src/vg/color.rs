@@ -32,8 +32,8 @@ impl Color {
         self.a == 0.0
     }
 
-    pub const fn new(c: u32) -> Self {
-        let [b, g, r, a] = c.to_le_bytes();
+    pub const fn new(color: u32) -> Self {
+        let [b, g, r, a] = color.to_le_bytes();
         Self::rgba(r, g, b, a)
     }
 

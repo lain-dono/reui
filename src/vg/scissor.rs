@@ -46,7 +46,7 @@ impl Context {
         let tey = ex*pxform[1].abs() + ey*pxform[3].abs();
 
         // Intersect rects.
-        let rect = isect_rects(pxform[4]-tex,pxform[5]-tey,tex*2.0,tey*2.0, x,y,w,h);
+        let rect = isect_rects([pxform[4]-tex,pxform[5]-tey,tex*2.0,tey*2.0], [x,y,w,h]);
 
         self.scissor(rect[0], rect[1], rect[2], rect[3]);
     }
@@ -59,10 +59,10 @@ impl Context {
 }
 
 
-fn isect_rects(
-    ax: f32, ay: f32, aw: f32, ah: f32,
-    bx: f32, by: f32, bw: f32, bh: f32,
-) -> [f32; 4] {
+fn isect_rects(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    let [ax, ay, aw, ah] = a;
+    let [bx, by, bw, bh] = b;
+
     let minx = maxf(ax, bx);
     let miny = maxf(ay, by);
     let maxx = minf(ax+aw, bx+bw);
