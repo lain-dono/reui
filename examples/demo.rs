@@ -1360,15 +1360,12 @@ fn draw_scissor(vg: &mut Context, x: f32, y: f32, t: f32) {
     vg.restore();
 }
 
-#[no_mangle] extern "C"
+/*
 fn free_demo_data(vg: &mut Context, data: &mut DemoData) {
     for &m in &data.images {
         vg.delete_image(m);
     }
 }
-
-/*
-fn mini(a: i32, b: i32) -> i32 { if a < b { a } else { b } }
 
 fn unpremultiply(image: &mut [u8], w: usize, h: usize, stride: usize) {
     // Unpremultiply
@@ -1458,12 +1455,9 @@ fn flip_horizontal(image: &mut [u8], w: usize, h: usize, stride: usize) {
         j -= 1;
     }
 }
-*/
 
-#[no_mangle] extern "C"
 fn save_screenshot(_w: usize, _h: usize, _premult: bool, _name: *const u8) {
     println!("unimplemented: save_screen_shot")
-/*
     unsigned char* image = (unsigned char*)malloc(w*h*4);
     if (image == NULL)
             return;
@@ -1476,5 +1470,5 @@ fn save_screenshot(_w: usize, _h: usize, _premult: bool, _name: *const u8) {
     flipHorizontal(image, w, h, w*4);
     stbi_write_png(name, w, h, 4, image, w*4);
     free(image);
-*/
 }
+*/

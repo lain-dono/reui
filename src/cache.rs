@@ -1,5 +1,6 @@
 
 #![allow(improper_ctypes)]
+#![allow(clippy::too_many_arguments)]
 
 use std::{
     f32::consts::PI,
@@ -388,7 +389,7 @@ impl PathCache {
                 p1.dmx = (dlx0 + dlx1) * 0.5;
                 p1.dmy = (dly0 + dly1) * 0.5;
                 let dmr2 = p1.dmx * p1.dmx + p1.dmy * p1.dmy;
-                if dmr2 > 0.000001 {
+                if dmr2 > 0.000_001 {
                     let scale = minf(1.0 / dmr2, 600.0);
                     p1.dmx *= scale;
                     p1.dmy *= scale;

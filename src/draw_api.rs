@@ -187,10 +187,11 @@ impl Context {
         ]);
     }
 
-    pub fn rrect(&mut self, x: f32, y: f32, w: f32, h: f32, r: f32) {
-        self.rrect_varying(x, y, w, h, r, r, r, r);
+    pub fn rrect(&mut self, x: f32, y: f32, width: f32, height: f32, r: f32) {
+        self.rrect_varying(x, y, width, height, r, r, r, r);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn rrect_varying(
         &mut self,
         x: f32, y: f32, w: f32, h: f32,

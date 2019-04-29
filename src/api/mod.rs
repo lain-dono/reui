@@ -1,4 +1,5 @@
 #![allow(unused_attributes)]
+#![allow(clippy::many_single_char_names)]
 
 mod images;
 

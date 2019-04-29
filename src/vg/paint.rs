@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::{Color, utils::maxf};
 use crate::backend::Image;
 use crate::transform;
@@ -96,20 +98,20 @@ impl Paint {
     /// The gradient is transformed by the current transform when it is passed to FillPaint() or StrokePaint().
     pub fn box_gradient(
         x: f32, y: f32,
-        w: f32, h: f32,
-        r: f32, f: f32,
+        width: f32, height: f32,
+        radius: f32, feather: f32,
         inner_color: Color,
         outer_color: Color,
     ) -> Self {
         let mut xform = transform::identity();
-        xform[4] = x+w*0.5;
-        xform[5] = y+h*0.5;
+        xform[4] = x+width*0.5;
+        xform[5] = y+height*0.5;
 
         Self {
             xform,
-            extent: [w*0.5, h*0.5],
-            radius: r,
-            feather: maxf(1.0, f),
+            extent: [width*0.5, height*0.5],
+            radius,
+            feather: maxf(1.0, feather),
             inner_color,
             outer_color,
             image: Image::null(),

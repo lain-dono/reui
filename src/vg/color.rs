@@ -44,6 +44,7 @@ impl Color {
 
     /// Returns a color value from red, green, blue and alpha values.
     pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
+        #![allow(clippy::cast_lossless)]
         Self {
             r: (r as f32) / 255.0,
             g: (g as f32) / 255.0,
