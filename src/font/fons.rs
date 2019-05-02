@@ -8,56 +8,23 @@ use std::{
 use crate::context::Align;
 use crate::context::State;
 
-use crate::fff::{
+use super::fff::{
+    Stash,
+
     fonsAddFallbackFont,
     fonsAddFont,
     fonsAddFontMem,
     fonsGetFontByName,
     fonsGetTextureData,
+
     fonsLineBounds,
     fonsResetAtlas,
-    fonsSetAlign,
-    fonsSetBlur,
-    fonsSetFont,
-    fonsSetSize,
-    fonsSetSpacing,
+
     fonsTextBounds,
     fonsTextIterInit,
     fonsTextIterNext,
     fonsVertMetrics,
 };
-
-/*
-//#[link(name = "nvg")]
-extern "C" {
-    fn fonsAddFont(s: *mut FONScontext, name: *const c_char, path: *const c_char) -> i32;
-    fn fonsAddFontMem(s: *mut FONScontext, name: *const c_char, data: *mut u8, ndata: i32, free_data: i32) -> i32;
-    fn fonsGetFontByName(s: *mut FONScontext, name: *const u8) -> i32;
-
-    fn fonsAddFallbackFont(s: *mut FONScontext, base: i32, fallback: i32) -> i32;
-
-    fn fonsGetTextureData(s: *mut FONScontext, width: *mut i32, height: *mut i32) -> *const u8;
-    //fn fonsValidateTexture(s: *mut FONScontext, dirty: *mut i32) -> bool;
-
-    fn fonsResetAtlas(s: *mut FONScontext, width: u32, height: u32) -> i32;
-
-    fn fonsSetSize(s: *mut FONScontext, size: f32);
-    //fn fonsSetColor(s: *mut FONScontext, color: u32);
-    fn fonsSetSpacing(s: *mut FONScontext, spacing: f32);
-    fn fonsSetBlur(s: *mut FONScontext, blur: f32);
-    fn fonsSetAlign(s: *mut FONScontext, align: Align);
-    fn fonsSetFont(s: *mut FONScontext, font: i32);
-
-    fn fonsTextIterInit(
-        s: *mut FONScontext, iter: *mut TextIter,
-        x: f32, y: f32, str: *const u8, end: *const u8, bitmap_option: i32) -> i32;
-    fn fonsTextIterNext(s: *mut FONScontext, iter: *mut TextIter, quad: *mut FONSquad) -> bool;
-
-    fn fonsTextBounds(s: *mut FONScontext, x: f32, y: f32, start: *const u8, end: *const u8, bounds: *mut f32) -> f32;
-    fn fonsLineBounds(s: *mut FONScontext, y: f32, miny: *mut f32, maxy: *mut f32);
-    fn fonsVertMetrics(s: *mut FONScontext, ascender: *mut f32, descender: *mut f32, lineh: *mut f32);
-}
-*/
 
 pub struct Metrics {
     pub ascender: f32,
@@ -153,27 +120,12 @@ pub struct FONSparams {
     pub width: i32,
     pub height: i32,
     pub flags: u8,
-
-    pub user_ptr: *mut c_void,
-
-    pub render_create: unsafe extern fn(uptr: *mut c_void, width: i32, height: i32) -> i32,
-    pub render_resize: unsafe extern fn(uptr: *mut c_void, width: i32, height: i32) -> i32,
-    pub render_update: unsafe extern fn(uptr: *mut c_void, rect: *mut i32, data: *const u8),
-    pub render_draw:   unsafe extern fn(uptr: *mut c_void, verts: *const f32, tcoords: *const f32, colors: *const i32, nverts: i32),
-    pub render_delete: unsafe extern fn(uptr: *mut c_void),
 }
 
 impl FONSparams {
     pub fn simple(width: i32, height: i32) -> Self {
         Self {
-            width, height,
-            flags: ZERO_TOPLEFT,
-            render_create: unsafe { transmute(0usize) },
-            render_resize: unsafe { transmute(0usize) },
-            render_update: unsafe { transmute(0usize) },
-            render_draw:   unsafe { transmute(0usize) },
-            render_delete: unsafe { transmute(0usize) },
-            user_ptr: null_mut(),
+            width, height, flags: ZERO_TOPLEFT,
         }
     }
 }
@@ -187,10 +139,11 @@ pub struct FONScontext {
 
     tex_data: *mut u8,
     dirty_rect: [i32; 4],
-    fonts: *mut *mut FONSfont,
     atlas: *mut FONSatlas,
-    cfonts: i32,
-    nfonts: i32,
+
+    fonts: *mut *mut FONSfont,
+    cfonts: usize,
+    nfonts: usize,
 
     verts: [f32; VERTEX_COUNT*2],
     tcoords: [f32; VERTEX_COUNT*2],
@@ -202,9 +155,6 @@ pub struct FONScontext {
 
     states: [FONSstate; MAX_STATES],
     nstates: i32,
-
-    handle_error: extern fn(uptr: *mut c_void, error: i32, val: i32),
-    error_uptr: *mut c_void,
 }
 
 impl FONScontext {
@@ -256,12 +206,13 @@ impl FONScontext {
 
     pub fn sync_state(&mut self, state: &State, scale: f32) {
         unsafe {
-            let fs = transmute(self);
-            fonsSetSize(fs, state.font_size*scale);
-            fonsSetSpacing(fs, state.letter_spacing*scale);
-            fonsSetBlur(fs, state.font_blur*scale);
-            fonsSetAlign(fs, state.text_align.bits());
-            fonsSetFont(fs, state.font_id);
+            let fs: &mut Stash = transmute(self);
+            let _state = fs.state_mut();
+            _state.size = state.font_size*scale;
+            _state.spacing = state.letter_spacing*scale;
+            _state.blur = state.font_blur*scale;
+            _state.align = state.text_align.bits();
+            _state.font = state.font_id;
         }
     }
 

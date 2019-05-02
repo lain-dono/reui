@@ -6,7 +6,7 @@ use crate::{
     vg::Counters,
     transform,
     vg::*,
-    fons::*,
+    font::*,
     vg::utils::raw_str,
 };
 
@@ -18,15 +18,6 @@ const INIT_COMMANDS_SIZE: usize = 256;
 const INIT_FONTIMAGE_SIZE: usize = 512;
 pub const MAX_FONTIMAGE_SIZE: u32 = 2048;
 pub const MAX_FONTIMAGES: usize = 4;
-
-
-fn fonsCreateInternal(params: &FONSparams) -> Box<FONScontext> {
-    use crate::fff::fonsCreateInternal;
-    unsafe {
-        let b = fonsCreateInternal(std::mem::transmute(params));
-        std::mem::transmute(b)
-    }
-}
 
 bitflags::bitflags!(
     #[repr(C)]
@@ -342,7 +333,7 @@ impl Context {
 
     pub fn new(mut params: BackendGL) -> Self {
         let fs_params = FONSparams::simple(INIT_FONTIMAGE_SIZE as i32, INIT_FONTIMAGE_SIZE as i32);
-        let fs = unsafe { fonsCreateInternal(&fs_params) };
+        let fs = fonsCreateInternal(&fs_params);
 
         let font_image = params.create_texture(
             TEXTURE_ALPHA,

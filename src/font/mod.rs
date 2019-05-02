@@ -1,6 +1,12 @@
 use slotmap::Key;
 use std::ptr::null;
 
+mod fons;
+mod fff;
+
+use self::fons::{Metrics, FONS_INVALID};
+pub use self::fons::{FONScontext, FONSparams};
+
 use crate::{
     context::{
         Context, Align, State,
@@ -10,7 +16,6 @@ use crate::{
     },
     backend::TEXTURE_ALPHA,
     cache::Vertex,
-    fons::*,
     transform::transform_point,
     vg::utils::{
         min, max,
@@ -27,6 +32,14 @@ enum Codepoint {
     Newline,
     Char,
     CjkChar,
+}
+
+pub fn fonsCreateInternal(params: &FONSparams) -> Box<FONScontext> {
+    use self::fff::fonsCreateInternal;
+    unsafe {
+        let b = fonsCreateInternal(std::mem::transmute(params));
+        std::mem::transmute(b)
+    }
 }
 
 fn quantize(a: f32, d: f32) -> f32 {
