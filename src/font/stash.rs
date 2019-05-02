@@ -3,6 +3,7 @@
          non_camel_case_types,
          non_snake_case,
          non_upper_case_globals,
+         clippy::collapsible_if,
          //unused_assignments,
          //unused_mut,
          )]
@@ -141,7 +142,7 @@ pub const FONS_GLYPH_BITMAP_OPTIONAL: GlyphBitmap = 1;
 
 #[derive(Copy, Clone, Default)]
 #[repr(C)]
-pub struct FONSquad {
+pub struct Quad {
     pub x0: f32,
     pub y0: f32,
     pub s0: f32,
@@ -587,7 +588,7 @@ pub unsafe fn fonsDeleteInternal(stash: *mut Stash) {
         return;
     }
     for i in 0..(*stash).nfonts {
-        fons__freeFont(*(*stash).fonts.offset(i as isize));
+        fons__freeFont(*(*stash).fonts.add(i));
     }
     if !(*stash).atlas.is_null() {
         fons__deleteAtlas((*stash).atlas);
@@ -623,7 +624,7 @@ pub unsafe fn fons__freeFont(font: *mut Font) {
     if !(*font).glyphs.is_null() {
         free((*font).glyphs as *mut libc::c_void);
     }
-    if 0 != (*font).freeData as i32 && !(*font).data.is_null() {
+    if 0 != (*font).freeData && !(*font).data.is_null() {
         free((*font).data as *mut libc::c_void);
     }
     free(font as *mut libc::c_void);
@@ -726,7 +727,7 @@ pub fn mini(a: i32, b: i32) -> i32 {
 }
 
 pub unsafe fn fons__atlasAddRect(
-    mut atlas: *mut Atlas,
+    atlas: *mut Atlas,
     rw: i32,
     rh: i32,
     rx: *mut i32,
@@ -740,13 +741,12 @@ pub unsafe fn fons__atlasAddRect(
     for i in 0..(*atlas).nnodes {
         let y = fons__atlasRectFits(atlas, i, rw, rh);
         if y != -1 {
-            if y + rh < besth
-                || y + rh == besth && ((*(*atlas).nodes.offset(i as isize)).width as i32) < bestw
-            {
+            let node = &*(*atlas).nodes.offset(i as isize);
+            if y + rh < besth || y + rh == besth && (node.width as i32) < bestw {
                 besti = i;
-                bestw = (*(*atlas).nodes.offset(i as isize)).width as i32;
+                bestw = node.width as i32;
                 besth = y + rh;
-                bestx = (*(*atlas).nodes.offset(i as isize)).x as i32;
+                bestx = node.x as i32;
                 besty = y
             }
         }
@@ -763,7 +763,7 @@ pub unsafe fn fons__atlasAddRect(
 }
 
 pub unsafe fn fons__atlasAddSkylineLevel(
-    mut atlas: *mut Atlas,
+    atlas: *mut Atlas,
     idx: i32,
     x: i32,
     y: i32,
@@ -950,7 +950,7 @@ pub unsafe fn fonsResetAtlas(mut stash: *mut Stash, width: i32, height: i32) -> 
     );
     (*stash).dirty_rect = [width, height, 0, 0];
     for i in 0..(*stash).nfonts {
-        let mut font: *mut Font = *(*stash).fonts.offset(i as isize);
+        let mut font: *mut Font = *(*stash).fonts.add(i);
         (*font).nglyphs = 0;
         for j in 0..256 {
             (*font).lut[j] = -1;
@@ -981,19 +981,19 @@ impl Atlas {
 // Add fonts
 
 pub unsafe fn fonsAddFont(stash: *mut Stash, name: *const i8, path: *const i8) -> i32 {
-    let mut data: *mut u8 = 0 as *mut u8;
+    let mut data: *mut u8 = null_mut();
     let mut fp = fopen(path, b"rb\x00" as *const u8 as *const i8);
     if !fp.is_null() {
         fseek(fp, 0 as libc::c_long, 2i32);
-        let dataSize = ftell(fp) as i32;
+        let size = ftell(fp) as i32;
         fseek(fp, 0 as libc::c_long, 0);
-        data = malloc(dataSize as u64) as *mut u8;
+        data = malloc(size as u64) as *mut u8;
         if !data.is_null() {
-            let readed = fread(data as *mut libc::c_void, 1 as u64, dataSize as u64, fp);
+            let readed = fread(data as *mut libc::c_void, 1 as u64, size as u64, fp);
             fclose(fp);
-            fp = 0 as *mut FILE;
-            if !(readed != dataSize as u64) {
-                return fonsAddFontMem(stash, name, data, dataSize, 1);
+            fp = null_mut();
+            if readed == size as u64 {
+                return fonsAddFontMem(stash, name, data, size, 1);
             }
         }
     }
@@ -1013,17 +1013,11 @@ pub unsafe fn fonsAddFontMem(
     dataSize: i32,
     freeData: i32,
 ) -> i32 {
-    let mut i: i32 = 0;
-    let mut ascent: i32 = 0;
-    let mut descent: i32 = 0;
-    let mut fh: i32 = 0;
-    let mut lineGap: i32 = 0;
-    let mut font: *mut Font = 0 as *mut Font;
-    let mut idx: i32 = fons__allocFont(stash);
+    let idx: i32 = fons__allocFont(stash);
     if idx == -1 {
         return -1;
     }
-    font = *(*stash).fonts.offset(idx as isize);
+    let font = *(*stash).fonts.offset(idx as isize);
     strncpy(
         (*font).name.as_mut_ptr(),
         name,
@@ -1031,11 +1025,11 @@ pub unsafe fn fonsAddFontMem(
     );
     (*font).name[(::std::mem::size_of::<[i8; 64]>() as u64).wrapping_sub(1 as u64) as usize] =
         '\u{0}' as i32 as i8;
-    i = 0;
-    while i < 256i32 {
-        (*font).lut[i as usize] = -1;
-        i += 1
+
+    for i in 0..256 {
+        (*font).lut[i] = -1;
     }
+
     (*font).dataSize = dataSize;
     (*font).data = data;
     (*font).freeData = freeData as u8;
@@ -1045,8 +1039,14 @@ pub unsafe fn fonsAddFontMem(
         (*stash).nfonts -= 1;
         -1
     } else {
-        fons__tt_getFontVMetrics(&mut (*font).font, &mut ascent, &mut descent, &mut lineGap);
-        fh = ascent - descent;
+        let info = &mut (*font).font;
+        let hhea = info.hhea as isize;
+
+        let ascent = read_i16((*info).data.offset(hhea).offset(4)) as i32;
+        let descent = read_i16((*info).data.offset(hhea).offset(6)) as i32;
+        let lineGap = read_i16((*info).data.offset(hhea).offset(8)) as i32;
+
+        let fh = ascent - descent;
         (*font).ascender = ascent as f32 / fh as f32;
         (*font).descender = descent as f32 / fh as f32;
         (*font).lineh = (fh + lineGap) as f32 / fh as f32;
@@ -1055,7 +1055,6 @@ pub unsafe fn fonsAddFontMem(
 }
 
 pub unsafe fn fons__allocFont(mut stash: *mut Stash) -> i32 {
-    let mut font: *mut Font = 0 as *mut Font;
     if (*stash).nfonts + 1 > (*stash).cfonts {
         (*stash).cfonts = if (*stash).cfonts == 0 {
             8
@@ -1070,7 +1069,7 @@ pub unsafe fn fons__allocFont(mut stash: *mut Stash) -> i32 {
             return -1;
         }
     }
-    font = malloc(::std::mem::size_of::<Font>() as u64) as *mut Font;
+    let font = malloc(::std::mem::size_of::<Font>() as u64) as *mut Font;
     if !font.is_null() {
         memset(
             font as *mut libc::c_void,
@@ -1083,8 +1082,8 @@ pub unsafe fn fons__allocFont(mut stash: *mut Stash) -> i32 {
             (*font).cglyphs = 256i32;
             (*font).nglyphs = 0;
             let fresh3 = (*stash).nfonts;
-            (*stash).nfonts = (*stash).nfonts + 1;
-            let ref mut fresh4 = *(*stash).fonts.offset(fresh3 as isize);
+            (*stash).nfonts += 1;
+            let fresh4 = &mut (*(*stash).fonts.add(fresh3));
             *fresh4 = font;
             return (*stash).nfonts as i32 - 1;
         }
@@ -1093,22 +1092,6 @@ pub unsafe fn fons__allocFont(mut stash: *mut Stash) -> i32 {
     -1
 }
 
-pub unsafe fn fons__tt_getFontVMetrics(
-    info: *mut FontInfo,
-    ascent: *mut i32,
-    descent: *mut i32,
-    lineGap: *mut i32,
-) {
-    if !ascent.is_null() {
-        *ascent = read_i16((*info).data.offset((*info).hhea as isize).offset(4)) as i32
-    }
-    if !descent.is_null() {
-        *descent = read_i16((*info).data.offset((*info).hhea as isize).offset(6)) as i32
-    }
-    if !lineGap.is_null() {
-        *lineGap = read_i16((*info).data.offset((*info).hhea as isize).offset(8)) as i32
-    }
-}
 // computes a scale factor to produce a font whose EM size is mapped to
 // 'pixels' tall. This is probably what traditional APIs compute, but
 // I'm not positive.
@@ -1121,10 +1104,8 @@ pub unsafe fn fons__tt_loadFont(
     dataSize: i32,
 ) -> i32 {
     (*info).userdata = context as *mut libc::c_void;
-    let data2 = data;
     let fontstart = 0;
 
-    let mut data: *mut u8 = data2 as *mut u8;
     (*info).data = data;
     (*info).fontstart = fontstart;
     let cmap = stbtt__find_table(data, fontstart as u32, b"cmap");
@@ -1156,19 +1137,15 @@ pub unsafe fn fons__tt_loadFont(
 
     for i in 0..num_tables {
         let encoding_record: u32 = cmap.wrapping_add(4).wrapping_add((8 * i) as u32);
-        match read_u16(data.offset(encoding_record as isize)) as i32 {
-            3 => match read_u16(data.offset(encoding_record as isize).offset(2)) as i32 {
+        match read_u16(data.offset(encoding_record as isize)) {
+            3 => match read_u16(data.offset(encoding_record as isize).offset(2)) {
                 1 | 10 => {
-                    (*info).index_map = cmap
-                        .wrapping_add(read_u32(data.offset(encoding_record as isize).offset(4)))
-                        as i32
+                    (*info).index_map = cmap.wrapping_add(read_u32(data.offset(encoding_record as isize).offset(4))) as i32
                 }
                 _ => {}
             },
             0 => {
-                (*info).index_map = cmap
-                    .wrapping_add(read_u32(data.offset(encoding_record as isize).offset(4)))
-                    as i32
+                (*info).index_map = cmap.wrapping_add(read_u32(data.offset(encoding_record as isize).offset(4))) as i32
             }
             _ => {}
         }
@@ -1183,9 +1160,9 @@ pub unsafe fn fons__tt_loadFont(
 // @OPTIMIZE: binary search
 unsafe fn stbtt__find_table(data: *mut u8, fontstart: u32, tag: &[u8]) -> u32 {
     let num_tables: i32 = read_u16(data.offset(fontstart as isize).offset(4)) as i32;
-    let tabledir: u32 = fontstart.wrapping_add(12i32 as u32);
+    let tabledir: u32 = fontstart.wrapping_add(12 as u32);
     for i in 0..num_tables {
-        let loc = tabledir.wrapping_add((16i32 * i) as u32) as isize;
+        let loc = tabledir.wrapping_add((16 * i) as u32) as isize;
         let loc = data.offset(loc);
         if *loc.offset(0) == tag[0]
             && *loc.offset(1) == tag[1]
@@ -1217,7 +1194,7 @@ pub unsafe fn fons__getQuad(
     mut spacing: f32,
     mut x: *mut f32,
     mut y: *mut f32,
-    mut q: *mut FONSquad,
+    mut q: *mut Quad,
 ) {
     let mut rx: f32 = 0.;
     let mut ry: f32 = 0.;
@@ -2859,18 +2836,18 @@ unsafe fn stbtt__handle_clipped_edge(
     };
 }
 unsafe fn stbtt__new_active(
-    mut hh: *mut stbtt__hheap,
-    mut e: *mut stbtt__edge,
-    mut off_x: i32,
-    mut start_point: f32,
-    mut userdata: *mut libc::c_void,
+    hh: *mut stbtt__hheap,
+    e: *mut stbtt__edge,
+    off_x: i32,
+    start_point: f32,
+    userdata: *mut libc::c_void,
 ) -> *mut stbtt__active_edge {
     let mut z: *mut stbtt__active_edge = stbtt__hheap_alloc(
         hh,
         ::std::mem::size_of::<stbtt__active_edge>() as u64,
         userdata,
     ) as *mut stbtt__active_edge;
-    let mut dxdy: f32 = ((*e).x1 - (*e).x0) / ((*e).y1 - (*e).y0);
+    let dxdy: f32 = ((*e).x1 - (*e).x0) / ((*e).y1 - (*e).y0);
     if !z.is_null() {
     } else {
         __assert_fail(b"z != ((void*)0)\x00" as *const u8 as
@@ -2896,7 +2873,7 @@ unsafe fn stbtt__new_active(
     (*z).sy = (*e).y0;
     (*z).ey = (*e).y1;
     (*z).next = 0 as *mut stbtt__active_edge;
-    return z;
+    z
 }
 unsafe fn stbtt__hheap_alloc(
     mut hh: *mut stbtt__hheap,
@@ -2906,7 +2883,7 @@ unsafe fn stbtt__hheap_alloc(
     if !(*hh).first_free.is_null() {
         let mut p: *mut libc::c_void = (*hh).first_free;
         (*hh).first_free = *(p as *mut *mut libc::c_void);
-        return p;
+        p
     } else {
         if (*hh).num_remaining_in_head_chunk == 0 {
             let mut count: i32 = if size < 32i32 as u64 {
@@ -2929,31 +2906,29 @@ unsafe fn stbtt__hheap_alloc(
             (*hh).num_remaining_in_head_chunk = count
         }
         (*hh).num_remaining_in_head_chunk -= 1;
-        return ((*hh).head as *mut i8)
+        ((*hh).head as *mut i8)
             .offset(size.wrapping_mul((*hh).num_remaining_in_head_chunk as u64) as isize)
-            as *mut libc::c_void;
-    };
+            as *mut libc::c_void
+    }
 }
-unsafe fn stbtt__hheap_free(mut hh: *mut stbtt__hheap, mut p: *mut libc::c_void) {
+unsafe fn stbtt__hheap_free(mut hh: *mut stbtt__hheap, p: *mut libc::c_void) {
     let ref mut fresh20 = *(p as *mut *mut libc::c_void);
     *fresh20 = (*hh).first_free;
     (*hh).first_free = p;
 }
-unsafe fn stbtt__sort_edges(mut p: *mut stbtt__edge, mut n: i32) {
+unsafe fn stbtt__sort_edges(p: *mut stbtt__edge, n: i32) {
     stbtt__sort_edges_quicksort(p, n);
     stbtt__sort_edges_ins_sort(p, n);
 }
-unsafe fn stbtt__sort_edges_ins_sort(mut p: *mut stbtt__edge, mut n: i32) {
-    let mut i: i32 = 0;
-    let mut j: i32 = 0;
-    i = 1;
+unsafe fn stbtt__sort_edges_ins_sort(p: *mut stbtt__edge, n: i32) {
+    let mut i = 1;
     while i < n {
         let mut t: stbtt__edge = *p.offset(i as isize);
-        let mut a: *mut stbtt__edge = &mut t;
-        j = i;
+        let a: *mut stbtt__edge = &mut t;
+        let mut j = i;
         while j > 0 {
-            let mut b: *mut stbtt__edge = &mut *p.offset((j - 1) as isize) as *mut stbtt__edge;
-            let mut c: i32 = ((*a).y0 < (*b).y0) as i32;
+            let b: *mut stbtt__edge = &mut *p.offset((j - 1) as isize) as *mut stbtt__edge;
+            let c: i32 = ((*a).y0 < (*b).y0) as i32;
             if 0 == c {
                 break;
             }
@@ -3026,16 +3001,16 @@ unsafe fn stbtt__sort_edges_quicksort(mut p: *mut stbtt__edge, mut n: i32) {
 }
 
 pub unsafe fn stbtt_GetGlyphBitmapBoxSubpixel(
-    mut font: *const FontInfo,
-    mut glyph: i32,
-    mut scale_x: f32,
-    mut scale_y: f32,
-    mut shift_x: f32,
-    mut shift_y: f32,
-    mut ix0: *mut i32,
-    mut iy0: *mut i32,
-    mut ix1: *mut i32,
-    mut iy1: *mut i32,
+    font: *const FontInfo,
+    glyph: i32,
+    scale_x: f32,
+    scale_y: f32,
+    shift_x: f32,
+    shift_y: f32,
+    ix0: *mut i32,
+    iy0: *mut i32,
+    ix1: *mut i32,
+    iy1: *mut i32,
 ) {
     let mut x0: i32 = 0;
     let mut y0: i32 = 0;
@@ -3117,16 +3092,16 @@ pub unsafe fn fons__allocGlyph(mut font: *mut Font) -> *mut Glyph {
 }
 
 pub unsafe fn fons__tt_buildGlyphBitmap(
-    mut font: *mut FontInfo,
-    mut glyph: i32,
-    mut size: f32,
-    mut scale: f32,
-    mut advance: *mut i32,
-    mut lsb: *mut i32,
-    mut x0: *mut i32,
-    mut y0: *mut i32,
-    mut x1: *mut i32,
-    mut y1: *mut i32,
+    font: *mut FontInfo,
+    glyph: i32,
+    _size: f32,
+    scale: f32,
+    advance: *mut i32,
+    lsb: *mut i32,
+    x0: *mut i32,
+    y0: *mut i32,
+    x1: *mut i32,
+    y1: *mut i32,
 ) -> i32 {
     stbtt_GetGlyphHMetrics(font, glyph, advance, lsb);
     stbtt_GetGlyphBitmapBox(font, glyph, scale, scale, x0, y0, x1, y1);
@@ -3134,14 +3109,14 @@ pub unsafe fn fons__tt_buildGlyphBitmap(
 }
 
 pub unsafe fn stbtt_GetGlyphBitmapBox(
-    mut font: *const FontInfo,
-    mut glyph: i32,
-    mut scale_x: f32,
-    mut scale_y: f32,
-    mut ix0: *mut i32,
-    mut iy0: *mut i32,
-    mut ix1: *mut i32,
-    mut iy1: *mut i32,
+    font: *const FontInfo,
+    glyph: i32,
+    scale_x: f32,
+    scale_y: f32,
+    ix0: *mut i32,
+    iy0: *mut i32,
+    ix1: *mut i32,
+    iy1: *mut i32,
 ) {
     stbtt_GetGlyphBitmapBoxSubpixel(
         font, glyph, scale_x, scale_y, 0.0f32, 0.0f32, ix0, iy0, ix1, iy1,
@@ -3150,13 +3125,12 @@ pub unsafe fn stbtt_GetGlyphBitmapBox(
 // Gets the bounding box of the visible part of the glyph, in unscaled coordinates
 
 pub unsafe fn stbtt_GetGlyphHMetrics(
-    mut info: *const FontInfo,
-    mut glyph_index: i32,
-    mut advanceWidth: *mut i32,
-    mut leftSideBearing: *mut i32,
+    info: *const FontInfo,
+    glyph_index: i32,
+    advanceWidth: *mut i32,
+    leftSideBearing: *mut i32,
 ) {
-    let mut numOfLongHorMetrics: u16 =
-        read_u16((*info).data.offset((*info).hhea as isize).offset(34isize));
+    let numOfLongHorMetrics = read_u16((*info).data.offset((*info).hhea as isize).offset(34isize));
     if glyph_index < numOfLongHorMetrics as i32 {
         if !advanceWidth.is_null() {
             *advanceWidth = read_i16(
@@ -3215,7 +3189,7 @@ pub unsafe fn stbtt_ScaleForPixelHeight(mut info: *const FontInfo, mut height: f
     return height as f32 / fheight as f32;
 }
 
-pub unsafe fn fons__tt_getGlyphIndex(mut font: *mut FontInfo, mut codepoint: i32) -> i32 {
+pub unsafe fn fons__tt_getGlyphIndex(font: *mut FontInfo, codepoint: i32) -> i32 {
     stbtt_FindGlyphIndex(font, codepoint)
 }
 // Given an offset into the file that defines a font, this function builds
@@ -3227,12 +3201,12 @@ pub unsafe fn fons__tt_getGlyphIndex(mut font: *mut FontInfo, mut codepoint: i32
 //
 // CHARACTER TO GLYPH-INDEX CONVERSIOn
 
-pub unsafe fn stbtt_FindGlyphIndex(mut info: *const FontInfo, mut unicode_codepoint: i32) -> i32 {
-    let mut data: *mut u8 = (*info).data;
-    let mut index_map: u32 = (*info).index_map as u32;
-    let mut format: u16 = read_u16(data.offset(index_map as isize).offset(0isize));
+pub unsafe fn stbtt_FindGlyphIndex(info: *const FontInfo, unicode_codepoint: i32) -> i32 {
+    let data: *mut u8 = (*info).data;
+    let index_map: u32 = (*info).index_map as u32;
+    let format: u16 = read_u16(data.offset(index_map as isize).offset(0isize));
     if format as i32 == 0 {
-        let mut bytes: i32 = read_u16(data.offset(index_map as isize).offset(2isize)) as i32;
+        let bytes: i32 = read_u16(data.offset(index_map as isize).offset(2isize)) as i32;
         if unicode_codepoint < bytes - 6i32 {
             return *(data
                 .offset(index_map as isize)
@@ -3242,8 +3216,8 @@ pub unsafe fn stbtt_FindGlyphIndex(mut info: *const FontInfo, mut unicode_codepo
         return 0;
     } else {
         if format as i32 == 6i32 {
-            let mut first: u32 = read_u16(data.offset(index_map as isize).offset(6isize)) as u32;
-            let mut count: u32 = read_u16(data.offset(index_map as isize).offset(8isize)) as u32;
+            let first: u32 = read_u16(data.offset(index_map as isize).offset(6isize)) as u32;
+            let count: u32 = read_u16(data.offset(index_map as isize).offset(8isize)) as u32;
             if unicode_codepoint as u32 >= first
                 && (unicode_codepoint as u32) < first.wrapping_add(count)
             {
@@ -3270,36 +3244,25 @@ pub unsafe fn stbtt_FindGlyphIndex(mut info: *const FontInfo, mut unicode_codepo
                 return 0;
             } else {
                 if format as i32 == 4i32 {
-                    let mut segcount: u16 =
-                        (read_u16(data.offset(index_map as isize).offset(6isize)) as i32 >> 1)
-                            as u16;
-                    let mut searchRange: u16 =
-                        (read_u16(data.offset(index_map as isize).offset(8isize)) as i32 >> 1)
-                            as u16;
-                    let mut entrySelector: u16 =
-                        read_u16(data.offset(index_map as isize).offset(10isize));
-                    let mut rangeShift: u16 =
-                        (read_u16(data.offset(index_map as isize).offset(12isize)) as i32 >> 1)
-                            as u16;
-                    let mut endCount: u32 = index_map.wrapping_add(14i32 as u32);
+                    let segcount: u16 = (read_u16(data.offset(index_map as isize).offset(6isize)) as i32 >> 1) as u16;
+                    let mut searchRange: u16 = (read_u16(data.offset(index_map as isize).offset(8isize)) as i32 >> 1) as u16;
+                    let mut entrySelector: u16 = read_u16(data.offset(index_map as isize).offset(10isize));
+                    let rangeShift: u16 = (read_u16(data.offset(index_map as isize).offset(12isize)) as i32 >> 1) as u16;
+                    let endCount: u32 = index_map.wrapping_add(14i32 as u32);
                     let mut search: u32 = endCount;
                     if unicode_codepoint > 0xffffi32 {
                         return 0;
                     }
                     if unicode_codepoint
-                        >= read_u16(
-                            data.offset(search as isize)
-                                .offset((rangeShift as i32 * 2i32) as isize),
-                        ) as i32
+                        >= read_u16(data.offset(search as isize).offset((rangeShift as i32 * 2i32) as isize)) as i32
                     {
                         search = (search as u32).wrapping_add((rangeShift as i32 * 2i32) as u32)
                             as u32 as u32
                     }
                     search = (search as u32).wrapping_sub(2i32 as u32) as u32 as u32;
                     while 0 != entrySelector {
-                        let mut end: u16 = 0;
                         searchRange = (searchRange as i32 >> 1) as u16;
-                        end = read_u16(
+                        let end = read_u16(
                             data.offset(search as isize)
                                 .offset((searchRange as i32 * 2i32) as isize),
                         );
@@ -3311,9 +3274,9 @@ pub unsafe fn stbtt_FindGlyphIndex(mut info: *const FontInfo, mut unicode_codepo
                         entrySelector = entrySelector.wrapping_sub(1)
                     }
                     search = (search as u32).wrapping_add(2i32 as u32) as u32 as u32;
-                    let mut offset: u16 = 0;
-                    let mut start: u16 = 0;
-                    let mut item: u16 = (search.wrapping_sub(endCount) >> 1) as u16;
+                    let offset;
+                    let start;
+                    let item: u16 = (search.wrapping_sub(endCount) >> 1) as u16;
                     if unicode_codepoint
                         <= read_u16(
                             data.offset(endCount as isize)
@@ -3371,20 +3334,18 @@ pub unsafe fn stbtt_FindGlyphIndex(mut info: *const FontInfo, mut unicode_codepo
                     ) as i32;
                 } else {
                     if format as i32 == 12i32 || format as i32 == 13i32 {
-                        let mut ngroups: u32 =
+                        let ngroups: u32 =
                             read_u32(data.offset(index_map as isize).offset(12isize));
-                        let mut low: i32 = 0;
-                        let mut high: i32 = 0;
-                        low = 0;
-                        high = ngroups as i32;
+                        let mut low = 0;
+                        let mut high = ngroups as i32;
                         while low < high {
-                            let mut mid: i32 = low + (high - low >> 1);
-                            let mut start_char: u32 = read_u32(
+                            let mid: i32 = low + (high - low >> 1);
+                            let start_char: u32 = read_u32(
                                 data.offset(index_map as isize)
                                     .offset(16isize)
                                     .offset((mid * 12i32) as isize),
                             );
-                            let mut end_char: u32 = read_u32(
+                            let end_char: u32 = read_u32(
                                 data.offset(index_map as isize)
                                     .offset(16isize)
                                     .offset((mid * 12i32) as isize)
@@ -3395,7 +3356,7 @@ pub unsafe fn stbtt_FindGlyphIndex(mut info: *const FontInfo, mut unicode_codepo
                             } else if unicode_codepoint as u32 > end_char {
                                 low = mid + 1
                             } else {
-                                let mut start_glyph: u32 = read_u32(
+                                let start_glyph: u32 = read_u32(
                                     data.offset(index_map as isize)
                                         .offset(16isize)
                                         .offset((mid * 12i32) as isize)
@@ -3426,24 +3387,24 @@ pub unsafe fn stbtt_FindGlyphIndex(mut info: *const FontInfo, mut unicode_codepo
         ))
         .as_ptr(),
     );
-    return 0;
+    0
 }
 
-pub unsafe fn fons__hashint(mut a: u32) -> u32 {
-    a = a.wrapping_add(!(a << 15i32));
+pub fn fons__hashint(mut a: u32) -> u32 {
+    a = a.wrapping_add(!(a << 15));
     a ^= a >> 10;
-    a = a.wrapping_add(a << 3i32);
-    a ^= a >> 6i32;
+    a = a.wrapping_add(a << 3);
+    a ^= a >> 6;
     a = a.wrapping_add(!(a << 11));
-    a ^= a >> 16i32;
-    return a;
+    a ^= a >> 16;
+    a
 }
 // empty
 // STB_TRUETYPE_IMPLEMENTATION
 // Copyright (c) 2008-2010 Bjoern Hoehrmann <bjoern@hoehrmann.de>
 // See http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ for details.
 
-pub unsafe fn fons__decutf8(mut state: *mut u32, mut codep: *mut u32, mut byte: u32) -> u32 {
+pub unsafe fn fons__decutf8(state: *mut u32, codep: *mut u32, byte: u32) -> u32 {
     static mut utf8d: [u8; 364] = [
         // The first part of the table maps bytes to character classes that
         // to reduce the size of the transition table and create bitmasks.
@@ -3464,7 +3425,7 @@ pub unsafe fn fons__decutf8(mut state: *mut u32, mut codep: *mut u32, mut byte: 
         24, 12, 12, 12, 12, 12, 12, 12, 12, 12, 36, 12, 36, 12, 12, 12, 36, 12, 12, 12, 12, 12, 36,
         12, 36, 12, 12, 12, 36, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
     ];
-    let mut type_0: u32 = utf8d[byte as usize] as u32;
+    let type_0: u32 = utf8d[byte as usize] as u32;
     *codep = if *state != 0 {
         byte & 0x3f | *codep << 6
     } else {
@@ -3475,12 +3436,11 @@ pub unsafe fn fons__decutf8(mut state: *mut u32, mut codep: *mut u32, mut byte: 
 }
 
 pub unsafe fn fons__getVertAlign(
-    mut stash: *mut Stash,
-    mut font: *mut Font,
-    mut align: i32,
-    mut isize: i16,
+    _stash: *mut Stash,
+    font: *mut Font,
+    align: i32,
+    isize: i16,
 ) -> f32 {
-    let stash: &mut Stash = transmute(stash);
     let font: &mut Font = transmute(font);
 
     if 0 != align & FONS_ALIGN_TOP as i32 {
@@ -3498,20 +3458,20 @@ pub unsafe fn fons__getVertAlign(
 // Measure text
 
 pub unsafe fn fonsTextBounds(
-    mut stash: *mut Stash,
+    stash: *mut Stash,
     mut x: f32,
     mut y: f32,
     mut str: *const i8,
     mut end: *const i8,
-    mut bounds: *mut f32,
+    bounds: *mut f32,
 ) -> f32 {
-    let mut state: *mut State = (*stash).state_mut();
+    let state: *mut State = (*stash).state_mut();
     let mut codepoint: u32 = 0;
     let mut utf8state: u32 = 0 as u32;
-    let mut q: FONSquad = Default::default();
+    let mut q: Quad = Default::default();
     let mut prevGlyphIndex: i32 = -1;
-    let mut isize: i16 = ((*state).size * 10.0f32) as i16;
-    let mut iblur: i16 = (*state).blur as i16;
+    let isize: i16 = ((*state).size * 10.0f32) as i16;
+    let iblur: i16 = (*state).blur as i16;
 
     if stash.is_null() {
         return 0 as f32;
@@ -3520,19 +3480,19 @@ pub unsafe fn fonsTextBounds(
         return 0 as f32;
     }
 
-    let mut font = *(*stash).fonts.offset((*state).font as isize);
+    let font = *(*stash).fonts.offset((*state).font as isize);
     if (*font).data.is_null() {
         return 0 as f32;
     }
 
-    let mut scale = fons__tt_getPixelHeightScale(&mut (*font).font, isize as f32 / 10.0f32);
+    let scale = fons__tt_getPixelHeightScale(&mut (*font).font, isize as f32 / 10.0f32);
     y += fons__getVertAlign(stash, font, (*state).align, isize);
 
     let mut maxx = x;
     let mut minx = maxx;
     let mut maxy = y;
     let mut miny = maxy;
-    let mut startx = x;
+    let startx = x;
     if end.is_null() {
         end = str.offset(strlen(str) as isize)
     }
@@ -3596,12 +3556,12 @@ pub unsafe fn fonsTextBounds(
 }
 
 pub unsafe fn fonsLineBounds(
-    mut stash: *mut Stash,
+    stash: *mut Stash,
     mut y: f32,
-    mut miny: *mut f32,
-    mut maxy: *mut f32,
+    miny: *mut f32,
+    maxy: *mut f32,
 ) {
-    let mut state: *mut State = (*stash).state_mut();
+    let state: *mut State = (*stash).state_mut();
     if stash.is_null() {
         return;
     }
@@ -3620,7 +3580,7 @@ pub unsafe fn fonsLineBounds(
 
 pub unsafe fn fonsVertMetrics(stash: &mut Stash) -> Option<Metrics> {
     let nfonts = stash.nfonts as i32;
-    let mut state = stash.state();
+    let state = stash.state();
     if state.font < 0 || state.font >= nfonts {
         return None;
     }
@@ -3639,15 +3599,15 @@ pub unsafe fn fonsVertMetrics(stash: &mut Stash) -> Option<Metrics> {
 // Text iterator
 
 pub unsafe fn fonsTextIterInit(
-    mut stash: *mut Stash,
+    stash: *mut Stash,
     mut iter: *mut FONStextIter,
     mut x: f32,
     mut y: f32,
-    mut str: *const i8,
+    str: *const i8,
     mut end: *const i8,
-    mut bitmapOption: i32,
+    bitmapOption: i32,
 ) -> i32 {
-    let mut state: *mut State = (*stash).state_mut();
+    let state: *mut State = (*stash).state_mut();
     memset(
         iter as *mut libc::c_void,
         0,
@@ -3695,9 +3655,9 @@ pub unsafe fn fonsTextIterInit(
 }
 
 pub unsafe fn fonsTextIterNext(
-    mut stash: *mut Stash,
+    stash: *mut Stash,
     mut iter: *mut FONStextIter,
-    mut quad: *mut FONSquad,
+    quad: *mut Quad,
 ) -> i32 {
     let mut str: *const i8 = (*iter).next;
     (*iter).str_0 = (*iter).next;
@@ -3744,7 +3704,7 @@ pub unsafe fn fonsTextIterNext(
     1
 }
 
-pub unsafe fn fonsAddFallbackFont(mut stash: *mut Stash, mut base: i32, mut fallback: i32) -> i32 {
+pub unsafe fn fonsAddFallbackFont(stash: *mut Stash, base: i32, fallback: i32) -> i32 {
     let mut baseFont: *mut Font = *(*stash).fonts.offset(base as isize);
     if (*baseFont).nfallbacks < 20 {
         let fresh34 = (*baseFont).nfallbacks;
@@ -3757,11 +3717,7 @@ pub unsafe fn fonsAddFallbackFont(mut stash: *mut Stash, mut base: i32, mut fall
 
 // Pull texture changes
 
-pub unsafe fn fonsGetTextureData(
-    mut stash: *mut Stash,
-    mut width: *mut i32,
-    mut height: *mut i32,
-) -> *const u8 {
+pub unsafe fn fonsGetTextureData(stash: *mut Stash, width: *mut i32, height: *mut i32) -> *const u8 {
     if !width.is_null() {
         *width = (*stash).width
     }

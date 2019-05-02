@@ -14,6 +14,7 @@ use super::stash::{
     Stash,
     Atlas,
     Font,
+    Quad,
 
     fonsAddFallbackFont,
     fonsAddFont,
@@ -51,19 +52,6 @@ pub struct FONSstate {
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct FONSquad {
-    pub x0: f32,
-    pub y0: f32,
-    pub s0: f32,
-    pub t0: f32,
-    pub x1: f32,
-    pub y1: f32,
-    pub s1: f32,
-    pub t1: f32,
-}
-
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct TextIter {
     pub x: f32,
@@ -87,7 +75,7 @@ pub struct TextIter {
 }
 
 impl Iterator for TextIter {
-    type Item = FONSquad;
+    type Item = Quad;
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
             let mut q = std::mem::uninitialized();
