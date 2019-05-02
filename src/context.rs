@@ -332,8 +332,7 @@ impl Context {
     }
 
     pub fn new(mut params: BackendGL) -> Self {
-        let fs_params = FONSparams::simple(INIT_FONTIMAGE_SIZE as i32, INIT_FONTIMAGE_SIZE as i32);
-        let fs = fonsCreateInternal(&fs_params);
+        let fs = fonsCreateInternal(INIT_FONTIMAGE_SIZE as i32, INIT_FONTIMAGE_SIZE as i32);
 
         let font_image = params.create_texture(
             TEXTURE_ALPHA,

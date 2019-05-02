@@ -8,8 +8,12 @@ use std::{
 use crate::context::Align;
 use crate::context::State;
 
-use super::fff::{
+pub use super::stash::Metrics;
+
+use super::stash::{
     Stash,
+    Atlas,
+    Font,
 
     fonsAddFallbackFont,
     fonsAddFont,
@@ -26,12 +30,6 @@ use super::fff::{
     fonsVertMetrics,
 };
 
-pub struct Metrics {
-    pub ascender: f32,
-    pub descender: f32,
-    pub line_height: f32,
-}
-
 pub const FONS_INVALID: i32 = -1;
 
 //const SCRATCH_BUF_SIZE: usize = 96000;
@@ -43,24 +41,12 @@ const VERTEX_COUNT: usize = 1024;
 const MAX_STATES: usize = 20;
 //const MAX_FALLBACKS: usize = 20;
 
-pub const ZERO_TOPLEFT: u8 = 1;
-//pub const ZERO_BOTTOMLEFT: u8 = 2;
-
 pub const GLYPH_BITMAP_OPTIONAL: i32 = 1;
 pub const GLYPH_BITMAP_REQUIRED: i32 = 2;
 
-#[repr(C)]
-pub struct FONSatlas {
-    _stub: usize
-}
 
 #[repr(C)]
 pub struct FONSstate {
-    _stub: usize
-}
-
-#[repr(C)]
-pub struct FONSfont {
     _stub: usize
 }
 
@@ -89,7 +75,7 @@ pub struct TextIter {
     pub codepoint: u32,
     pub isize: i16,
     pub iblur: i16,
-    pub font: *mut FONSfont,
+    pub font: *mut Font,
     pub prev_glyph_index: i32,
     pub str: *const u8,
     pub next: *const u8,
@@ -116,32 +102,18 @@ impl Iterator for TextIter {
 }
 
 #[repr(C)]
-pub struct FONSparams {
-    pub width: i32,
-    pub height: i32,
-    pub flags: u8,
-}
-
-impl FONSparams {
-    pub fn simple(width: i32, height: i32) -> Self {
-        Self {
-            width, height, flags: ZERO_TOPLEFT,
-        }
-    }
-}
-
-#[repr(C)]
 pub struct FONScontext {
-    params: FONSparams,
+    width: i32,
+    height: i32,
 
     itw: f32,
     ith: f32,
 
     tex_data: *mut u8,
     dirty_rect: [i32; 4],
-    atlas: *mut FONSatlas,
+    atlas: *mut Atlas,
 
-    fonts: *mut *mut FONSfont,
+    fonts: *mut *mut Font,
     cfonts: usize,
     nfonts: usize,
 
@@ -191,8 +163,8 @@ impl FONScontext {
             *dirty = dr;
             // Reset dirty rect
             self.dirty_rect = [
-                self.params.width,
-                self.params.height,
+                self.width,
+                self.height,
                 0,
                 0,
             ];
@@ -217,11 +189,9 @@ impl FONScontext {
     }
 
     pub fn metrics(&mut self) -> Metrics {
-        let (mut ascender, mut descender, mut line_height) = (0.0, 0.0, 0.0);
         unsafe {
-            fonsVertMetrics(transmute(self), &mut ascender, &mut descender, &mut line_height);
+            fonsVertMetrics(transmute(self)).unwrap()
         }
-        Metrics { ascender, descender, line_height }
     }
 
     pub fn line_bounds(&mut self, y: f32) -> (f32, f32) {

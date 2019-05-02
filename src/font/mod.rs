@@ -2,10 +2,10 @@ use slotmap::Key;
 use std::ptr::null;
 
 mod fons;
-mod fff;
+mod stash;
 
 use self::fons::{Metrics, FONS_INVALID};
-pub use self::fons::{FONScontext, FONSparams};
+pub use self::fons::FONScontext;
 
 use crate::{
     context::{
@@ -34,10 +34,10 @@ enum Codepoint {
     CjkChar,
 }
 
-pub fn fonsCreateInternal(params: &FONSparams) -> Box<FONScontext> {
-    use self::fff::fonsCreateInternal;
+pub fn fonsCreateInternal(width: i32, height: i32) -> Box<FONScontext> {
+    use self::stash::fonsCreateInternal;
     unsafe {
-        let b = fonsCreateInternal(std::mem::transmute(params));
+        let b = fonsCreateInternal(width, height);
         std::mem::transmute(b)
     }
 }
