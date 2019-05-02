@@ -8,7 +8,27 @@ use std::{
 use crate::context::Align;
 use crate::context::State;
 
-#[link(name = "nvg")]
+use crate::fff::{
+    fonsAddFallbackFont,
+    fonsAddFont,
+    fonsAddFontMem,
+    fonsGetFontByName,
+    fonsGetTextureData,
+    fonsLineBounds,
+    fonsResetAtlas,
+    fonsSetAlign,
+    fonsSetBlur,
+    fonsSetFont,
+    fonsSetSize,
+    fonsSetSpacing,
+    fonsTextBounds,
+    fonsTextIterInit,
+    fonsTextIterNext,
+    fonsVertMetrics,
+};
+
+/*
+//#[link(name = "nvg")]
 extern "C" {
     fn fonsAddFont(s: *mut FONScontext, name: *const c_char, path: *const c_char) -> i32;
     fn fonsAddFontMem(s: *mut FONScontext, name: *const c_char, data: *mut u8, ndata: i32, free_data: i32) -> i32;
@@ -37,6 +57,7 @@ extern "C" {
     fn fonsLineBounds(s: *mut FONScontext, y: f32, miny: *mut f32, maxy: *mut f32);
     fn fonsVertMetrics(s: *mut FONScontext, ascender: *mut f32, descender: *mut f32, lineh: *mut f32);
 }
+*/
 
 pub struct Metrics {
     pub ascender: f32,
@@ -117,9 +138,9 @@ impl Iterator for TextIter {
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
             let mut q = std::mem::uninitialized();
-            let ok = fonsTextIterNext(self.fs, self, &mut q);
-            if ok {
-                Some(q)
+            let ok = fonsTextIterNext(transmute(self.fs), transmute(self), &mut q);
+            if ok != 0 {
+                Some(transmute(q))
             } else {
                 None
             }
@@ -190,26 +211,26 @@ impl FONScontext {
     pub fn add_font(&mut self, name: &str, path: &str) -> i32 {
         let name = CString::new(name).expect("add_font cstring");
         let path = CString::new(path).expect("add_font cstring");
-        unsafe { fonsAddFont(self, name.as_ptr(), path.as_ptr()) }
+        unsafe { fonsAddFont(transmute(self), name.as_ptr(), path.as_ptr()) }
     }
 
     pub fn add_font_mem(&mut self, name: &str, data: *mut u8, ndata: i32, free_data: i32) -> i32 {
         let name = CString::new(name).expect("add_font_mem cstring");
-        unsafe { fonsAddFontMem(self, name.as_ptr(), data, ndata, free_data) }
+        unsafe { fonsAddFontMem(transmute(self), name.as_ptr(), data, ndata, free_data) }
     }
 
     pub fn font_by_name(&mut self, name: *const u8) -> i32 {
-        unsafe { fonsGetFontByName(self, name) }
+        unsafe { fonsGetFontByName(transmute(self), name as *const i8) }
     }
 
     pub fn add_fallback_font(&mut self, base: i32, fallback: i32) -> i32 {
-        unsafe { fonsAddFallbackFont(self, base, fallback) }
+        unsafe { fonsAddFallbackFont(transmute(self), base, fallback) }
     }
 
     pub fn texture_data(&mut self) -> (i32, i32, *const u8) {
         let mut w = 0;
         let mut h = 0;
-        let data = unsafe { fonsGetTextureData(self, &mut w, &mut h) };
+        let data = unsafe { fonsGetTextureData(transmute(self), &mut w, &mut h) };
         (w, h, data)
     }
 
@@ -230,23 +251,24 @@ impl FONScontext {
     }
 
     pub fn reset_atlas(&mut self, width: u32, height: u32) -> i32 {
-        unsafe { fonsResetAtlas(self, width, height) }
+        unsafe { fonsResetAtlas(transmute(self), width as i32, height as i32) }
     }
 
     pub fn sync_state(&mut self, state: &State, scale: f32) {
         unsafe {
-            fonsSetSize(self, state.font_size*scale);
-            fonsSetSpacing(self, state.letter_spacing*scale);
-            fonsSetBlur(self, state.font_blur*scale);
-            fonsSetAlign(self, state.text_align);
-            fonsSetFont(self, state.font_id);
+            let fs = transmute(self);
+            fonsSetSize(fs, state.font_size*scale);
+            fonsSetSpacing(fs, state.letter_spacing*scale);
+            fonsSetBlur(fs, state.font_blur*scale);
+            fonsSetAlign(fs, state.text_align.bits());
+            fonsSetFont(fs, state.font_id);
         }
     }
 
     pub fn metrics(&mut self) -> Metrics {
         let (mut ascender, mut descender, mut line_height) = (0.0, 0.0, 0.0);
         unsafe {
-            fonsVertMetrics(self, &mut ascender, &mut descender, &mut line_height);
+            fonsVertMetrics(transmute(self), &mut ascender, &mut descender, &mut line_height);
         }
         Metrics { ascender, descender, line_height }
     }
@@ -254,14 +276,16 @@ impl FONScontext {
     pub fn line_bounds(&mut self, y: f32) -> (f32, f32) {
         let (mut miny, mut maxy) = (0.0, 0.0);
         unsafe {
-            fonsLineBounds(self, y, &mut miny, &mut maxy);
+            fonsLineBounds(transmute(self), y, &mut miny, &mut maxy);
         }
         (miny, maxy)
     }
 
     pub fn text_bounds(&mut self, x: f32, y: f32, start: *const u8, end: *const u8, bounds: *mut f32) -> f32 {
         unsafe {
-            fonsTextBounds(self, x, y, start, end, bounds)
+            fonsTextBounds(transmute(self), x, y,
+                start as *const i8, end as *const i8,
+                bounds)
         }
     }
 
@@ -271,9 +295,12 @@ impl FONScontext {
     ) -> TextIter {
         let mut iter: TextIter = unsafe { std::mem::zeroed() };
         unsafe {
-            fonsTextIterInit(self, &mut iter, x, y, start, end, GLYPH_BITMAP_OPTIONAL);
+            let fs = transmute(self);
+            fonsTextIterInit(fs, transmute(&mut iter), x, y,
+                start as *const i8, end as *const i8,
+                GLYPH_BITMAP_OPTIONAL);
+            iter.fs = transmute(fs);
         }
-        iter.fs = self;
         iter
     }
     
@@ -283,9 +310,12 @@ impl FONScontext {
     ) -> TextIter {
         let mut iter: TextIter = unsafe { std::mem::zeroed() };
         unsafe {
-            fonsTextIterInit(self, &mut iter, x, y, start, end, GLYPH_BITMAP_REQUIRED);
+            let fs = transmute(self);
+            fonsTextIterInit(fs, transmute(&mut iter), x, y,
+                start as *const i8, end as *const i8,
+                GLYPH_BITMAP_REQUIRED);
+            iter.fs = transmute(fs);
         }
-        iter.fs = self;
         iter
     }
 }

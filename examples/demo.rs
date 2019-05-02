@@ -1,7 +1,7 @@
 extern crate oni2d;
 
-#[link(name = "nvg")]
-extern "C" {}
+//#[link(name = "nvg")]
+//extern "C" {}
 
 fn main() {
     env_logger::init();

@@ -19,8 +19,13 @@ const INIT_FONTIMAGE_SIZE: usize = 512;
 pub const MAX_FONTIMAGE_SIZE: u32 = 2048;
 pub const MAX_FONTIMAGES: usize = 4;
 
-extern "C" {
-    fn fonsCreateInternal(params: &FONSparams) -> Box<FONScontext>;
+
+fn fonsCreateInternal(params: &FONSparams) -> Box<FONScontext> {
+    use crate::fff::fonsCreateInternal;
+    unsafe {
+        let b = fonsCreateInternal(std::mem::transmute(params));
+        std::mem::transmute(b)
+    }
 }
 
 bitflags::bitflags!(
