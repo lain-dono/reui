@@ -1,6 +1,9 @@
-use std::mem::{transmute, size_of};
-use std::ptr::null_mut;
-use std::cmp::{min, max};
+use std::{
+    mem::size_of,
+    ptr::null_mut,
+    cmp::max,
+    slice::{from_raw_parts, from_raw_parts_mut},
+};
 
 extern "C" {
     fn malloc(_: u64) -> *mut libc::c_void;
@@ -28,56 +31,44 @@ pub struct AtlasNode {
 
 impl Atlas {
     fn nodes(&self) -> &[AtlasNode] {
-        unsafe { std::slice::from_raw_parts(self.nodes, self.nnodes as usize) }
+        unsafe { from_raw_parts(self.nodes, self.nnodes as usize) }
     }
     fn nodes_mut(&mut self) -> &mut [AtlasNode] {
-        unsafe { std::slice::from_raw_parts_mut(self.nodes, self.nnodes as usize) }
+        unsafe { from_raw_parts_mut(self.nodes, self.nnodes as usize) }
     }
  
     pub fn reset(&mut self, w: i32, h: i32) {
         self.width = w;
         self.height = h;
-        self.nnodes = 0;
+        self.nnodes = 1;
         unsafe {
-            (*self.nodes.offset(0)).x = 0;
-            (*self.nodes.offset(0)).y = 0;
-            (*self.nodes.offset(0)).width = w as i16;
+            *self.nodes.offset(0) = AtlasNode {
+                x: 0,
+                y: 0,
+                width: w as i16,
+            };
         }
-        self.nnodes += 1;
     }
 
-    pub unsafe fn new(w: i32, h: i32, nnodes: i32) -> *mut Atlas {
-        let atlas = malloc(size_of::<Atlas>() as u64) as *mut Atlas;
-        if !atlas.is_null() {
-            memset(
-                atlas as *mut libc::c_void,
-                0,
-                size_of::<Atlas>() as u64,
-            );
-            (*atlas).width = w;
-            (*atlas).height = h;
-            (*atlas).nodes =
-                malloc((size_of::<AtlasNode>() as u64).wrapping_mul(nnodes as u64))
-                    as *mut AtlasNode;
-            if !(*atlas).nodes.is_null() {
-                memset(
-                    (*atlas).nodes as *mut libc::c_void,
-                    0,
-                    (size_of::<AtlasNode>() as u64).wrapping_mul(nnodes as u64),
-                );
-                (*atlas).nnodes = 0;
-                (*atlas).cnodes = nnodes;
-                (*(*atlas).nodes.offset(0)).x = 0;
-                (*(*atlas).nodes.offset(0)).y = 0;
-                (*(*atlas).nodes.offset(0)).width = w as i16;
-                (*atlas).nnodes += 1;
-                return atlas;
-            }
+    pub unsafe fn new(w: i32, h: i32, nnodes: i32) -> Atlas {
+        let nodes = malloc((size_of::<AtlasNode>() as u64).wrapping_mul(nnodes as u64)) as *mut AtlasNode;
+        assert!(!nodes.is_null());
+        memset(nodes as *mut libc::c_void, 0, (size_of::<AtlasNode>() as u64).wrapping_mul(nnodes as u64));
+
+        *nodes.offset(0) = AtlasNode {
+            x: 0,
+            y: 0,
+            width: w as i16,
+        };
+
+        Atlas {
+            width: w,
+            height: h,
+
+            nodes,
+            nnodes: 1,
+            cnodes: nnodes,
         }
-        if !atlas.is_null() {
-            //fons__deleteAtlas(atlas);
-        }
-        null_mut()
     }
 
     pub fn add_rect(

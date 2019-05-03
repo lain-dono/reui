@@ -151,7 +151,7 @@ pub struct Context {
     pub cache: PathCache,
     pub device_px_ratio: f32,
 
-    pub fs: Box<FONScontext>,
+    pub fs: Box<Stash>,
     pub font_images: [Image; 4],
     pub font_image_idx: i32,
 

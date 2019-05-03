@@ -6,7 +6,7 @@ mod fons;
 mod stash;
 
 use self::fons::{Metrics, FONS_INVALID};
-pub use self::fons::FONScontext;
+pub use self::stash::Stash;
 
 use crate::{
     context::{
@@ -35,7 +35,7 @@ enum Codepoint {
     CjkChar,
 }
 
-pub fn fonsCreateInternal(width: i32, height: i32) -> Box<FONScontext> {
+pub fn fonsCreateInternal(width: i32, height: i32) -> Box<Stash> {
     use self::stash::fonsCreateInternal;
     unsafe {
         let b = fonsCreateInternal(width, height);
@@ -296,7 +296,7 @@ impl Context {
                 q = iter.next().unwrap(); // try again
             }
             prev_iter = iter;
-            positions[npos].s = iter.str;
+            positions[npos].s = iter.str_0;
             positions[npos].x = iter.x * invscale;
             positions[npos].minx = min(iter.x, q.x0) * invscale;
             positions[npos].maxx = max(iter.nextx, q.x1) * invscale;
@@ -469,8 +469,8 @@ impl Context {
             if _type == Codepoint::Newline {
                 // Always handle new lines.
                 rows[nrows] = TextRow {
-                    start: if !row_start.is_null() { row_start } else { iter.str },
-                    end: if !row_end.is_null() { row_end } else { iter.str },
+                    start: if !row_start.is_null() { row_start } else { iter.str_0 },
+                    end: if !row_end.is_null() { row_end } else { iter.str_0 },
                     width: row_width * invscale,
                     minx: row_minx * invscale,
                     maxx: row_maxx * invscale,
@@ -495,13 +495,13 @@ impl Context {
             if _type == Codepoint::Char || _type == Codepoint::CjkChar {
                 // The current char is the row so far
                 row_startx = iter.x;
-                row_start = iter.str;
+                row_start = iter.str_0;
                 row_end = iter.next;
                 row_width = iter.nextx - row_startx; // q.x1 - rowStartX;
                 row_minx = q.x0 - row_startx;
                 row_maxx = q.x1 - row_startx;
 
-                word_start = iter.str;
+                word_start = iter.str_0;
                 word_startx = iter.x;
                 word_minx = q.x0 - row_startx;
                 // Set null break point
@@ -521,13 +521,13 @@ impl Context {
             // track last end of a word
             if ((ptype == Codepoint::Char || ptype == Codepoint::CjkChar) && _type == Codepoint::Space)
                 || _type == Codepoint::CjkChar {
-                break_end = iter.str;
+                break_end = iter.str_0;
                 break_width = row_width;
                 break_maxx = row_maxx;
             }
             // track last beginning of a word
             if ptype == Codepoint::Space && _type == Codepoint::Char || _type == Codepoint::CjkChar {
-                word_start = iter.str;
+                word_start = iter.str_0;
                 word_startx = iter.x;
                 word_minx = q.x0 - row_startx;
             }
@@ -539,24 +539,24 @@ impl Context {
                     // The current word is longer than the row length, just break it from here.
                     rows[nrows] = TextRow {
                         start: row_start,
-                        end: iter.str,
+                        end: iter.str_0,
                         width: row_width * invscale,
                         minx:  row_minx * invscale,
                         maxx:  row_maxx * invscale,
-                        next: iter.str,
+                        next: iter.str_0,
                     };
                     nrows += 1;
                     if nrows >= rows.len() {
                         return &rows[..nrows];
                     }
                     row_startx = iter.x;
-                    row_start = iter.str;
+                    row_start = iter.str_0;
                     row_end = iter.next;
                     row_width = iter.nextx - row_startx;
                     row_minx = q.x0 - row_startx;
                     row_maxx = q.x1 - row_startx;
 
-                    word_start = iter.str;
+                    word_start = iter.str_0;
                     word_startx = iter.x;
                     word_minx = q.x0 - row_startx;
                 } else {

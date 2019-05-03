@@ -15,6 +15,7 @@ use super::stash::{
     Stash,
     Font,
     Quad,
+    TextIter,
 
     fonsAddFallbackFont,
     fonsAddFont,
@@ -38,80 +39,12 @@ pub const FONS_INVALID: i32 = -1;
 //const INIT_FONTS: usize = 4;
 //const INIT_GLYPHS: usize = 256;
 //const INIT_ATLAS_NODES: usize = 256;
-const VERTEX_COUNT: usize = 1024;
-const MAX_STATES: usize = 20;
 //const MAX_FALLBACKS: usize = 20;
 
 pub const GLYPH_BITMAP_OPTIONAL: i32 = 1;
 pub const GLYPH_BITMAP_REQUIRED: i32 = 2;
 
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct TextIter {
-    pub x: f32,
-    pub y: f32,
-    pub nextx: f32,
-    pub nexty: f32,
-    pub scale: f32,
-    pub spacing: f32,
-    pub codepoint: u32,
-    pub isize: i16,
-    pub iblur: i16,
-    pub font: *mut Font,
-    pub prev_glyph_index: i32,
-    pub str: *const u8,
-    pub next: *const u8,
-    pub end: *const u8,
-    pub utf8state: u32,
-    pub bitmap_option: i32,
-
-    fs: *mut FONScontext,
-}
-
-impl Iterator for TextIter {
-    type Item = Quad;
-    fn next(&mut self) -> Option<Self::Item> {
-        unsafe {
-            let mut q = std::mem::uninitialized();
-            let ok = fonsTextIterNext(transmute(self.fs), transmute(self), &mut q);
-            if ok != 0 {
-                Some(transmute(q))
-            } else {
-                None
-            }
-        }
-    }
-}
-
-#[repr(C)]
-pub struct FONScontext {
-    width: i32,
-    height: i32,
-
-    itw: f32,
-    ith: f32,
-
-    tex_data: *mut u8,
-    dirty_rect: [i32; 4],
-    atlas: *mut Atlas,
-
-    fonts: *mut *mut Font,
-    cfonts: usize,
-    nfonts: usize,
-
-    verts: [f32; VERTEX_COUNT*2],
-    tcoords: [f32; VERTEX_COUNT*2],
-    colors: [u32; VERTEX_COUNT],
-    nverts: i32,
-
-    scratch: *mut u8,
-    nscratch: i32,
-
-    states: [super::stash::State; MAX_STATES],
-    nstates: i32,
-}
-
-impl FONScontext {
+impl Stash {
     pub fn add_font(&mut self, name: &str, path: &str) -> i32 {
         let name = CString::new(name).expect("add_font cstring");
         let path = CString::new(path).expect("add_font cstring");
@@ -155,7 +88,7 @@ impl FONScontext {
     }
 
     pub fn reset_atlas(&mut self, width: u32, height: u32) -> i32 {
-        unsafe { fonsResetAtlas(transmute(self), width as i32, height as i32) }
+        unsafe { fonsResetAtlas(self, width as i32, height as i32) }
     }
 
     pub fn sync_state(&mut self, state: &State, scale: f32) {
@@ -198,11 +131,10 @@ impl FONScontext {
     ) -> TextIter {
         let mut iter: TextIter = unsafe { std::mem::zeroed() };
         unsafe {
-            let fs = transmute(self);
-            fonsTextIterInit(fs, transmute(&mut iter), x, y,
-                start as *const i8, end as *const i8,
+            fonsTextIterInit(self, &mut iter, x, y,
+                start, end,
                 GLYPH_BITMAP_OPTIONAL);
-            iter.fs = transmute(fs);
+            iter.fs = self;
         }
         iter
     }
@@ -213,11 +145,10 @@ impl FONScontext {
     ) -> TextIter {
         let mut iter: TextIter = unsafe { std::mem::zeroed() };
         unsafe {
-            let fs = transmute(self);
-            fonsTextIterInit(fs, transmute(&mut iter), x, y,
-                start as *const i8, end as *const i8,
+            fonsTextIterInit(self, &mut iter, x, y,
+                start, end,
                 GLYPH_BITMAP_REQUIRED);
-            iter.fs = transmute(fs);
+            iter.fs = self;
         }
         iter
     }
