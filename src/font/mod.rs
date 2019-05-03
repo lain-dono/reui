@@ -36,14 +36,6 @@ enum Codepoint {
     CjkChar,
 }
 
-pub fn fonsCreateInternal(width: i32, height: i32) -> Box<Stash> {
-    use self::stash::fonsCreateInternal;
-    unsafe {
-        let b = fonsCreateInternal(width, height);
-        std::mem::transmute(b)
-    }
-}
-
 fn quantize(a: f32, d: f32) -> f32 {
     (a / d + 0.5).floor() * d
 }
@@ -241,7 +233,7 @@ impl Context {
             haling = state.text_align & (Align::LEFT | Align::CENTER | Align::RIGHT);
             valign = state.text_align & (Align::TOP  | Align::MIDDLE | Align::BOTTOM | Align::BASELINE);
 
-            lineh = self.text_metrics().unwrap().line_height;
+            lineh = self.text_metrics().unwrap().line_gap;
 
             self.states.last_mut().text_align = Align::LEFT | valign;
             self.states.last().line_height
@@ -336,7 +328,7 @@ impl Context {
         rmaxy *= invscale;
         rminy *= invscale;
 
-        let lineh = self.text_metrics().unwrap().line_height;
+        let lineh = self.text_metrics().unwrap().line_gap;
         self.states.last_mut().text_align = Align::LEFT | valign;
 
         let (mut minx, mut maxx) = (x, x);
@@ -392,7 +384,7 @@ impl Context {
         let mut m = self.fs.metrics();
         m.ascender *= invscale;
         m.descender *= invscale;
-        m.line_height *= invscale;
+        m.line_gap *= invscale;
         Some(m)
     }
 

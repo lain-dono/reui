@@ -24,7 +24,6 @@ use super::stash::{
     fonsGetTextureData,
 
     fonsLineBounds,
-    fonsResetAtlas,
 
     fonsTextBounds,
     fonsTextIterInit,
@@ -84,10 +83,6 @@ impl Stash {
             ];
         }
         ok
-    }
-
-    pub fn reset_atlas(&mut self, width: u32, height: u32) -> i32 {
-        unsafe { fonsResetAtlas(self, width as i32, height as i32) }
     }
 
     pub fn sync_state(&mut self, state: &State, scale: f32) {

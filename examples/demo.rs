@@ -1151,7 +1151,7 @@ fn draw_paragraph(vg: &mut Context, x: f32, mut y: f32, width: f32, _height: f32
     vg.font_size(18.0);
     vg.font_face(b"sans\0");
     vg.text_align(Align::LEFT|Align::TOP);
-    let lineh = vg.text_metrics().unwrap().line_height;
+    let lineh = vg.text_metrics().unwrap().line_gap;
 
     // The text break API can be used to fill a large buffer of rows,
     // or to iterate over the text just few lines (or just one) at a time.

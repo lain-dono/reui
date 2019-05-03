@@ -10,6 +10,7 @@ extern "C" {
     fn memset(_: *mut libc::c_void, _: i32, _: u64) -> *mut libc::c_void;
 }
 
+/// Atlas based on Skyline Bin Packer by Jukka Jylänki
 #[derive(Clone)]
 pub struct Atlas {
     pub width: i16,

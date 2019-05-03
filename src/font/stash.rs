@@ -16,7 +16,7 @@ use super::blur::blur;
 pub struct Metrics {
     pub ascender: f32,
     pub descender: f32,
-    pub line_height: f32,
+    pub line_gap: f32,
 }
 
 use std::mem::{transmute, size_of};
@@ -579,53 +579,6 @@ pub struct stbtt_pack_range {
     pub v_oversample: u8,
 }
 
-pub unsafe fn fonsCreateInternal(width: i32, height: i32) -> *mut Stash {
-    let stash = malloc(size_of::<Stash>() as u64) as *mut Stash;
-    assert!(!stash.is_null());
-    memset(stash as *mut libc::c_void, 0, size_of::<Stash>() as u64);
-    (*stash).width = width;
-    (*stash).height = height;
-
-    (*stash).scratch = malloc(96000) as *mut u8;
-    assert!(!(*stash).scratch.is_null());
-
-    (*stash).atlas = Atlas::new(width, height, 256);
-
-    (*stash).fonts = malloc((size_of::<*mut Font>() as u64).wrapping_mul(4)) as *mut *mut Font;
-    assert!(!(*stash).fonts.is_null());
-    memset((*stash).fonts as *mut libc::c_void, 0, (size_of::<*mut Font>() as u64).wrapping_mul(4), );
-    (*stash).cfonts = 4;
-    (*stash).nfonts = 0;
-
-    (*stash).itw = 1.0 / width as f32;
-    (*stash).ith = 1.0 / height as f32;
-
-    (*stash).tex_data = malloc((width * height) as u64) as *mut u8;
-    assert!(!(*stash).tex_data.is_null());
-    memset((*stash).tex_data as *mut libc::c_void, 0, (width * height) as u64, );
-
-    (*stash).dirty_rect = [width, height, 0, 0];
-    (*stash).add_white_rect(2, 2);
-    (*stash).push_state();
-    (*stash).clear_state();
-
-    stash
-}
-
-// Atlas based on Skyline Bin Packer by Jukka Jylänki
-
-/*
-pub unsafe fn fons__deleteAtlas(atlas: *mut Atlas) {
-    if atlas.is_null() {
-        return;
-    }
-    if !(*atlas).nodes.is_null() {
-        free((*atlas).nodes as *mut libc::c_void);
-    }
-    free(atlas as *mut libc::c_void);
-}
-*/
-
 pub unsafe fn fons__freeFont(font: *mut Font) {
     if font.is_null() {
         return;
@@ -639,9 +592,42 @@ pub unsafe fn fons__freeFont(font: *mut Font) {
     free(font as *mut libc::c_void);
 }
 
-// State setting
-
 impl Stash {
+    pub fn new(width: i32, height: i32) -> Box<Stash> {
+        unsafe {
+            let stash = malloc(size_of::<Stash>() as u64) as *mut Stash;
+            assert!(!stash.is_null());
+            memset(stash as *mut libc::c_void, 0, size_of::<Stash>() as u64);
+            (*stash).width = width;
+            (*stash).height = height;
+
+            (*stash).scratch = malloc(96000) as *mut u8;
+            assert!(!(*stash).scratch.is_null());
+
+            (*stash).atlas = Atlas::new(width, height, 256);
+
+            (*stash).fonts = malloc((size_of::<*mut Font>() as u64).wrapping_mul(4)) as *mut *mut Font;
+            assert!(!(*stash).fonts.is_null());
+            memset((*stash).fonts as *mut libc::c_void, 0, (size_of::<*mut Font>() as u64).wrapping_mul(4), );
+            (*stash).cfonts = 4;
+            (*stash).nfonts = 0;
+
+            (*stash).itw = 1.0 / width as f32;
+            (*stash).ith = 1.0 / height as f32;
+
+            (*stash).tex_data = malloc((width * height) as u64) as *mut u8;
+            assert!(!(*stash).tex_data.is_null());
+            memset((*stash).tex_data as *mut libc::c_void, 0, (width * height) as u64, );
+
+            (*stash).dirty_rect = [width, height, 0, 0];
+            (*stash).add_white_rect(2, 2);
+            (*stash).push_state();
+            (*stash).clear_state();
+
+            Box::from_raw(stash)
+        }
+    }
+
     pub fn state(&self) -> &State {
         &self.states[self.nstates as usize - 1]
     }
@@ -700,7 +686,6 @@ impl Stash {
         ];
     }
 
-
     fn flush(&mut self) {
         if self.dirty_rect[0] < self.dirty_rect[2] && self.dirty_rect[1] < self.dirty_rect[3] {
             self.dirty_rect = [self.width, self.height, 0, 0];
@@ -710,39 +695,47 @@ impl Stash {
             self.nverts = 0
         }
     }
-}
-// Resets the whole stash.
 
-pub unsafe fn fonsResetAtlas(mut stash: *mut Stash, width: i32, height: i32) -> i32 {
-    if stash.is_null() {
-        return 0;
-    }
+    /// Resets the whole stash.
+    pub fn reset_atlas(&mut self, width: u32, height: u32) -> bool {
+        let (width, height) = (width as i32, height as i32);
 
-    (*stash).flush();
+        self.flush();
 
-    (*stash).atlas.reset(width, height);
-    (*stash).tex_data = realloc(
-        (*stash).tex_data as *mut libc::c_void,
-        (width * height) as u64,
-    ) as *mut u8;
-    if (*stash).tex_data.is_null() {
-        return 0;
-    }
-    memset((*stash).tex_data as *mut libc::c_void, 0, (width * height) as u64);
-    (*stash).dirty_rect = [width, height, 0, 0];
-    for i in 0..(*stash).nfonts {
-        let mut font: *mut Font = *(*stash).fonts.add(i);
-        (*font).nglyphs = 0;
-        for j in 0..256 {
-            (*font).lut[j] = -1;
+        self.atlas.reset(width, height);
+        self.tex_data = unsafe {
+            realloc(self.tex_data as *mut libc::c_void, (width * height) as u64) as *mut u8
+        };
+
+        if self.tex_data.is_null() {
+            return false;
         }
+
+        unsafe {
+            memset(self.tex_data as *mut libc::c_void, 0, (width * height) as u64);
+        }
+        self.dirty_rect = [width, height, 0, 0];
+
+        unsafe {
+            for i in 0..self.nfonts {
+                let mut font: *mut Font = *self.fonts.add(i);
+                (*font).nglyphs = 0;
+                for j in 0..256 {
+                    (*font).lut[j] = -1;
+                }
+            }
+        }
+
+        self.width = width;
+        self.height = height;
+        self.itw = 1.0 / self.width as f32;
+        self.ith = 1.0 / self.height as f32;
+        unsafe {
+            self.add_white_rect(2, 2);
+        }
+
+        true
     }
-    (*stash).width = width;
-    (*stash).height = height;
-    (*stash).itw = 1.0 / (*stash).width as f32;
-    (*stash).ith = 1.0 / (*stash).height as f32;
-    (*stash).add_white_rect(2, 2);
-    1
 }
 
 // Add fonts
@@ -810,12 +803,12 @@ pub unsafe fn fonsAddFontMem(
 
         let ascent = read_i16((*info).data.offset(hhea).offset(4));
         let descent = read_i16((*info).data.offset(hhea).offset(6));
-        let lineGap = read_i16((*info).data.offset(hhea).offset(8));
+        let line_gap = read_i16((*info).data.offset(hhea).offset(8));
 
         let fh = ascent - descent;
         (*font).ascender = ascent as f32 / fh as f32;
         (*font).descender = descent as f32 / fh as f32;
-        (*font).lineh = (fh + lineGap) as f32 / fh as f32;
+        (*font).lineh = (fh + line_gap) as f32 / fh as f32;
         idx
     }
 }
@@ -3080,7 +3073,7 @@ pub unsafe fn fonsVertMetrics(stash: &mut Stash) -> Option<Metrics> {
     Some(Metrics {
         ascender: font.ascender * size as f32 / 10.,
         descender: font.descender * size as f32 / 10.,
-        line_height: font.lineh * size as f32 / 10.,
+        line_gap: font.lineh * size as f32 / 10.,
     })
 }
 

@@ -811,7 +811,7 @@ fn nvgTextMetrics(ctx: &mut Context, ascender: *mut f32, descender: *mut f32, li
             *descender = m.descender;
         }
         if !lineh.is_null() {
-            *lineh = m.line_height;
+            *lineh = m.line_gap;
         }
     }
 }
