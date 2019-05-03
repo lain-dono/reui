@@ -6,8 +6,6 @@ use std::{
 extern "C" {
     fn malloc(_: u64) -> *mut libc::c_void;
     fn realloc(_: *mut libc::c_void, _: u64) -> *mut libc::c_void;
-
-    fn memset(_: *mut libc::c_void, _: i32, _: u64) -> *mut libc::c_void;
 }
 
 /// Atlas based on Skyline Bin Packer by Jukka Jylänki
@@ -39,7 +37,7 @@ impl Atlas {
             nodes: unsafe {
                 let nodes = malloc((size_of::<AtlasNode>() as u64).wrapping_mul(nnodes as u64)) as *mut AtlasNode;
                 assert!(!nodes.is_null());
-                memset(nodes as *mut libc::c_void, 0, (size_of::<AtlasNode>() as u64).wrapping_mul(nnodes as u64));
+                nodes.write_bytes(0, nnodes as usize);
 
                 *nodes = AtlasNode {
                     x: 0,

@@ -2,10 +2,8 @@ use std::{
     ffi::CString,
 };
 
-use crate::context::Align;
 use crate::context::State;
 
-use super::atlas::Atlas;
 use super::stash::{
     Stash,
     TextIter,
@@ -15,7 +13,6 @@ use super::stash::{
     fonsAddFont,
     fonsAddFontMem,
     fonsGetFontByName,
-    fonsGetTextureData,
 
     fonsLineBounds,
 
@@ -56,11 +53,9 @@ impl Stash {
         unsafe { fonsAddFallbackFont(self, base, fallback) }
     }
 
+    // Pull texture changes
     pub fn texture_data(&mut self) -> (i32, i32, *const u8) {
-        let mut w = 0;
-        let mut h = 0;
-        let data = unsafe { fonsGetTextureData(self, &mut w, &mut h) };
-        (w, h, data)
+        (self.width, self.height, self.tex_data)
     }
 
     pub fn validate_texture(&mut self, dirty: &mut [i32; 4]) -> bool {
@@ -80,14 +75,12 @@ impl Stash {
     }
 
     pub fn sync_state(&mut self, state: &State, scale: f32) {
-        unsafe {
-            let _state = self.state_mut();
-            _state.size = state.font_size*scale;
-            _state.spacing = state.letter_spacing*scale;
-            _state.blur = state.font_blur*scale;
-            _state.align = state.text_align.bits();
-            _state.font = state.font_id;
-        }
+        let s = self.state_mut();
+        s.size = state.font_size*scale;
+        s.spacing = state.letter_spacing*scale;
+        s.blur = state.font_blur*scale;
+        s.align = state.text_align.bits();
+        s.font = state.font_id;
     }
 
     pub fn metrics(&mut self) -> Metrics {

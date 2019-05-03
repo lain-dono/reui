@@ -67,7 +67,7 @@ pub unsafe fn stbtt__GetGlyfOffset(mut info: *const FontInfo, mut glyph_index: i
     if glyph_index >= (*info).numGlyphs {
         return -1;
     }
-    if (*info).indexToLocFormat >= 2i32 {
+    if (*info).indexToLocFormat >= 2 {
         return -1;
     }
     if (*info).indexToLocFormat == 0 {
@@ -75,31 +75,31 @@ pub unsafe fn stbtt__GetGlyfOffset(mut info: *const FontInfo, mut glyph_index: i
             + read_u16(
                 (*info)
                     .data
-                    .offset((*info).loca as isize + (glyph_index * 2i32) as isize),
+                    .offset((*info).loca as isize + (glyph_index * 2) as isize),
             ) as i32
-                * 2i32;
+                * 2;
         g2 = (*info).glyf
             + read_u16(
                 (*info)
                     .data
                     .offset((*info).loca as isize)
-                    .offset((glyph_index * 2i32) as isize)
-                    .offset(2isize),
+                    .offset((glyph_index * 2) as isize)
+                    .offset(2),
             ) as i32
-                * 2i32
+                * 2
     } else {
         g1 = ((*info).glyf as u32).wrapping_add(read_u32(
             (*info)
                 .data
                 .offset((*info).loca as isize)
-                .offset((glyph_index * 4i32) as isize),
+                .offset((glyph_index * 4) as isize),
         )) as i32;
         g2 = ((*info).glyf as u32).wrapping_add(read_u32(
             (*info)
                 .data
                 .offset((*info).loca as isize)
-                .offset((glyph_index * 4i32) as isize)
-                .offset(4isize),
+                .offset((glyph_index * 4) as isize)
+                .offset(4),
         )) as i32
     }
     return if g1 == g2 { -1 } else { g1 };
@@ -204,158 +204,159 @@ pub unsafe fn stbtt_GetGlyphHMetrics(
     }
 }
 
-pub unsafe fn fons__tt_getGlyphIndex(info: *mut FontInfo, unicode_codepoint: i32) -> i32 {
-    let data: *mut u8 = (*info).data;
-    let index_map: u32 = (*info).index_map as u32;
-    let format: u16 = read_u16(data.offset(index_map as isize).offset(0isize));
-    if format as i32 == 0 {
-        let bytes: i32 = read_u16(data.offset(index_map as isize).offset(2isize)) as i32;
-        if unicode_codepoint < bytes - 6i32 {
-            return *(data
-                .offset(index_map as isize)
-                .offset(6)
-                .offset(unicode_codepoint as isize) as *mut u8) as i32;
+pub unsafe fn fons__tt_getGlyphIndex(info: &mut FontInfo, unicode_codepoint: i32) -> i32 {
+    let data: *mut u8 = info.data;
+    let index_map: u32 = info.index_map as u32;
+    let format: u16 = read_u16(data.offset(index_map as isize).offset(0));
+    if format == 0 {
+        let bytes: i32 = read_u16(data.offset(index_map as isize).offset(2)) as i32;
+        if unicode_codepoint < bytes - 6 {
+            return *(data.offset(index_map as isize + 6 + unicode_codepoint as isize) as *mut u8) as i32;
         }
         return 0;
-    } else {
-        if format as i32 == 6i32 {
-            let first: u32 = read_u16(data.offset(index_map as isize).offset(6isize)) as u32;
-            let count: u32 = read_u16(data.offset(index_map as isize).offset(8isize)) as u32;
-            if unicode_codepoint as u32 >= first
-                && (unicode_codepoint as u32) < first.wrapping_add(count)
-            {
-                return read_u16(
-                    data.offset(index_map as isize).offset(10isize).offset(
-                        (unicode_codepoint as u32)
-                            .wrapping_sub(first)
-                            .wrapping_mul(2i32 as u32) as isize,
-                    ),
-                ) as i32;
-            }
+    }
+
+    if format == 6 {
+        let first: u32 = read_u16(data.offset(index_map as isize).offset(6)) as u32;
+        let count: u32 = read_u16(data.offset(index_map as isize).offset(8)) as u32;
+        if unicode_codepoint as u32 >= first && (unicode_codepoint as u32) < first.wrapping_add(count) {
+            return read_u16(
+                data.offset(index_map as isize).offset(10).offset(
+                    (unicode_codepoint as u32)
+                        .wrapping_sub(first)
+                        .wrapping_mul(2 as u32) as isize,
+                ),
+            ) as i32;
+        }
+        return 0;
+    }
+
+    assert!(format != 2);
+
+    if format == 4 {
+        let segcount: u16 =
+            (read_u16(data.offset(index_map as isize).offset(6)) as i32 >> 1) as u16;
+        let mut searchRange: u16 =
+            (read_u16(data.offset(index_map as isize).offset(8)) as i32 >> 1) as u16;
+        let mut entrySelector: u16 =
+            read_u16(data.offset(index_map as isize).offset(10));
+        let rangeShift: u16 =
+            (read_u16(data.offset(index_map as isize).offset(12)) as i32 >> 1) as u16;
+        let endCount: u32 = index_map.wrapping_add(14);
+        let mut search: u32 = endCount;
+        if unicode_codepoint > 0xffff {
             return 0;
-        } else {
-            if format == 2 {
-                panic!("ff")
+        }
+        if unicode_codepoint
+            >= read_u16(
+                data.offset(search as isize)
+                    .offset((rangeShift as i32 * 2) as isize),
+            ) as i32
+        {
+            search = (search as u32).wrapping_add((rangeShift as i32 * 2) as u32) as u32
+                as u32
+        }
+        search = (search as u32).wrapping_sub(2 as u32) as u32 as u32;
+        while 0 != entrySelector {
+            searchRange = (searchRange as i32 >> 1) as u16;
+            let end = read_u16(
+                data.offset(search as isize)
+                    .offset((searchRange as i32 * 2) as isize),
+            );
+            if unicode_codepoint > end as i32 {
+                search = (search as u32).wrapping_add((searchRange as i32 * 2) as u32)
+                    as u32 as u32
+            }
+            entrySelector = entrySelector.wrapping_sub(1)
+        }
+        search = (search as u32).wrapping_add(2 as u32) as u32 as u32;
+        let offset;
+        let start;
+        let item: u16 = (search.wrapping_sub(endCount) >> 1) as u16;
+
+        assert!(
+            unicode_codepoint
+                <= read_u16(
+                    data.offset(endCount as isize)
+                        .offset((2 * item as i32) as isize)
+                ) as i32
+        );
+
+        start = read_u16(
+            data.offset(index_map as isize)
+                .offset(14)
+                .offset((segcount as i32 * 2) as isize)
+                .offset(2)
+                .offset((2 * item as i32) as isize),
+        );
+        if unicode_codepoint < start as i32 {
+            return 0;
+        }
+        offset = read_u16(
+            data.offset(index_map as isize)
+                .offset(14)
+                .offset((segcount as i32 * 6) as isize)
+                .offset(2)
+                .offset((2 * item as i32) as isize),
+        );
+        if offset as i32 == 0 {
+            return (unicode_codepoint
+                + read_i16(
+                    data.offset(index_map as isize)
+                        .offset(14)
+                        .offset((segcount as i32 * 4) as isize)
+                        .offset(2)
+                        .offset((2 * item as i32) as isize),
+                ) as i32) as u16 as i32;
+        }
+        return read_u16(
+            data.offset(offset as i32 as isize)
+                .offset(((unicode_codepoint - start as i32) * 2) as isize)
+                .offset(index_map as isize)
+                .offset(14)
+                .offset((segcount as i32 * 6) as isize)
+                .offset(2)
+                .offset((2 * item as i32) as isize),
+        ) as i32;
+    } else if format == 12 || format == 13 {
+        let ngroups: u32 = read_u32(data.offset(index_map as isize).offset(12));
+        let mut low = 0;
+        let mut high = ngroups as i32;
+        while low < high {
+            let mid: i32 = low + ((high - low) >> 1);
+            let start_char: u32 = read_u32(
+                data.offset(index_map as isize)
+                    .offset(16)
+                    .offset((mid * 12) as isize),
+            );
+            let end_char: u32 = read_u32(
+                data.offset(index_map as isize)
+                    .offset(16)
+                    .offset((mid * 12) as isize)
+                    .offset(4),
+            );
+            if (unicode_codepoint as u32) < start_char {
+                high = mid
+            } else if unicode_codepoint as u32 > end_char {
+                low = mid + 1
             } else {
-                if format == 4 {
-                    let segcount: u16 = (read_u16(data.offset(index_map as isize).offset(6isize)) as i32 >> 1) as u16;
-                    let mut searchRange: u16 = (read_u16(data.offset(index_map as isize).offset(8isize)) as i32 >> 1) as u16;
-                    let mut entrySelector: u16 = read_u16(data.offset(index_map as isize).offset(10isize));
-                    let rangeShift: u16 = (read_u16(data.offset(index_map as isize).offset(12isize)) as i32 >> 1) as u16;
-                    let endCount: u32 = index_map.wrapping_add(14i32 as u32);
-                    let mut search: u32 = endCount;
-                    if unicode_codepoint > 0xffffi32 {
-                        return 0;
-                    }
-                    if unicode_codepoint
-                        >= read_u16(data.offset(search as isize).offset((rangeShift as i32 * 2i32) as isize)) as i32
-                    {
-                        search = (search as u32).wrapping_add((rangeShift as i32 * 2i32) as u32)
-                            as u32 as u32
-                    }
-                    search = (search as u32).wrapping_sub(2i32 as u32) as u32 as u32;
-                    while 0 != entrySelector {
-                        searchRange = (searchRange as i32 >> 1) as u16;
-                        let end = read_u16(
-                            data.offset(search as isize)
-                                .offset((searchRange as i32 * 2i32) as isize),
-                        );
-                        if unicode_codepoint > end as i32 {
-                            search = (search as u32)
-                                .wrapping_add((searchRange as i32 * 2i32) as u32)
-                                as u32 as u32
-                        }
-                        entrySelector = entrySelector.wrapping_sub(1)
-                    }
-                    search = (search as u32).wrapping_add(2i32 as u32) as u32 as u32;
-                    let offset;
-                    let start;
-                    let item: u16 = (search.wrapping_sub(endCount) >> 1) as u16;
-
-                    assert!(unicode_codepoint <= read_u16(data.offset(endCount as isize)
-                                .offset((2i32 * item as i32) as isize)) as i32);
-
-                    start = read_u16(
-                        data.offset(index_map as isize)
-                            .offset(14isize)
-                            .offset((segcount as i32 * 2i32) as isize)
-                            .offset(2isize)
-                            .offset((2i32 * item as i32) as isize),
-                    );
-                    if unicode_codepoint < start as i32 {
-                        return 0;
-                    }
-                    offset = read_u16(
-                        data.offset(index_map as isize)
-                            .offset(14isize)
-                            .offset((segcount as i32 * 6i32) as isize)
-                            .offset(2isize)
-                            .offset((2i32 * item as i32) as isize),
-                    );
-                    if offset as i32 == 0 {
-                        return (unicode_codepoint
-                            + read_i16(
-                                data.offset(index_map as isize)
-                                    .offset(14isize)
-                                    .offset((segcount as i32 * 4i32) as isize)
-                                    .offset(2isize)
-                                    .offset((2i32 * item as i32) as isize),
-                            ) as i32) as u16 as i32;
-                    }
-                    return read_u16(
-                        data.offset(offset as i32 as isize)
-                            .offset(((unicode_codepoint - start as i32) * 2i32) as isize)
-                            .offset(index_map as isize)
-                            .offset(14isize)
-                            .offset((segcount as i32 * 6i32) as isize)
-                            .offset(2isize)
-                            .offset((2i32 * item as i32) as isize),
-                    ) as i32;
+                let start_glyph: u32 = read_u32(
+                    data.offset(index_map as isize)
+                        .offset(16)
+                        .offset((mid * 12) as isize)
+                        .offset(8),
+                );
+                if format == 12 {
+                    return start_glyph
+                        .wrapping_add(unicode_codepoint as u32)
+                        .wrapping_sub(start_char)
+                        as i32;
                 } else {
-                    if format as i32 == 12i32 || format as i32 == 13i32 {
-                        let ngroups: u32 =
-                            read_u32(data.offset(index_map as isize).offset(12isize));
-                        let mut low = 0;
-                        let mut high = ngroups as i32;
-                        while low < high {
-                            let mid: i32 = low + ((high - low) >> 1);
-                            let start_char: u32 = read_u32(
-                                data.offset(index_map as isize)
-                                    .offset(16isize)
-                                    .offset((mid * 12i32) as isize),
-                            );
-                            let end_char: u32 = read_u32(
-                                data.offset(index_map as isize)
-                                    .offset(16isize)
-                                    .offset((mid * 12i32) as isize)
-                                    .offset(4isize),
-                            );
-                            if (unicode_codepoint as u32) < start_char {
-                                high = mid
-                            } else if unicode_codepoint as u32 > end_char {
-                                low = mid + 1
-                            } else {
-                                let start_glyph: u32 = read_u32(
-                                    data.offset(index_map as isize)
-                                        .offset(16)
-                                        .offset((mid * 12i32) as isize)
-                                        .offset(8),
-                                );
-                                if format as i32 == 12i32 {
-                                    return start_glyph
-                                        .wrapping_add(unicode_codepoint as u32)
-                                        .wrapping_sub(start_char)
-                                        as i32;
-                                } else {
-                                    return start_glyph as i32;
-                                }
-                            }
-                        }
-                        return 0;
-                    }
+                    return start_glyph as i32;
                 }
             }
         }
+        return 0;
     }
 
     unreachable!()

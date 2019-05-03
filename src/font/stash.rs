@@ -21,9 +21,10 @@ pub struct Metrics {
     pub line_gap: f32,
 }
 
-use std::mem::{transmute, size_of};
+use std::cmp::{max, min};
+use std::mem::{size_of, transmute};
 use std::ptr::null_mut;
-use std::cmp::{min, max};
+
 
 
 extern crate libc;
@@ -45,7 +46,6 @@ extern "C" {
     fn fabs(_: f64) -> f64;
 
     fn memcpy(_: *mut libc::c_void, _: *const libc::c_void, _: u64) -> *mut libc::c_void;
-    fn memset(_: *mut libc::c_void, _: i32, _: u64) -> *mut libc::c_void;
     fn strncpy(_: *mut i8, _: *const i8, _: u64) -> *mut i8;
     fn strcmp(_: *const i8, _: *const i8) -> i32;
     fn strlen(_: *const i8) -> u64;
@@ -183,22 +183,14 @@ impl Iterator for TextIter {
     }
 }
 
-pub unsafe fn fonsTextIterNext(
-    stash: *mut Stash,
-    mut iter: &mut TextIter,
-    quad: &mut Quad,
-) -> i32 {
+pub unsafe fn fonsTextIterNext(stash: *mut Stash, mut iter: &mut TextIter, quad: &mut Quad) -> i32 {
     let mut str: *const u8 = (*iter).next;
     iter.str_0 = iter.next;
     if str == iter.end {
         return 0;
     }
     while str != iter.end {
-        if 0 == decutf8(
-            &mut iter.utf8state,
-            &mut iter.codepoint,
-            u32::from(*str),
-        ) {
+        if 0 == decutf8(&mut iter.utf8state, &mut iter.codepoint, u32::from(*str)) {
             str = str.offset(1);
             iter.x = iter.nextx;
             iter.y = iter.nexty;
@@ -287,8 +279,8 @@ pub struct Stash {
     pub cfonts: usize,
     pub nfonts: usize,
 
-    pub verts: [f32; VERTEX_COUNT*2],
-    pub tcoords: [f32; VERTEX_COUNT*2],
+    pub verts: [f32; VERTEX_COUNT * 2],
+    pub tcoords: [f32; VERTEX_COUNT * 2],
     pub colors: [u32; VERTEX_COUNT],
 
     pub nverts: i32,
@@ -353,22 +345,69 @@ pub struct Edge {
     pub invert: i32,
 }
 
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct stbtt__hheap {
-    pub head: *mut stbtt__hheap_chunk,
+pub struct Heap {
+    pub head: *mut HeapChunk,
     pub first_free: *mut libc::c_void,
     pub num_remaining_in_head_chunk: i32,
 }
 
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct HeapChunk {
+    pub next: *mut HeapChunk,
+}
+
+impl Heap {
+    pub unsafe fn cleanup(&mut self) {
+        let mut c = self.head;
+        while !c.is_null() {
+            c = (*c).next
+        }
+    }
+
+    pub unsafe fn free(&mut self, p: *mut libc::c_void) {
+        *(p as *mut *mut libc::c_void) = self.first_free;
+        self.first_free = p;
+    }
+
+    pub unsafe fn alloc(&mut self, size: size_t, userdata: *mut libc::c_void) -> *mut libc::c_void {
+        if !self.first_free.is_null() {
+            let p: *mut libc::c_void = self.first_free;
+            self.first_free = *(p as *mut *mut libc::c_void);
+            p
+        } else {
+            if self.num_remaining_in_head_chunk == 0 {
+                let count: i32 = if size < 32 {
+                    2000
+                } else if size < 128 {
+                    800
+                } else {
+                    100
+                };
+                let mut c = fons__tmpalloc(
+                    (size_of::<HeapChunk>() as u64).wrapping_add(size.wrapping_mul(count as u64)),
+                    userdata,
+                ) as *mut HeapChunk;
+                if c.is_null() {
+                    return null_mut();
+                }
+                (*c).next = self.head;
+                self.head = c;
+                self.num_remaining_in_head_chunk = count
+            }
+            self.num_remaining_in_head_chunk -= 1;
+            (self.head as *mut i8)
+                .offset(size.wrapping_mul(self.num_remaining_in_head_chunk as u64) as isize)
+                as *mut libc::c_void
+        }
+    }
+}
+
+
 // ////////////////////////////////////////////////////////////////////////////
 //
 //  Rasterizer
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct stbtt__hheap_chunk {
-    pub next: *mut stbtt__hheap_chunk,
-}
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct ActiveEdge {
@@ -562,7 +601,8 @@ impl Stash {
         unsafe {
             let stash = malloc(size_of::<Stash>() as u64) as *mut Stash;
             assert!(!stash.is_null());
-            memset(stash as *mut libc::c_void, 0, size_of::<Stash>() as u64);
+            stash.write_bytes(0, 1);
+
             (*stash).width = width;
             (*stash).height = height;
 
@@ -573,7 +613,7 @@ impl Stash {
 
             (*stash).fonts = malloc((size_of::<*mut Font>() as u64).wrapping_mul(4)) as *mut *mut Font;
             assert!(!(*stash).fonts.is_null());
-            memset((*stash).fonts as *mut libc::c_void, 0, (size_of::<*mut Font>() as u64).wrapping_mul(4), );
+            (*stash).fonts.write_bytes(0, 4);
             (*stash).cfonts = 4;
             (*stash).nfonts = 0;
 
@@ -582,7 +622,7 @@ impl Stash {
 
             (*stash).tex_data = malloc((width * height) as u64) as *mut u8;
             assert!(!(*stash).tex_data.is_null());
-            memset((*stash).tex_data as *mut libc::c_void, 0, (width * height) as u64, );
+            (*stash).tex_data.write_bytes(0, (width * height) as usize);
 
             (*stash).dirty_rect = [width, height, 0, 0];
             (*stash).add_white_rect(2, 2);
@@ -629,8 +669,7 @@ impl Stash {
             return;
         };
 
-        let mut dst = self.tex_data
-            .offset((gx + gy * self.width) as isize) as *mut u8;
+        let mut dst = self.tex_data.offset((gx + gy * self.width) as isize) as *mut u8;
 
         let mut y = 0;
         while y < h {
@@ -677,7 +716,7 @@ impl Stash {
         }
 
         unsafe {
-            memset(self.tex_data as *mut libc::c_void, 0, (width * height) as u64);
+            self.tex_data.write_bytes(0, (width * height) as usize);
         }
         self.dirty_rect = [width, height, 0, 0];
 
@@ -748,7 +787,8 @@ pub unsafe fn fonsAddFontMem(
         name,
         size_of::<[i8; 64]>() as u64,
     );
-    (*font).name[(size_of::<[i8; 64]>() as u64).wrapping_sub(1 as u64) as usize] = '\u{0}' as i32 as i8;
+    (*font).name[(size_of::<[i8; 64]>() as u64).wrapping_sub(1 as u64) as usize] =
+        '\u{0}' as i32 as i8;
 
     for i in 0..256 {
         (*font).lut[i] = -1;
@@ -795,13 +835,8 @@ pub unsafe fn fons__allocFont(mut stash: *mut Stash) -> i32 {
     }
     let font = malloc(size_of::<Font>() as u64) as *mut Font;
     if !font.is_null() {
-        memset(
-            font as *mut libc::c_void,
-            0,
-            size_of::<Font>() as u64,
-        );
-        (*font).glyphs = malloc((size_of::<Glyph>() as u64).wrapping_mul(256i32 as u64))
-            as *mut Glyph;
+        font.write_bytes(0, 1);
+        (*font).glyphs = malloc((size_of::<Glyph>() as u64).wrapping_mul(256i32 as u64)) as *mut Glyph;
         if !(*font).glyphs.is_null() {
             (*font).cglyphs = 256i32;
             (*font).nglyphs = 0;
@@ -852,23 +887,25 @@ pub unsafe fn fons__tt_loadFont(
     (*info).numGlyphs = if 0 != t {
         read_u16(data.offset(t as isize).offset(4)) as i32
     } else {
-        0xffffi32
+        0xffff
     };
 
     let num_tables = read_u16(data.offset(cmap as isize).offset(2)) as i32;
     (*info).index_map = 0;
 
     for i in 0..num_tables {
-        let encoding_record: u32 = cmap.wrapping_add(4).wrapping_add((8 * i) as u32);
-        match read_u16(data.offset(encoding_record as isize)) {
-            3 => match read_u16(data.offset(encoding_record as isize).offset(2)) {
+        let encoding_record = cmap.wrapping_add(4).wrapping_add((8 * i) as u32) as isize;
+        match read_u16(data.offset(encoding_record)) {
+            3 => match read_u16(data.offset(encoding_record).offset(2)) {
                 1 | 10 => {
-                    (*info).index_map = cmap.wrapping_add(read_u32(data.offset(encoding_record as isize).offset(4))) as i32
+                    (*info).index_map =
+                        cmap.wrapping_add(read_u32(data.offset(encoding_record).offset(4))) as i32
                 }
                 _ => {}
             },
             0 => {
-                (*info).index_map = cmap.wrapping_add(read_u32(data.offset(encoding_record as isize).offset(4))) as i32
+                (*info).index_map =
+                    cmap.wrapping_add(read_u32(data.offset(encoding_record).offset(4))) as i32
             }
             _ => {}
         }
@@ -877,7 +914,7 @@ pub unsafe fn fons__tt_loadFont(
     if (*info).index_map == 0 {
         return 0;
     }
-    (*info).indexToLocFormat = read_u16(data.offset((*info).head as isize).offset(50isize)) as i32;
+    (*info).indexToLocFormat = read_u16(data.offset((*info).head as isize).offset(50)) as i32;
     1
 }
 // @OPTIMIZE: binary search
@@ -929,8 +966,11 @@ impl Stash {
         let mut x1: f32 = 0.;
         let mut y1: f32 = 0.;
         if prevGlyphIndex != -1 {
-            let mut adv: f32 = (*font).font.glyph_kern_advance(prevGlyphIndex, (*glyph).index) as f32
-                    * scale;
+            let mut adv: f32 = (*font)
+                .font
+                .glyph_kern_advance(prevGlyphIndex, (*glyph).index)
+                as f32
+                * scale;
             *x += (adv + spacing + 0.5f32) as i32 as f32
         }
         xoff = ((*glyph).xoff as i32 + 1) as i16 as f32;
@@ -1074,14 +1114,15 @@ pub unsafe fn fons__getGlyph(
     if bitmapOption == FONS_GLYPH_BITMAP_OPTIONAL as i32 {
         return glyph;
     }
-    dst = &mut *(*stash).tex_data.offset(
-        ((*glyph).x0 as i32 + pad + ((*glyph).y0 as i32 + pad) * (*stash).width) as isize,
-    ) as *mut u8;
+    dst = &mut *(*stash)
+        .tex_data
+        .offset(((*glyph).x0 as i32 + pad + ((*glyph).y0 as i32 + pad) * (*stash).width) as isize)
+        as *mut u8;
     fons__tt_renderGlyphBitmap(
         &mut (*renderFont).font,
         dst,
-        gw - pad * 2i32,
-        gh - pad * 2i32,
+        gw - pad * 2,
+        gh - pad * 2,
         (*stash).width,
         scale,
         scale,
@@ -1121,28 +1162,6 @@ pub unsafe fn fons__getGlyph(
 }
 
 pub unsafe fn fons__tt_renderGlyphBitmap(
-    font: *mut FontInfo,
-    output: *mut u8,
-    outWidth: i32,
-    outHeight: i32,
-    outStride: i32,
-    scaleX: f32,
-    scaleY: f32,
-    glyph: i32,
-) {
-    stbtt_MakeGlyphBitmap(
-        font,
-        output,
-        outWidth,
-        outHeight,
-        outStride,
-        scaleX,
-        scaleY,
-        glyph,
-    );
-}
-
-pub unsafe fn stbtt_MakeGlyphBitmap(
     mut info: *const FontInfo,
     mut output: *mut u8,
     mut out_w: i32,
@@ -1152,33 +1171,13 @@ pub unsafe fn stbtt_MakeGlyphBitmap(
     mut scale_y: f32,
     mut glyph: i32,
 ) {
-    stbtt_MakeGlyphBitmapSubpixel(
-        info, output, out_w, out_h, out_stride, scale_x, scale_y, 0.0, 0.0, glyph,
-    );
-}
+    let shift_x = 0.0;
+    let shift_y = 0.0;
 
-pub unsafe fn stbtt_MakeGlyphBitmapSubpixel(
-    mut info: *const FontInfo,
-    mut output: *mut u8,
-    mut out_w: i32,
-    mut out_h: i32,
-    mut out_stride: i32,
-    mut scale_x: f32,
-    mut scale_y: f32,
-    mut shift_x: f32,
-    mut shift_y: f32,
-    mut glyph: i32,
-) {
     let mut ix0: i32 = 0;
     let mut iy0: i32 = 0;
     let mut vertices: *mut stbtt_vertex = 0 as *mut stbtt_vertex;
     let mut num_verts: i32 = stbtt_GetGlyphShape(info, glyph, &mut vertices);
-    let mut gbm: Bitmap = Bitmap {
-        w: 0,
-        h: 0,
-        stride: 0,
-        pixels: 0 as *mut u8,
-    };
     stbtt_GetGlyphBitmapBoxSubpixel(
         info,
         glyph,
@@ -1188,17 +1187,21 @@ pub unsafe fn stbtt_MakeGlyphBitmapSubpixel(
         shift_y,
         &mut ix0,
         &mut iy0,
-        0 as *mut i32,
-        0 as *mut i32,
+        null_mut(),
+        null_mut(),
     );
-    gbm.pixels = output;
-    gbm.w = out_w;
-    gbm.h = out_h;
-    gbm.stride = out_stride;
+
+    let mut gbm = Bitmap {
+        pixels: output,
+        w: out_w,
+        h: out_h,
+        stride: out_stride,
+    };
+
     if 0 != gbm.w && 0 != gbm.h {
         stbtt_Rasterize(
             &mut gbm,
-            0.35f32,
+            0.35,
             vertices,
             num_verts,
             scale_x,
@@ -1250,22 +1253,22 @@ pub unsafe fn stbtt_GetGlyphShape(
         let mut scx: i32 = 0;
         let mut scy: i32 = 0;
         let mut points: *mut u8 = 0 as *mut u8;
-        endPtsOfContours = data.offset(g as isize).offset(10isize);
+        endPtsOfContours = data.offset(g as isize).offset(10);
         ins = read_u16(
             data.offset(g as isize)
-                .offset(10isize)
+                .offset(10)
                 .offset((numberOfContours as i32 * 2i32) as isize),
         ) as i32;
         points = data
             .offset(g as isize)
-            .offset(10isize)
+            .offset(10)
             .offset((numberOfContours as i32 * 2i32) as isize)
-            .offset(2isize)
+            .offset(2)
             .offset(ins as isize);
         n = 1 + read_u16(
             endPtsOfContours
                 .offset((numberOfContours as i32 * 2i32) as isize)
-                .offset(-2isize),
+                .offset(-2),
         ) as i32;
         m = n + 2i32 * numberOfContours as i32;
         vertices = fons__tmpalloc(
@@ -1310,9 +1313,8 @@ pub unsafe fn stbtt_GetGlyphShape(
                 }
             } else if 0 == flags as i32 & 16i32 {
                 x = x
-                    + (*points.offset(0isize) as i32 * 256i32 + *points.offset(1isize) as i32)
-                        as i16 as i32;
-                points = points.offset(2isize)
+                    + (*points.offset(0) as i32 * 256i32 + *points.offset(1) as i32) as i16 as i32;
+                points = points.offset(2)
             }
             (*vertices.offset((off + i) as isize)).x = x as i16;
             i += 1
@@ -1332,9 +1334,8 @@ pub unsafe fn stbtt_GetGlyphShape(
                 }
             } else if 0 == flags as i32 & 32i32 {
                 y = y
-                    + (*points.offset(0isize) as i32 * 256i32 + *points.offset(1isize) as i32)
-                        as i16 as i32;
-                points = points.offset(2isize)
+                    + (*points.offset(0) as i32 * 256i32 + *points.offset(1) as i32) as i16 as i32;
+                points = points.offset(2)
             }
             (*vertices.offset((off + i) as isize)).y = y as i16;
             i += 1
@@ -1453,7 +1454,7 @@ pub unsafe fn stbtt_GetGlyphShape(
         )
     } else if numberOfContours as i32 == -1 {
         let mut more: i32 = 1;
-        let mut comp: *mut u8 = data.offset(g as isize).offset(10isize);
+        let mut comp: *mut u8 = data.offset(g as isize).offset(10);
         num_vertices = 0;
         vertices = 0 as *mut stbtt_vertex;
         while 0 != more {
@@ -1467,20 +1468,20 @@ pub unsafe fn stbtt_GetGlyphShape(
             let mut m_0: f32 = 0.;
             let mut n_0: f32 = 0.;
             flags_0 = read_i16(comp) as u16;
-            comp = comp.offset(2isize);
+            comp = comp.offset(2);
             gidx = read_i16(comp) as u16;
-            comp = comp.offset(2isize);
+            comp = comp.offset(2);
             if 0 != flags_0 as i32 & 2i32 {
                 if 0 != flags_0 as i32 & 1 {
-                    mtx[4usize] = read_i16(comp) as f32;
-                    comp = comp.offset(2isize);
-                    mtx[5usize] = read_i16(comp) as f32;
-                    comp = comp.offset(2isize)
+                    mtx[4] = read_i16(comp) as f32;
+                    comp = comp.offset(2);
+                    mtx[5] = read_i16(comp) as f32;
+                    comp = comp.offset(2)
                 } else {
-                    mtx[4usize] = *(comp as *mut i8) as f32;
-                    comp = comp.offset(1isize);
-                    mtx[5usize] = *(comp as *mut i8) as f32;
-                    comp = comp.offset(1isize)
+                    mtx[4] = *(comp as *mut i8) as f32;
+                    comp = comp.offset(1);
+                    mtx[5] = *(comp as *mut i8) as f32;
+                    comp = comp.offset(1)
                 }
             } else {
                 __assert_fail(b"0\x00" as *const u8 as *const i8,
@@ -1491,30 +1492,30 @@ pub unsafe fn stbtt_GetGlyphShape(
                                                         &[i8; 70]>(b"int stbtt_GetGlyphShape(const stbtt_fontinfo *, int, stbtt_vertex **)\x00")).as_ptr());
             }
             if 0 != flags_0 as i32 & 1 << 3i32 {
-                mtx[3usize] = read_i16(comp) as i32 as f32 / 16384.0;
-                mtx[0usize] = mtx[3usize];
-                comp = comp.offset(2isize);
-                mtx[2usize] = 0 as f32;
-                mtx[1usize] = mtx[2usize]
+                mtx[3] = read_i16(comp) as i32 as f32 / 16384.0;
+                mtx[0] = mtx[3];
+                comp = comp.offset(2);
+                mtx[2] = 0 as f32;
+                mtx[1] = mtx[2]
             } else if 0 != flags_0 as i32 & 1 << 6i32 {
-                mtx[0usize] = read_i16(comp) as i32 as f32 / 16384.0;
-                comp = comp.offset(2isize);
-                mtx[2usize] = 0 as f32;
-                mtx[1usize] = mtx[2usize];
-                mtx[3usize] = read_i16(comp) as i32 as f32 / 16384.0;
-                comp = comp.offset(2isize)
+                mtx[0] = read_i16(comp) as i32 as f32 / 16384.0;
+                comp = comp.offset(2);
+                mtx[2] = 0 as f32;
+                mtx[1] = mtx[2];
+                mtx[3] = read_i16(comp) as i32 as f32 / 16384.0;
+                comp = comp.offset(2)
             } else if 0 != flags_0 as i32 & 1 << 7i32 {
-                mtx[0usize] = read_i16(comp) as i32 as f32 / 16384.0;
-                comp = comp.offset(2isize);
-                mtx[1usize] = read_i16(comp) as i32 as f32 / 16384.0;
-                comp = comp.offset(2isize);
-                mtx[2usize] = read_i16(comp) as i32 as f32 / 16384.0;
-                comp = comp.offset(2isize);
-                mtx[3usize] = read_i16(comp) as i32 as f32 / 16384.0;
-                comp = comp.offset(2isize)
+                mtx[0] = read_i16(comp) as i32 as f32 / 16384.0;
+                comp = comp.offset(2);
+                mtx[1] = read_i16(comp) as i32 as f32 / 16384.0;
+                comp = comp.offset(2);
+                mtx[2] = read_i16(comp) as i32 as f32 / 16384.0;
+                comp = comp.offset(2);
+                mtx[3] = read_i16(comp) as i32 as f32 / 16384.0;
+                comp = comp.offset(2)
             }
-            m_0 = sqrt((mtx[0usize] * mtx[0usize] + mtx[1usize] * mtx[1usize]) as f64) as f32;
-            n_0 = sqrt((mtx[2usize] * mtx[2usize] + mtx[3usize] * mtx[3usize]) as f64) as f32;
+            m_0 = sqrt((mtx[0] * mtx[0] + mtx[1] * mtx[1]) as f64) as f32;
+            n_0 = sqrt((mtx[2] * mtx[2] + mtx[3] * mtx[3]) as f64) as f32;
             comp_num_verts = stbtt_GetGlyphShape(info, gidx as i32, &mut comp_verts);
             if comp_num_verts > 0 {
                 i_0 = 0;
@@ -1526,23 +1527,19 @@ pub unsafe fn stbtt_GetGlyphShape(
                     x_0 = (*v).x;
                     y_0 = (*v).y;
                     (*v).x = (m_0
-                        * (mtx[0usize] * x_0 as i32 as f32
-                            + mtx[2usize] * y_0 as i32 as f32
-                            + mtx[4usize])) as i16;
+                        * (mtx[0] * x_0 as i32 as f32 + mtx[2] * y_0 as i32 as f32 + mtx[4]))
+                        as i16;
                     (*v).y = (n_0
-                        * (mtx[1usize] * x_0 as i32 as f32
-                            + mtx[3usize] * y_0 as i32 as f32
-                            + mtx[5usize])) as i16;
+                        * (mtx[1] * x_0 as i32 as f32 + mtx[3] * y_0 as i32 as f32 + mtx[5]))
+                        as i16;
                     x_0 = (*v).cx;
                     y_0 = (*v).cy;
                     (*v).cx = (m_0
-                        * (mtx[0usize] * x_0 as i32 as f32
-                            + mtx[2usize] * y_0 as i32 as f32
-                            + mtx[4usize])) as i16;
+                        * (mtx[0] * x_0 as i32 as f32 + mtx[2] * y_0 as i32 as f32 + mtx[4]))
+                        as i16;
                     (*v).cy = (n_0
-                        * (mtx[1usize] * x_0 as i32 as f32
-                            + mtx[3usize] * y_0 as i32 as f32
-                            + mtx[5usize])) as i16;
+                        * (mtx[1] * x_0 as i32 as f32 + mtx[3] * y_0 as i32 as f32 + mtx[5]))
+                        as i16;
                     i_0 += 1
                 }
                 tmp = fons__tmpalloc(
@@ -1557,15 +1554,13 @@ pub unsafe fn stbtt_GetGlyphShape(
                     memcpy(
                         tmp as *mut libc::c_void,
                         vertices as *const libc::c_void,
-                        (num_vertices as u64)
-                            .wrapping_mul(size_of::<stbtt_vertex>() as u64),
+                        (num_vertices as u64).wrapping_mul(size_of::<stbtt_vertex>() as u64),
                     );
                 }
                 memcpy(
                     tmp.offset(num_vertices as isize) as *mut libc::c_void,
                     comp_verts as *const libc::c_void,
-                    (comp_num_verts as u64)
-                        .wrapping_mul(size_of::<stbtt_vertex>() as u64),
+                    (comp_num_verts as u64).wrapping_mul(size_of::<stbtt_vertex>() as u64),
                 );
                 vertices = tmp;
                 num_vertices += comp_num_verts
@@ -1741,10 +1736,8 @@ unsafe fn stbtt_FlattenCurves(
     if n == 0 {
         return 0 as *mut Point;
     }
-    *contour_lengths = fons__tmpalloc(
-        (size_of::<i32>() as u64).wrapping_mul(n as u64),
-        userdata,
-    ) as *mut i32;
+    *contour_lengths =
+        fons__tmpalloc((size_of::<i32>() as u64).wrapping_mul(n as u64), userdata) as *mut i32;
     if (*contour_lengths).is_null() {
         *num_contours = 0;
         return 0 as *mut Point;
@@ -1969,8 +1962,8 @@ unsafe fn stbtt__rasterize_sorted_edges(
     off_y: i32,
     userdata: *mut libc::c_void,
 ) {
-    let mut hh: stbtt__hheap = stbtt__hheap {
-        head: 0 as *mut stbtt__hheap_chunk,
+    let mut hh: Heap = Heap {
+        head: 0 as *mut HeapChunk,
         first_free: 0 as *mut libc::c_void,
         num_remaining_in_head_chunk: 0,
     };
@@ -1995,23 +1988,15 @@ unsafe fn stbtt__rasterize_sorted_edges(
         let scan_y_top: f32 = y as f32 + 0.0;
         let scan_y_bottom: f32 = y as f32 + 1.0;
         let mut step: *mut *mut ActiveEdge = &mut active;
-        memset(
-            scanline as *mut libc::c_void,
-            0,
-            ((*result).w as u64).wrapping_mul(size_of::<f32>() as u64),
-        );
-        memset(
-            scanline2 as *mut libc::c_void,
-            0,
-            (((*result).w + 1) as u64).wrapping_mul(size_of::<f32>() as u64),
-        );
+        scanline.write_bytes(0, (*result).w as usize);
+        scanline2.write_bytes(0, (*result).w as usize + 1);
         while !(*step).is_null() {
             let z: *mut ActiveEdge = *step;
             if (*z).ey <= scan_y_top {
                 *step = (*z).next;
                 assert!(0. != (*z).direction);
                 (*z).direction = 0 as f32;
-                stbtt__hheap_free(&mut hh, z as *mut libc::c_void);
+                hh.free(z as *mut libc::c_void);
             } else {
                 step = &mut (**step).next
             }
@@ -2026,7 +2011,7 @@ unsafe fn stbtt__rasterize_sorted_edges(
                     active = z_0
                 }
             }
-            e = e.offset(1isize)
+            e = e.offset(1)
         }
         if !active.is_null() {
             stbtt__fill_active_edges_new(
@@ -2061,14 +2046,8 @@ unsafe fn stbtt__rasterize_sorted_edges(
         y += 1;
         j += 1
     }
-    stbtt__hheap_cleanup(&mut hh, userdata);
-}
-unsafe fn stbtt__hheap_cleanup(mut hh: *mut stbtt__hheap, mut userdata: *mut libc::c_void) {
-    let mut c: *mut stbtt__hheap_chunk = (*hh).head;
-    while !c.is_null() {
-        let mut n: *mut stbtt__hheap_chunk = (*c).next;
-        c = n
-    }
+
+    hh.cleanup();
 }
 unsafe fn stbtt__fill_active_edges_new(
     mut scanline: *mut f32,
@@ -2087,7 +2066,7 @@ unsafe fn stbtt__fill_active_edges_new(
                 if x0 >= 0 as f32 {
                     handle_clipped_edge(scanline, x0 as i32, e, x0, y_top, x0, y_bottom);
                     handle_clipped_edge(
-                        scanline_fill.offset(-1isize),
+                        scanline_fill.offset(-1),
                         x0 as i32 + 1,
                         e,
                         x0,
@@ -2096,15 +2075,7 @@ unsafe fn stbtt__fill_active_edges_new(
                         y_bottom,
                     );
                 } else {
-                    handle_clipped_edge(
-                        scanline_fill.offset(-1isize),
-                        0,
-                        e,
-                        x0,
-                        y_top,
-                        x0,
-                        y_bottom,
-                    );
+                    handle_clipped_edge(scanline_fill.offset(-1), 0, e, x0, y_top, x0, y_bottom);
                 }
             }
         } else {
@@ -2284,34 +2255,26 @@ unsafe fn handle_clipped_edge(
         *scanline.offset(x as isize) += (*e).direction * (y1 - y0)
     } else if !(x0 >= (x + 1) as f32 && x1 >= (x + 1) as f32) {
         assert!(x0 >= x as f32 && x0 <= (x + 1) as f32 && x1 >= x as f32 && x1 <= (x + 1) as f32);
-        *scanline.offset(x as isize) += (*e).direction
-            * (y1 - y0)
-            * (1 as f32 - (x0 - x as f32 + (x1 - x as f32)) / 2i32 as f32)
+        *scanline.offset(x as isize) +=
+            (*e).direction * (y1 - y0) * (1.0 - (x0 - x as f32 + (x1 - x as f32)) / 2.0)
     };
 }
 unsafe fn stbtt__new_active(
-    hh: *mut stbtt__hheap,
+    hh: *mut Heap,
     e: *mut Edge,
     off_x: i32,
     start_point: f32,
     userdata: *mut libc::c_void,
 ) -> *mut ActiveEdge {
-    let mut z: *mut ActiveEdge = stbtt__hheap_alloc(
-        hh,
-        size_of::<ActiveEdge>() as u64,
-        userdata,
-    ) as *mut ActiveEdge;
+    let mut z: *mut ActiveEdge =
+        (*hh).alloc(size_of::<ActiveEdge>() as u64, userdata) as *mut ActiveEdge;
     let dxdy: f32 = ((*e).x1 - (*e).x0) / ((*e).y1 - (*e).y0);
     assert!(!z.is_null());
     if z.is_null() {
         return z;
     }
     (*z).fdx = dxdy;
-    (*z).fdy = if dxdy != 0.0 {
-        1.0 / dxdy
-    } else {
-        0.0
-    };
+    (*z).fdy = if dxdy != 0.0 { 1.0 / dxdy } else { 0.0 };
     (*z).fx = (*e).x0 + dxdy * (start_point - (*e).y0);
     (*z).fx -= off_x as f32;
     (*z).direction = if 0 != (*e).invert { 1.0 } else { -1.0 };
@@ -2320,47 +2283,7 @@ unsafe fn stbtt__new_active(
     (*z).next = 0 as *mut ActiveEdge;
     z
 }
-unsafe fn stbtt__hheap_alloc(
-    mut hh: *mut stbtt__hheap,
-    size: size_t,
-    userdata: *mut libc::c_void,
-) -> *mut libc::c_void {
-    if !(*hh).first_free.is_null() {
-        let p: *mut libc::c_void = (*hh).first_free;
-        (*hh).first_free = *(p as *mut *mut libc::c_void);
-        p
-    } else {
-        if (*hh).num_remaining_in_head_chunk == 0 {
-            let count: i32 = if size < 32i32 as u64 {
-                2000
-            } else if size < 128i32 as u64 {
-                800
-            } else {
-                100
-            };
-            let mut c: *mut stbtt__hheap_chunk = fons__tmpalloc(
-                (size_of::<stbtt__hheap_chunk>() as u64)
-                    .wrapping_add(size.wrapping_mul(count as u64)),
-                userdata,
-            ) as *mut stbtt__hheap_chunk;
-            if c.is_null() {
-                return 0 as *mut libc::c_void;
-            }
-            (*c).next = (*hh).head;
-            (*hh).head = c;
-            (*hh).num_remaining_in_head_chunk = count
-        }
-        (*hh).num_remaining_in_head_chunk -= 1;
-        ((*hh).head as *mut i8)
-            .offset(size.wrapping_mul((*hh).num_remaining_in_head_chunk as u64) as isize)
-            as *mut libc::c_void
-    }
-}
-unsafe fn stbtt__hheap_free(mut hh: *mut stbtt__hheap, p: *mut libc::c_void) {
-    let ref mut fresh20 = *(p as *mut *mut libc::c_void);
-    *fresh20 = (*hh).first_free;
-    (*hh).first_free = p;
-}
+
 unsafe fn sort_edges(p: *mut Edge, n: i32) {
     stbtt__sort_edges_quicksort(p, n);
 
@@ -2400,26 +2323,26 @@ unsafe fn stbtt__sort_edges_quicksort(mut p: *mut Edge, mut n: i32) {
         let mut i;
         let mut j;
         m = n >> 1;
-        c01 = ((*p.offset(0isize)).y0 < (*p.offset(m as isize)).y0) as i32;
+        c01 = ((*p.offset(0)).y0 < (*p.offset(m as isize)).y0) as i32;
         c12 = ((*p.offset(m as isize)).y0 < (*p.offset((n - 1) as isize)).y0) as i32;
         if c01 != c12 {
             let mut z: i32 = 0;
-            c = ((*p.offset(0isize)).y0 < (*p.offset((n - 1) as isize)).y0) as i32;
+            c = ((*p.offset(0)).y0 < (*p.offset((n - 1) as isize)).y0) as i32;
             z = if c == c12 { 0 } else { n - 1 };
             t = *p.offset(z as isize);
             *p.offset(z as isize) = *p.offset(m as isize);
             *p.offset(m as isize) = t
         }
-        t = *p.offset(0isize);
-        *p.offset(0isize) = *p.offset(m as isize);
+        t = *p.offset(0);
+        *p.offset(0) = *p.offset(m as isize);
         *p.offset(m as isize) = t;
         i = 1;
         j = n - 1;
         loop {
-            while (*p.offset(i as isize)).y0 < (*p.offset(0isize)).y0 {
+            while (*p.offset(i as isize)).y0 < (*p.offset(0)).y0 {
                 i += 1
             }
-            while (*p.offset(0isize)).y0 < (*p.offset(j as isize)).y0 {
+            while (*p.offset(0)).y0 < (*p.offset(j as isize)).y0 {
                 j -= 1
             }
             /* make sure we haven't crossed */
@@ -2576,7 +2499,7 @@ pub unsafe fn fonsTextBounds(
             }
             prevGlyphIndex = if !glyph.is_null() { (*glyph).index } else { -1 }
         }
-        str = str.offset(1isize)
+        str = str.offset(1)
     }
     let advance = x - startx;
     if !(0 != (*state).align & FONS_ALIGN_LEFT as i32) {
@@ -2589,20 +2512,15 @@ pub unsafe fn fonsTextBounds(
         }
     }
     if !bounds.is_null() {
-        *bounds.offset(0isize) = minx;
-        *bounds.offset(1isize) = miny;
-        *bounds.offset(2isize) = maxx;
+        *bounds.offset(0) = minx;
+        *bounds.offset(1) = miny;
+        *bounds.offset(2) = maxx;
         *bounds.offset(3isize) = maxy
     }
     advance
 }
 
-pub unsafe fn fonsLineBounds(
-    stash: *mut Stash,
-    mut y: f32,
-    miny: *mut f32,
-    maxy: *mut f32,
-) {
+pub unsafe fn fonsLineBounds(stash: *mut Stash, mut y: f32, miny: *mut f32, maxy: *mut f32) {
     let state: *mut State = (*stash).state_mut();
     if stash.is_null() {
         return;
@@ -2650,11 +2568,8 @@ pub unsafe fn fonsTextIterInit(
     bitmapOption: i32,
 ) -> i32 {
     let state: *mut State = (*stash).state_mut();
-    memset(
-        iter as *mut libc::c_void,
-        0,
-        size_of::<TextIter>() as u64,
-    );
+    iter.write_bytes(0, 1);
+
     if stash.is_null() {
         return 0;
     }
@@ -2667,13 +2582,29 @@ pub unsafe fn fonsTextIterInit(
     }
     (*iter).isize_0 = ((*state).size * 10.0) as i16;
     (*iter).iblur = (*state).blur as i16;
-    (*iter).scale = (*(*iter).font).font.pixel_height_scale((*iter).isize_0 as f32 / 10.0);
+    (*iter).scale = (*(*iter).font)
+        .font
+        .pixel_height_scale((*iter).isize_0 as f32 / 10.0);
     if !(0 != (*state).align & FONS_ALIGN_LEFT as i32) {
         if 0 != (*state).align & FONS_ALIGN_RIGHT as i32 {
-            let width = fonsTextBounds(stash, x, y, str as *const i8, end as *const i8, 0 as *mut f32);
+            let width = fonsTextBounds(
+                stash,
+                x,
+                y,
+                str as *const i8,
+                end as *const i8,
+                0 as *mut f32,
+            );
             x -= width;
         } else if 0 != (*state).align & FONS_ALIGN_CENTER as i32 {
-            let width = fonsTextBounds(stash, x, y, str as *const i8, end as *const i8, 0 as *mut f32);
+            let width = fonsTextBounds(
+                stash,
+                x,
+                y,
+                str as *const i8,
+                end as *const i8,
+                0 as *mut f32,
+            );
             x -= width * 0.5;
         }
     }
@@ -2705,16 +2636,4 @@ pub unsafe fn fonsAddFallbackFont(stash: *mut Stash, base: i32, fallback: i32) -
         return 1;
     }
     0
-}
-
-// Pull texture changes
-
-pub unsafe fn fonsGetTextureData(stash: *mut Stash, width: *mut i32, height: *mut i32) -> *const u8 {
-    if !width.is_null() {
-        *width = (*stash).width
-    }
-    if !height.is_null() {
-        *height = (*stash).height
-    }
-    (*stash).tex_data
 }

@@ -1,3 +1,5 @@
+#![allow(clippy::cast_lossless)]
+
 use slotmap::Key;
 use std::ptr::null;
 
