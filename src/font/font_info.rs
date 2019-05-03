@@ -102,7 +102,7 @@ pub unsafe fn stbtt__GetGlyfOffset(mut info: *const FontInfo, mut glyph_index: i
                 .offset(4),
         )) as i32
     }
-    return if g1 == g2 { -1 } else { g1 };
+    if g1 == g2 { -1 } else { g1 }
 }
 
 pub unsafe fn stbtt_GetGlyphBitmapBoxSubpixel(
