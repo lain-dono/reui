@@ -4,7 +4,9 @@ use std::ptr::null;
 mod atlas;
 mod blur;
 mod fons;
+mod font_info;
 mod stash;
+mod utils;
 
 use self::fons::{Metrics, FONS_INVALID};
 pub use self::stash::Stash;
