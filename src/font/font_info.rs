@@ -33,7 +33,7 @@ impl FontInfo {
     }
 
     pub unsafe fn glyph_kern_advance(&self, glyph1: i32, glyph2: i32) -> i32 {
-        let mut data: *mut u8 = self.data.offset(self.kern as isize);
+        let data: *mut u8 = self.data.offset(self.kern as isize);
         if 0 == self.kern {
             return 0;
         }
@@ -61,7 +61,7 @@ impl FontInfo {
     }
 }
 
-pub unsafe fn stbtt__GetGlyfOffset(mut info: *const FontInfo, mut glyph_index: i32) -> i32 {
+pub unsafe fn stbtt__GetGlyfOffset(info: *const FontInfo, glyph_index: i32) -> i32 {
     let mut g1: i32 = 0;
     let mut g2: i32 = 0;
     if glyph_index >= (*info).numGlyphs {
