@@ -5,7 +5,6 @@ use crate::backend::Image;
 use crate::transform;
 use slotmap::Key;
 
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Paint {
     pub xform: [f32; 6],
