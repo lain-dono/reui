@@ -1,6 +1,7 @@
 use slotmap::Key;
 use std::ptr::null;
 
+mod atlas;
 mod fons;
 mod stash;
 

@@ -10,9 +10,9 @@ use crate::context::State;
 
 pub use super::stash::Metrics;
 
+use super::atlas::Atlas;
 use super::stash::{
     Stash,
-    Atlas,
     Font,
     Quad,
 
@@ -44,12 +44,6 @@ const MAX_STATES: usize = 20;
 
 pub const GLYPH_BITMAP_OPTIONAL: i32 = 1;
 pub const GLYPH_BITMAP_REQUIRED: i32 = 2;
-
-
-#[repr(C)]
-pub struct FONSstate {
-    _stub: usize
-}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -113,7 +107,7 @@ pub struct FONScontext {
     scratch: *mut u8,
     nscratch: i32,
 
-    states: [FONSstate; MAX_STATES],
+    states: [super::stash::State; MAX_STATES],
     nstates: i32,
 }
 
