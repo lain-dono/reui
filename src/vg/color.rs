@@ -15,7 +15,6 @@ fn hue(mut h: f32, m1: f32, m2: f32) -> f32 {
     }
 }
 
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Color {
     pub r: f32,

@@ -1,4 +1,3 @@
-#[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Counters {
     pub draw_call_count: i32,

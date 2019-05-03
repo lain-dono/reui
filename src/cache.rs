@@ -64,7 +64,6 @@ fn choose_bevel(bevel: bool, p0: &Point, p1: &Point, w: f32) -> [f32; 4] {
     ]}
 }
 
-#[repr(i32)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum LineCap {
     Butt = 0,
@@ -72,7 +71,6 @@ pub enum LineCap {
     Square = 2,
 }
 
-#[repr(i32)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum LineJoin {
     Round = 1,
@@ -80,14 +78,12 @@ pub enum LineJoin {
     Miter = 4,
 }
 
-#[repr(i32)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Winding {
     CCW = 1, // Winding for solid shapes
     CW = 2,  // Winding for holes
 }
 
-#[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct Vertex {
     pub pos: [f32; 2],
@@ -108,7 +104,6 @@ impl Vertex {
 }
 
 bitflags::bitflags!(
-    #[repr(transparent)]
     #[derive(Default)]
     pub struct PointFlags: u8 {
         const CORNER = 0x01;
@@ -118,7 +113,6 @@ bitflags::bitflags!(
     }
 );
 
-#[repr(C)]
 #[derive(Clone, Default)]
 pub struct Point {
     pub x: f32,
@@ -142,7 +136,6 @@ impl Point {
     pub fn is_innerbevel(&self) -> bool { self.flags.contains(PointFlags::INNERBEVEL) }
 }
 
-#[repr(C)]
 pub struct Path {
     pub first: usize,
     pub count: usize,
@@ -270,7 +263,6 @@ impl<'a> Iterator for PairIterMut<'a> {
 }
 */
 
-#[repr(C)]
 pub struct PathCache {
     points: Vec<Point>,
     pub paths: Vec<Path>,

@@ -6,7 +6,6 @@ use crate::vg::*;
 use crate::vg::utils::min;
 use crate::context::{Context, Align};
 
-#[repr(i32)]
 pub enum GraphStyle {
     Fps = 0,
     Ms = 1,
@@ -41,7 +40,6 @@ impl Ticker {
 }
 */
 
-#[repr(C)]
 pub struct PerfGraph {
     style: GraphStyle,
     head: usize,

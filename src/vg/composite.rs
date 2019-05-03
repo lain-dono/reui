@@ -1,6 +1,5 @@
 use crate::context::Context;
 
-#[repr(i32)]
 #[derive(Clone, Copy)]
 pub enum BlendFactor {
     Zero                  = 0,
@@ -16,7 +15,6 @@ pub enum BlendFactor {
     SrcAlphaSaturate    = 10,
 }
 
-#[repr(i32)]
 #[derive(Clone, Copy)]
 pub enum CompositeOp {
     SrcOver = 0,
@@ -32,7 +30,6 @@ pub enum CompositeOp {
     Xor     = 10,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct CompositeState {
     pub src_color: BlendFactor,

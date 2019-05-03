@@ -2,7 +2,6 @@ use crate::context::Context;
 use crate::transform;
 use super::utils::{minf, maxf};
 
-#[repr(C)]
 #[derive(Clone)]
 pub struct Scissor {
     pub xform: [f32; 6],

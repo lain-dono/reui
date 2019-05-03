@@ -866,13 +866,14 @@ pub unsafe fn fons__tt_loadFont(
 
     (*info).data = data;
     (*info).fontstart = fontstart;
-    let cmap = find_table(data, fontstart as u32, b"cmap");
-    (*info).loca = find_table(data, fontstart as u32, b"loca") as i32;
-    (*info).head = find_table(data, fontstart as u32, b"head") as i32;
-    (*info).glyf = find_table(data, fontstart as u32, b"glyf") as i32;
-    (*info).hhea = find_table(data, fontstart as u32, b"hhea") as i32;
-    (*info).hmtx = find_table(data, fontstart as u32, b"hmtx") as i32;
-    (*info).kern = find_table(data, fontstart as u32, b"kern") as i32;
+
+    let cmap = find_table(data, fontstart as u32, *b"cmap");
+    (*info).loca = find_table(data, fontstart as u32, *b"loca") as i32;
+    (*info).head = find_table(data, fontstart as u32, *b"head") as i32;
+    (*info).glyf = find_table(data, fontstart as u32, *b"glyf") as i32;
+    (*info).hhea = find_table(data, fontstart as u32, *b"hhea") as i32;
+    (*info).hmtx = find_table(data, fontstart as u32, *b"hmtx") as i32;
+    (*info).kern = find_table(data, fontstart as u32, *b"kern") as i32;
     if 0 == cmap
         || 0 == (*info).loca
         || 0 == (*info).head
@@ -883,7 +884,7 @@ pub unsafe fn fons__tt_loadFont(
         return 0;
     }
 
-    let t = find_table(data, fontstart as u32, b"maxp");
+    let t = find_table(data, fontstart as u32, *b"maxp");
     (*info).numGlyphs = if 0 != t {
         read_u16(data.offset(t as isize).offset(4)) as i32
     } else {
@@ -918,18 +919,13 @@ pub unsafe fn fons__tt_loadFont(
     1
 }
 // @OPTIMIZE: binary search
-unsafe fn find_table(data: *mut u8, fontstart: u32, tag: &[u8]) -> u32 {
+unsafe fn find_table(data: *mut u8, fontstart: u32, tag: [u8; 4]) -> u32 {
     let num_tables: i32 = read_u16(data.offset(fontstart as isize).offset(4)) as i32;
     let tabledir: u32 = fontstart.wrapping_add(12 as u32);
     for i in 0..num_tables {
         let loc = tabledir.wrapping_add((16 * i) as u32) as isize;
-        let loc = data.offset(loc);
-        if *loc.offset(0) == tag[0]
-            && *loc.offset(1) == tag[1]
-            && *loc.offset(2) == tag[2]
-            && *loc.offset(3) == tag[3]
-        {
-            return read_u32(loc.offset(8));
+        if *(data.offset(loc) as *const [u8; 4]) == tag {
+            return read_u32(data.offset(loc + 8));
         }
     }
     0
@@ -971,7 +967,7 @@ impl Stash {
                 .glyph_kern_advance(prevGlyphIndex, (*glyph).index)
                 as f32
                 * scale;
-            *x += (adv + spacing + 0.5f32) as i32 as f32
+            *x += (adv + spacing + 0.5) as i32 as f32
         }
         xoff = ((*glyph).xoff as i32 + 1) as i16 as f32;
         yoff = ((*glyph).yoff as i32 + 1) as i16 as f32;

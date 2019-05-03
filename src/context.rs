@@ -20,7 +20,6 @@ pub const MAX_FONTIMAGE_SIZE: u32 = 2048;
 pub const MAX_FONTIMAGES: usize = 4;
 
 bitflags::bitflags!(
-    #[repr(C)]
     pub struct Align: i32 {
         const LEFT      = 1;       // Default, align text horizontally to left.
         const CENTER    = 1<<1;    // Align text horizontally to center.
@@ -33,7 +32,6 @@ bitflags::bitflags!(
     }
 );
 
-#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct TextRow {
     pub start: *const u8,   // Pointer to the input text where the row starts.
@@ -53,7 +51,6 @@ impl TextRow {
     }
 }
 
-#[repr(C)]
 pub struct GlyphPosition {
     pub s: *const u8,   // Position of the glyph in the input string.
     pub x: f32,         // The x-coordinate of the logical glyph position.
@@ -62,7 +59,6 @@ pub struct GlyphPosition {
     pub maxx: f32,
 }
 
-#[repr(C)]
 #[derive(Clone)]
 pub struct State {
     pub composite: CompositeState,
@@ -117,7 +113,6 @@ impl State {
     }
 }
 
-#[repr(C)]
 pub struct States {
     states: ArrayVec<[State; 32]>,
 }
@@ -140,7 +135,6 @@ impl States {
     }
 }
 
-#[repr(C)]
 pub struct Context {
     pub commands: Vec<f32>,
 
