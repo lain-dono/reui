@@ -28,7 +28,6 @@ use super::stash::{
 
     fonsTextBounds,
     fonsTextIterInit,
-    fonsTextIterNext,
     fonsVertMetrics,
 };
 

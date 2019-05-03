@@ -2,6 +2,7 @@ use slotmap::Key;
 use std::ptr::null;
 
 mod atlas;
+mod blur;
 mod fons;
 mod stash;
 

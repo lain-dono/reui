@@ -11,6 +11,7 @@
 #![deny(dead_code)]
 
 use super::atlas::Atlas;
+use super::blur::blur;
 
 pub struct Metrics {
     pub ascender: f32,
@@ -52,7 +53,6 @@ extern "C" {
 
     fn sqrt(_: f64) -> f64;
     fn fabs(_: f64) -> f64;
-    fn expf(_: f32) -> f32;
 
     fn memcpy(_: *mut libc::c_void, _: *const libc::c_void, _: u64) -> *mut libc::c_void;
     fn memset(_: *mut libc::c_void, _: i32, _: u64) -> *mut libc::c_void;
@@ -221,8 +221,7 @@ pub unsafe fn fonsTextIterNext(
                 iter.bitmapOption,
             );
             if !glyph.is_null() {
-                fons__getQuad(
-                    stash,
+                (*stash).get_quad(
                     iter.font,
                     iter.prev_glyph_index,
                     glyph,
@@ -952,50 +951,53 @@ pub unsafe fn fonsGetFontByName(s: *mut Stash, name: *const i8) -> i32 {
 }
 // Draw text
 
-pub unsafe fn fons__getQuad(
-    mut stash: *mut Stash,
-    mut font: *mut Font,
-    mut prevGlyphIndex: i32,
-    mut glyph: *mut Glyph,
-    mut scale: f32,
-    mut spacing: f32,
-    mut x: *mut f32,
-    mut y: *mut f32,
-    mut q: *mut Quad,
-) {
-    let mut rx: f32 = 0.;
-    let mut ry: f32 = 0.;
-    let mut xoff: f32 = 0.;
-    let mut yoff: f32 = 0.;
-    let mut x0: f32 = 0.;
-    let mut y0: f32 = 0.;
-    let mut x1: f32 = 0.;
-    let mut y1: f32 = 0.;
-    if prevGlyphIndex != -1 {
-        let mut adv: f32 =
-            fons__tt_getGlyphKernAdvance(&mut (*font).font, prevGlyphIndex, (*glyph).index) as f32
-                * scale;
-        *x += (adv + spacing + 0.5f32) as i32 as f32
+impl Stash {
+    pub unsafe fn get_quad(
+        &mut self,
+        mut font: *mut Font,
+        mut prevGlyphIndex: i32,
+        mut glyph: *mut Glyph,
+        mut scale: f32,
+        mut spacing: f32,
+        mut x: &mut f32,
+        mut y: &mut f32,
+        mut q: &mut Quad,
+    ) {
+        let mut rx: f32 = 0.;
+        let mut ry: f32 = 0.;
+        let mut xoff: f32 = 0.;
+        let mut yoff: f32 = 0.;
+        let mut x0: f32 = 0.;
+        let mut y0: f32 = 0.;
+        let mut x1: f32 = 0.;
+        let mut y1: f32 = 0.;
+        if prevGlyphIndex != -1 {
+            let mut adv: f32 =
+                fons__tt_getGlyphKernAdvance(&mut (*font).font, prevGlyphIndex, (*glyph).index) as f32
+                    * scale;
+            *x += (adv + spacing + 0.5f32) as i32 as f32
+        }
+        xoff = ((*glyph).xoff as i32 + 1) as i16 as f32;
+        yoff = ((*glyph).yoff as i32 + 1) as i16 as f32;
+        x0 = ((*glyph).x0 as i32 + 1) as f32;
+        y0 = ((*glyph).y0 as i32 + 1) as f32;
+        x1 = ((*glyph).x1 as i32 - 1) as f32;
+        y1 = ((*glyph).y1 as i32 - 1) as f32;
+
+        rx = (*x + xoff) as i32 as f32;
+        ry = (*y + yoff) as i32 as f32;
+
+        q.x0 = rx;
+        q.y0 = ry;
+        q.x1 = rx + x1 - x0;
+        q.y1 = ry + y1 - y0;
+        q.s0 = x0 * self.itw;
+        q.t0 = y0 * self.ith;
+        q.s1 = x1 * self.itw;
+        q.t1 = y1 * self.ith;
+
+        *x += ((*glyph).xadv as f32 / 10.0 + 0.5) as i32 as f32;
     }
-    xoff = ((*glyph).xoff as i32 + 1) as i16 as f32;
-    yoff = ((*glyph).yoff as i32 + 1) as i16 as f32;
-    x0 = ((*glyph).x0 as i32 + 1) as f32;
-    y0 = ((*glyph).y0 as i32 + 1) as f32;
-    x1 = ((*glyph).x1 as i32 - 1) as f32;
-    y1 = ((*glyph).y1 as i32 - 1) as f32;
-
-    rx = (*x + xoff) as i32 as f32;
-    ry = (*y + yoff) as i32 as f32;
-    (*q).x0 = rx;
-    (*q).y0 = ry;
-    (*q).x1 = rx + x1 - x0;
-    (*q).y1 = ry + y1 - y0;
-    (*q).s0 = x0 * (*stash).itw;
-    (*q).t0 = y0 * (*stash).ith;
-    (*q).s1 = x1 * (*stash).itw;
-    (*q).t1 = y1 * (*stash).ith;
-
-    *x += ((*glyph).xadv as i32 as f32 / 10.0f32 + 0.5f32) as i32 as f32;
 }
 
 pub unsafe fn fons__tt_getGlyphKernAdvance(
@@ -1193,7 +1195,7 @@ pub unsafe fn fons__getGlyph(
             .tex_data
             .offset(((*glyph).x0 as i32 + (*glyph).y0 as i32 * (*stash).width) as isize)
             as *mut u8;
-        fons__blur(bdst, gw, gh, (*stash).width, iblur as i32);
+        blur(bdst, gw, gh, (*stash).width, iblur as i32);
     }
     (*stash).dirty_rect = [
         min((*stash).dirty_rect[0], (*glyph).x0 as i32),
@@ -1202,67 +1204,6 @@ pub unsafe fn fons__getGlyph(
         max((*stash).dirty_rect[3], (*glyph).y1 as i32),
     ];
     glyph
-}
-
-pub unsafe fn fons__blur(dst: *mut u8, w: i32, h: i32, dstStride: i32, blur: i32) {
-    if blur < 1 {
-        return;
-    }
-    let sigma = blur as f32 * 0.57735;
-    let alpha = ((1 << 16) as f32 * (1.0 - expf(-2.3 / (sigma + 1.0)))) as i32;
-    fons__blurRows(dst, w, h, dstStride, alpha);
-    fons__blurCols(dst, w, h, dstStride, alpha);
-    fons__blurRows(dst, w, h, dstStride, alpha);
-    fons__blurCols(dst, w, h, dstStride, alpha);
-}
-// Based on Exponential blur, Jani Huhtanen, 2006
-
-pub unsafe fn fons__blurCols(mut dst: *mut u8, w: i32, h: i32, dstStride: i32, alpha: i32) {
-    let mut y = 0;
-    while y < h {
-        let mut z = 0;
-        let mut x = 1;
-        while x < w {
-            z += alpha * (((*dst.offset(x as isize) as i32) << 7) - z) >> 16;
-            *dst.offset(x as isize) = (z >> 7) as u8;
-            x += 1
-        }
-        *dst.offset((w - 1) as isize) = 0 as u8;
-        z = 0;
-        x = w - 2i32;
-        while x >= 0 {
-            z += alpha * (((*dst.offset(x as isize) as i32) << 7) - z) >> 16;
-            *dst.offset(x as isize) = (z >> 7) as u8;
-            x -= 1
-        }
-        *dst.offset(0isize) = 0 as u8;
-        dst = dst.offset(dstStride as isize);
-        y += 1
-    }
-}
-
-pub unsafe fn fons__blurRows(mut dst: *mut u8, w: i32, h: i32, dstStride: i32, alpha: i32) {
-    let mut x = 0;
-    while x < w {
-        let mut z = 0;
-        let mut y = dstStride;
-        while y < h * dstStride {
-            z += alpha * (((*dst.offset(y as isize) as i32) << 7) - z) >> 16;
-            *dst.offset(y as isize) = (z >> 7) as u8;
-            y += dstStride
-        }
-        *dst.offset(((h - 1) * dstStride) as isize) = 0 as u8;
-        z = 0;
-        y = (h - 2i32) * dstStride;
-        while y >= 0 {
-            z += alpha * (((*dst.offset(y as isize) as i32) << 7) - z) >> 16;
-            *dst.offset(y as isize) = (z >> 7) as u8;
-            y -= dstStride
-        }
-        *dst.offset(0isize) = 0 as u8;
-        dst = dst.offset(1isize);
-        x += 1
-    }
 }
 
 pub unsafe fn fons__tt_renderGlyphBitmap(
@@ -3055,8 +2996,7 @@ pub unsafe fn fonsTextBounds(
                 FONS_GLYPH_BITMAP_OPTIONAL as i32,
             );
             if !glyph.is_null() {
-                fons__getQuad(
-                    stash,
+                (*stash).get_quad(
                     font,
                     prevGlyphIndex,
                     glyph,

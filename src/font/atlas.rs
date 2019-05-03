@@ -1,25 +1,23 @@
 use std::{
     mem::size_of,
-    ptr::null_mut,
     cmp::max,
-    slice::{from_raw_parts, from_raw_parts_mut},
 };
 
 extern "C" {
     fn malloc(_: u64) -> *mut libc::c_void;
     fn realloc(_: *mut libc::c_void, _: u64) -> *mut libc::c_void;
-    fn free(__ptr: *mut libc::c_void);
 
     fn memset(_: *mut libc::c_void, _: i32, _: u64) -> *mut libc::c_void;
 }
 
 #[derive(Clone)]
 pub struct Atlas {
-    pub width: i32,
-    pub height: i32,
+    pub width: i16,
+    pub height: i16,
+
     pub nodes: *mut AtlasNode,
-    pub nnodes: i32,
-    pub cnodes: i32,
+    pub nnodes: usize,
+    pub cnodes: usize,
 }
 
 #[derive(Copy, Clone)]
@@ -30,69 +28,58 @@ pub struct AtlasNode {
 }
 
 impl Atlas {
-    fn nodes(&self) -> &[AtlasNode] {
-        unsafe { from_raw_parts(self.nodes, self.nnodes as usize) }
-    }
-    fn nodes_mut(&mut self) -> &mut [AtlasNode] {
-        unsafe { from_raw_parts_mut(self.nodes, self.nnodes as usize) }
-    }
- 
-    pub fn reset(&mut self, w: i32, h: i32) {
-        self.width = w;
-        self.height = h;
-        self.nnodes = 1;
-        unsafe {
-            *self.nodes.offset(0) = AtlasNode {
-                x: 0,
-                y: 0,
-                width: w as i16,
-            };
+    pub fn new(w: i32, h: i32, nnodes: i32) -> Self {
+        Self {
+            width: w as i16,
+            height: h as i16,
+            nnodes: 1,
+            cnodes: nnodes as usize,
+
+            nodes: unsafe {
+                let nodes = malloc((size_of::<AtlasNode>() as u64).wrapping_mul(nnodes as u64)) as *mut AtlasNode;
+                assert!(!nodes.is_null());
+                memset(nodes as *mut libc::c_void, 0, (size_of::<AtlasNode>() as u64).wrapping_mul(nnodes as u64));
+
+                *nodes = AtlasNode {
+                    x: 0,
+                    y: 0,
+                    width: w as i16,
+                };
+                nodes
+            },
         }
     }
 
-    pub unsafe fn new(w: i32, h: i32, nnodes: i32) -> Atlas {
-        let nodes = malloc((size_of::<AtlasNode>() as u64).wrapping_mul(nnodes as u64)) as *mut AtlasNode;
-        assert!(!nodes.is_null());
-        memset(nodes as *mut libc::c_void, 0, (size_of::<AtlasNode>() as u64).wrapping_mul(nnodes as u64));
-
-        *nodes.offset(0) = AtlasNode {
+    pub fn reset(&mut self, w: i32, h: i32) {
+        self.width = w as i16;
+        self.height = h as i16;
+        self.nnodes = 1;
+        self[0] = AtlasNode {
             x: 0,
             y: 0,
             width: w as i16,
-        };
-
-        Atlas {
-            width: w,
-            height: h,
-
-            nodes,
-            nnodes: 1,
-            cnodes: nnodes,
         }
     }
 
-    pub fn add_rect(
-        &mut self,
-        rw: i32,
-        rh: i32,
-    ) -> Option<(i32, i32)> {
-        let mut bestw: i32 = self.width;
-        let mut besth: i32 = self.height;
+    pub fn add_rect(&mut self, rw: i32, rh: i32) -> Option<(i32, i32)> {
+        let (rw, rh) = (rw as i16, rh as i16);
+
+        let mut bestw = self.width;
+        let mut besth = self.height;
 
         let mut besti: i32 = -1;
 
-        let mut bestx: i32 = -1;
-        let mut besty: i32 = -1;
+        let mut bestx = -1;
+        let mut besty = -1;
 
         for i in 0..self.nnodes {
-            let y = self.rect_fits(i as usize, rw, rh) as i32;
-            if y != -1 {
-                let node = &self.nodes()[i as usize];
-                if y + rh < besth || y + rh == besth && (node.width as i32) < bestw {
-                    besti = i;
-                    bestw = node.width as i32;
+            if let Some(y) = self.rect_fits(i, rw, rh) {
+                let node = &self[i];
+                if y + rh < besth || y + rh == besth && node.width < bestw {
+                    besti = i as i32;
+                    bestw = node.width;
                     besth = y + rh;
-                    bestx = node.x as i32;
+                    bestx = node.x;
                     besty = y
                 }
             }
@@ -102,25 +89,25 @@ impl Atlas {
             return None;
         }
 
-        if unsafe { fons__atlasAddSkylineLevel(self, besti, bestx, besty, rw, rh) } == 0 {
+        if !self.add_skyline_level(besti as usize, bestx, besty, rw, rh) {
             return None;
         }
 
-        Some((bestx, besty))
+        Some((i32::from(bestx), i32::from(besty)))
     }
 
-    pub fn remove_node(&mut self, mut i: usize) {
+    fn remove_node(&mut self, mut i: usize) {
         if self.nnodes == 0 {
             return;
         }
-        while i < self.nnodes as usize - 1 {
-            self.nodes_mut()[i] = self.nodes()[i + 1];
+        while i < self.nnodes - 1 {
+            self[i] = self[i + 1];
             i += 1
         }
         self.nnodes -= 1;
     }
 
-    pub fn insert_node(&mut self, idx: usize, x: i32, y: i32, w: i32) -> bool {
+    fn insert_node(&mut self, idx: usize, x: i16, y: i16, width: i16) -> bool {
         if self.nnodes + 1 > self.cnodes {
             self.cnodes = if self.cnodes == 0 {
                 8
@@ -136,90 +123,93 @@ impl Atlas {
             }
         }
 
-        let mut i = self.nnodes as usize;
+        let mut i = self.nnodes;
         self.nnodes += 1;
         while i > idx {
-            self.nodes_mut()[i] = self.nodes()[i - 1];
+            self[i] = self[i - 1];
             i -= 1
         }
-        self.nodes_mut()[idx] = AtlasNode {
-            x: x as i16,
-            y: y as i16,
-            width: w as i16,
-        };
+        self[idx] = AtlasNode { x, y, width };
         true
     }
 
-    fn rect_fits(&mut self, mut i: usize, w: i32, h: i32) -> i16 {
-        let (w, h) = (w as i16, h as i16);
+    fn rect_fits(&mut self, mut i: usize, width: i16, height: i16) -> Option<i16> {
         // Checks if there is enough space at the location of skyline span 'i',
         // and return the max height of all skyline spans under that at that location,
         // (think tetris block being dropped at that position). Or -1 if no space found.
-        let mut x = self.nodes()[i].x;
-        let mut y = self.nodes()[i].y;
-        if x + w > self.width as i16 {
-            return -1;
+        let x = self[i].x;
+        let mut y = self[i].y;
+        if x + width > self.width {
+            return None;
         }
-        let mut space_left = w;
+        let mut space_left = width;
         while space_left > 0 {
-            if i == self.nodes().len() {
-                return -1;
+            if i == self.nnodes {
+                return None;
             }
-            y = max(y, self.nodes()[i].y);
-            if y + h > self.height as i16 {
-                return -1;
+            y = max(y, self[i].y);
+            if y + height > self.height {
+                return None;
             }
-            space_left -= self.nodes()[i].width;
+            space_left -= self[i].width;
+            i += 1;
+        }
+        Some(y)
+    }
+
+    fn add_skyline_level(
+        &mut self,
+        idx: usize,
+        x: i16,
+        y: i16,
+        width: i16,
+        height: i16,
+    ) -> bool {
+        if !self.insert_node(idx, x, y + height, width) {
+            return false;
+        }
+
+        let i = idx + 1;
+        while i < self.nnodes {
+            if self[i].x >= self[i - 1].x + self[i - 1].width {
+                break;
+            }
+
+            let shrink = self[i - 1].x + self[i - 1].width - self[i].x;
+
+            self[i].x += shrink;
+            self[i].width -= shrink;
+
+            if self[i].width > 0 {
+                break;
+            }
+
+            self.remove_node(i);
+        }
+
+        let mut i = 0;
+        while i < self.nnodes - 1 {
+            if self[i].y == self[i + 1].y {
+                self[i].width += self[i + 1].width;
+                self.remove_node(i + 1);
+                i -= 1
+            }
             i += 1
         }
-        y
+
+        true
     }
 }
 
-unsafe fn fons__atlasAddSkylineLevel(
-    atlas: *mut Atlas,
-    idx: i32,
-    x: i32,
-    y: i32,
-    w: i32,
-    h: i32,
-) -> i32 {
-    if !(*atlas).insert_node(idx as usize, x, y + h, w) {
-        return 0;
+impl std::ops::Index<usize> for Atlas {
+    type Output = AtlasNode;
+    fn index(&self, index: usize) -> &Self::Output {
+        unsafe { &*self.nodes.add(index) }
     }
-    let mut i = idx + 1;
-    while i < (*atlas).nnodes {
-        if (*(*atlas).nodes.offset(i as isize)).x >= (*(*atlas).nodes.offset((i - 1) as isize)).x
-                + (*(*atlas).nodes.offset((i - 1) as isize)).width
-        {
-            break;
-        }
-        let mut shrink: i32 = (*(*atlas).nodes.offset((i - 1) as isize)).x as i32
-            + (*(*atlas).nodes.offset((i - 1) as isize)).width as i32
-            - (*(*atlas).nodes.offset(i as isize)).x as i32;
-        let ref mut fresh0 = (*(*atlas).nodes.offset(i as isize)).x;
-        *fresh0 = (*fresh0 as i32 + shrink as i16 as i32) as i16;
-        let ref mut fresh1 = (*(*atlas).nodes.offset(i as isize)).width;
-        *fresh1 = (*fresh1 as i32 - shrink as i16 as i32) as i16;
-        if !((*(*atlas).nodes.offset(i as isize)).width as i32 <= 0) {
-            break;
-        }
-        (*atlas).remove_node(i as usize);
-        i -= 1;
-        i += 1
+}
+
+impl std::ops::IndexMut<usize> for Atlas {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        unsafe { &mut *self.nodes.add(index) }
     }
-    i = 0;
-    while i < (*atlas).nnodes - 1 {
-        if (*(*atlas).nodes.offset(i as isize)).y as i32
-            == (*(*atlas).nodes.offset((i + 1) as isize)).y as i32
-        {
-            let ref mut fresh2 = (*(*atlas).nodes.offset(i as isize)).width;
-            *fresh2 =
-                (*fresh2 as i32 + (*(*atlas).nodes.offset((i + 1) as isize)).width as i32) as i16;
-            (*atlas).remove_node(i as usize + 1);
-            i -= 1
-        }
-        i += 1
-    }
-    1
 }
