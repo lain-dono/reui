@@ -223,13 +223,13 @@ impl DemoData {
             images[i] = m;
         }
 
-        let font_icons = vg.create_font("icons", "assets/entypo.ttf");
+        let font_icons = vg.create_font("icons", "assets/fonts/entypo.ttf");
         assert_ne!(font_icons, -1, "Could not add font icons.");
-        let font_normal = vg.create_font("sans", "assets/Roboto-Regular.ttf");
+        let font_normal = vg.create_font("sans", "assets/fonts/Roboto-Regular.ttf");
         assert_ne!(font_normal, -1, "Could not add font italic.");
-        let font_bold = vg.create_font("sans-bold", "assets/Roboto-Bold.ttf");
+        let font_bold = vg.create_font("sans-bold", "assets/fonts/Roboto-Bold.ttf");
         assert_ne!(font_bold, -1, "Could not add font bold.");
-        let font_emoji = vg.create_font("emoji", "assets/NotoEmoji-Regular.ttf");
+        let font_emoji = vg.create_font("emoji", "assets/fonts/NotoEmoji-Regular.ttf");
         assert_ne!(font_emoji, -1, "Could not add font emoji.");
 
         vg.add_fallback_font_id(font_normal, font_emoji);
