@@ -1,21 +1,15 @@
 use std::{
-    ffi::{c_void, CString},
-    os::raw::c_char,
-    mem::transmute,
-    ptr::null_mut,
+    ffi::CString,
 };
 
 use crate::context::Align;
 use crate::context::State;
 
-pub use super::stash::Metrics;
-
 use super::atlas::Atlas;
 use super::stash::{
     Stash,
-    Font,
-    Quad,
     TextIter,
+    Metrics,
 
     fonsAddFallbackFont,
     fonsAddFont,
@@ -46,26 +40,26 @@ impl Stash {
     pub fn add_font(&mut self, name: &str, path: &str) -> i32 {
         let name = CString::new(name).expect("add_font cstring");
         let path = CString::new(path).expect("add_font cstring");
-        unsafe { fonsAddFont(transmute(self), name.as_ptr(), path.as_ptr()) }
+        unsafe { fonsAddFont(self, name.as_ptr(), path.as_ptr()) }
     }
 
     pub fn add_font_mem(&mut self, name: &str, data: *mut u8, ndata: i32, free_data: i32) -> i32 {
         let name = CString::new(name).expect("add_font_mem cstring");
-        unsafe { fonsAddFontMem(transmute(self), name.as_ptr(), data, ndata, free_data) }
+        unsafe { fonsAddFontMem(self, name.as_ptr(), data, ndata, free_data) }
     }
 
     pub fn font_by_name(&mut self, name: *const u8) -> i32 {
-        unsafe { fonsGetFontByName(transmute(self), name as *const i8) }
+        unsafe { fonsGetFontByName(self, name as *const i8) }
     }
 
     pub fn add_fallback_font(&mut self, base: i32, fallback: i32) -> i32 {
-        unsafe { fonsAddFallbackFont(transmute(self), base, fallback) }
+        unsafe { fonsAddFallbackFont(self, base, fallback) }
     }
 
     pub fn texture_data(&mut self) -> (i32, i32, *const u8) {
         let mut w = 0;
         let mut h = 0;
-        let data = unsafe { fonsGetTextureData(transmute(self), &mut w, &mut h) };
+        let data = unsafe { fonsGetTextureData(self, &mut w, &mut h) };
         (w, h, data)
     }
 
@@ -87,8 +81,7 @@ impl Stash {
 
     pub fn sync_state(&mut self, state: &State, scale: f32) {
         unsafe {
-            let fs: &mut Stash = transmute(self);
-            let _state = fs.state_mut();
+            let _state = self.state_mut();
             _state.size = state.font_size*scale;
             _state.spacing = state.letter_spacing*scale;
             _state.blur = state.font_blur*scale;
@@ -99,23 +92,21 @@ impl Stash {
 
     pub fn metrics(&mut self) -> Metrics {
         unsafe {
-            fonsVertMetrics(transmute(self)).unwrap()
+            fonsVertMetrics(self).unwrap()
         }
     }
 
     pub fn line_bounds(&mut self, y: f32) -> (f32, f32) {
         let (mut miny, mut maxy) = (0.0, 0.0);
         unsafe {
-            fonsLineBounds(transmute(self), y, &mut miny, &mut maxy);
+            fonsLineBounds(self, y, &mut miny, &mut maxy);
         }
         (miny, maxy)
     }
 
     pub fn text_bounds(&mut self, x: f32, y: f32, start: *const u8, end: *const u8, bounds: *mut f32) -> f32 {
         unsafe {
-            fonsTextBounds(transmute(self), x, y,
-                start as *const i8, end as *const i8,
-                bounds)
+            fonsTextBounds(self, x, y, start as *const i8, end as *const i8, bounds)
         }
     }
 

@@ -8,8 +8,8 @@ mod font_info;
 mod stash;
 mod utils;
 
-use self::fons::{Metrics, FONS_INVALID};
-pub use self::stash::Stash;
+use self::fons::FONS_INVALID;
+pub use self::stash::{Stash, Metrics};
 
 use crate::{
     context::{
