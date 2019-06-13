@@ -1,5 +1,4 @@
-use crate::context::Context;
-use crate::transform::{self, Transform};
+use crate::{context::Context, transform::Transform};
 use super::utils::{minf, maxf};
 
 #[derive(Clone)]

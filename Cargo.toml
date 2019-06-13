@@ -11,6 +11,7 @@ bitflags = "1"
 env_logger = "0.5"
 log = "0.4"
 arrayvec = "0.4"
+euclid = "^0.19"
 
 wgpu-native = "0.2"
 wgpu = "0.2"

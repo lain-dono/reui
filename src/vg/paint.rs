@@ -1,8 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::{Color, utils::maxf};
-use crate::backend::Image;
-use crate::transform::{self, Transform};
+use crate::{backend::Image, transform::Transform};
 use slotmap::Key;
 
 #[derive(Clone, Copy)]
