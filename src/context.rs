@@ -3,11 +3,12 @@ use arrayvec::ArrayVec;
 use crate::{
     backend::{BackendGL, Image, TEXTURE_ALPHA},
     cache::{PathCache, LineCap, LineJoin},
-    vg::Counters,
-    transform::Transform,
+    counters::Counters,
     vg::*,
     font::*,
     vg::utils::raw_str,
+    Transform,
+    transform_pt,
 };
 
 use std::ptr::null;
@@ -59,60 +60,6 @@ pub struct GlyphPosition {
     pub maxx: f32,
 }
 
-#[derive(Clone)]
-pub struct State {
-    pub composite: CompositeState,
-    pub shape_aa: i32,
-
-    pub fill: Paint,
-    pub stroke: Paint,
-
-    pub stroke_width: f32,
-    pub miter_limit: f32,
-    pub line_join: LineJoin,
-    pub line_cap: LineCap,
-    pub alpha: f32,
-    pub xform: Transform,
-    pub scissor: Scissor,
-
-    pub font_size: f32,
-    pub letter_spacing: f32,
-    pub line_height: f32,
-    pub font_blur: f32,
-    pub text_align: Align,
-    pub font_id: i32,
-}
-
-impl State {
-    fn new() -> Self {
-        Self {
-            fill: Paint::with_color(Color::new(0xFF_FFFFFF)),
-            stroke: Paint::with_color(Color::new(0xFF_000000)),
-
-            composite: CompositeOp::SrcOver.into(),
-            shape_aa: 1,
-            stroke_width: 1.0,
-            miter_limit: 10.0,
-            line_cap: LineCap::Butt,
-            line_join: LineJoin::Miter,
-            alpha: 1.0,
-            xform: Transform::identity(),
-
-            scissor: Scissor {
-                extent: [-1.0, -1.0],
-                xform: Transform::identity(),
-            },
-
-            font_size: 16.0,
-            letter_spacing: 0.0,
-            line_height: 1.0,
-            font_blur: 0.0,
-            text_align: Align::LEFT | Align::BASELINE,
-            font_id: 0,
-        }
-    }
-}
-
 pub struct States {
     states: ArrayVec<[State; 32]>,
 }
@@ -134,6 +81,7 @@ impl States {
         self.states.clear();
     }
 }
+
 
 pub struct Context {
     pub commands: Vec<f32>,
@@ -362,7 +310,6 @@ impl Context {
 
     pub(crate) fn append_commands(&mut self, vals: &mut [f32]) {
         use crate::draw_api::{MOVETO, LINETO, BEZIERTO, CLOSE, WINDING};
-        use crate::transform::transform_pt;
 
         let xform = &self.states.last().xform;
 

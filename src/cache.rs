@@ -802,7 +802,6 @@ impl Verts {
         Self { dst, count: 0 }
     }
 
-    #[inline]
     fn push(&mut self, pos: [f32; 2], u: f32, v: f32) {
         unsafe {
             *self.dst = Vertex::new(pos, [u, v]);

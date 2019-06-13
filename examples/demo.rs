@@ -194,6 +194,7 @@ use oni2d::{
         maxf,
         slice_start_end,
     },
+    rect,
 };
 
 const ICON_SEARCH: isize = 0x1F50D;
@@ -866,7 +867,7 @@ fn draw_thumbnails(vg: &mut Context, x: f32, y: f32, w: f32, h: f32, images: &[I
     vg.fill();
 
     vg.save();
-    vg.scissor(x,y,w,h);
+    vg.scissor(rect(x,y,w,h));
     vg.translate(0.0, -(stackh - h)*u);
 
     let dv = 1.0 / (images.len()-1) as f32;
@@ -1335,7 +1336,7 @@ fn draw_scissor(vg: &mut Context, x: f32, y: f32, t: f32) {
     vg.rect(-20.0,-20.0,60.0,40.0);
     vg.fill_color(Color::rgba(255,0,0,255));
     vg.fill();
-    vg.scissor(-20.0,-20.0,60.0,40.0);
+    vg.scissor(rect(-20.0,-20.0,60.0,40.0));
 
     // Draw second rectangle with offset and rotation.
     vg.translate(40.0,0.0);
@@ -1351,7 +1352,7 @@ fn draw_scissor(vg: &mut Context, x: f32, y: f32, t: f32) {
     vg.restore();
 
     // Draw second rectangle with combined scissoring.
-    vg.intersect_scissor(-20.0,-10.0,60.0,30.0);
+    vg.intersect_scissor(rect(-20.0,-10.0,60.0,30.0));
     vg.begin_path();
     vg.rect(-20.0,-10.0,60.0,30.0);
     vg.fill_color(Color::rgba(255,128,0,255));

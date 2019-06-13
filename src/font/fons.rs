@@ -2,7 +2,7 @@ use std::{
     ffi::CString,
 };
 
-use crate::context::State;
+use crate::vg::State;
 
 use super::stash::{
     Stash,

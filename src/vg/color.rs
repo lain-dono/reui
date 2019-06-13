@@ -37,7 +37,7 @@ impl Color {
     }
 
     /// Returns a color value from red, green, blue values. Alpha will be set to 255 (1.0f).
-    pub fn rgb(r: u8, g: u8, b: u8) -> Self {
+    pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self::rgba(r, g, b, 255)
     }
 
@@ -53,7 +53,7 @@ impl Color {
     }
 
     /// Returns a color value from red, green, blue values. Alpha will be set to 1.0f.
-    pub fn rgbf(r: f32, g: f32, b: f32) -> Color {
+    pub fn rgbf(r: f32, g: f32, b: f32) -> Self {
         Self::rgbaf(r, g, b, 1.0)
     }
 
@@ -88,7 +88,7 @@ impl Color {
 
     /// Returns color value specified by hue, saturation and lightness.
     /// HSL values are all in range [0..1], alpha will be set to 255.
-    pub fn hsl(h: f32, s: f32, l: f32) -> Color {
+    pub fn hsl(h: f32, s: f32, l: f32) -> Self {
         Self::hsla(h, s, l, 255)
     }
 

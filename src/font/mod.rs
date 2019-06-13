@@ -14,15 +14,15 @@ use self::fons::FONS_INVALID;
 pub use self::stash::{Stash, Metrics};
 
 use crate::{
+    vg::State,
     context::{
-        Context, Align, State,
+        Context, Align,
         TextRow,
         GlyphPosition,
         MAX_FONTIMAGE_SIZE, MAX_FONTIMAGES,
     },
     backend::TEXTURE_ALPHA,
     cache::Vertex,
-    transform::transform_point,
     vg::utils::{
         min, max,
         average_scale,
@@ -30,6 +30,7 @@ use crate::{
         raw_slice,
         raw_str,
     },
+    transform_point,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]

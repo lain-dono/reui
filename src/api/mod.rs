@@ -463,6 +463,7 @@ fn nvgImagePattern(_ctx: &mut c_void, cx: f32, cy: f32, w: f32, h: f32, angle: f
 // Scissoring allows you to clip the rendering into a rectangle. This is useful for various
 // user interface cases like rendering a text edit or a timeline.
 
+/*
 /// Sets the current scissor rectangle.
 /// The scissor rectangle is transformed by the current transform.
 #[no_mangle] pub extern "C"
@@ -488,6 +489,7 @@ fn nvgIntersectScissor(ctx: &mut Context, x: f32, y: f32, w: f32, h: f32) {
 fn nvgResetScissor(ctx: &mut Context) {
     ctx.reset_scissor();
 }
+*/
 
 //
 // Paths
