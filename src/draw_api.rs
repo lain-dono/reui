@@ -1,15 +1,17 @@
 use core::f32::consts::PI;
-use crate::context::Context;
-use crate::cache::{Winding, LineJoin};
-use crate::vg::utils::{
-    clamp,
-    min,
-    normalize,
-    pt_eq,
-    dist_pt_seg,
-    cross,
-    clampf,
-    average_scale,
+use crate::{
+    context::Context,
+    cache::{Winding, LineJoin},
+    vg::utils::{
+        clamp,
+        min,
+        normalize,
+        pt_eq,
+        dist_pt_seg,
+        cross,
+        clampf,
+        average_scale,
+    },
 };
 
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.

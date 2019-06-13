@@ -2,12 +2,12 @@
 
 use super::{Color, utils::maxf};
 use crate::backend::Image;
-use crate::transform;
+use crate::transform::{self, Transform};
 use slotmap::Key;
 
 #[derive(Clone, Copy)]
 pub struct Paint {
-    pub xform: [f32; 6],
+    pub xform: Transform,
     pub extent: [f32; 2],
     pub radius: f32,
     pub feather: f32,
@@ -46,11 +46,11 @@ impl Paint {
         };
 
         Self {
-            xform: [
+            xform: Transform::row_major(
                 dy, -dx,
                 dx, dy,
                 sx - dx*large, sy - dy*large,
-            ],
+            ),
             extent: [large, large + d * 0.5],
             radius: 0.0,
             feather: maxf(1.0, d),
@@ -72,12 +72,8 @@ impl Paint {
         let r = (inr+outr)*0.5;
         let f = outr-inr;
 
-        let mut xform = transform::identity();
-        xform[4] = cx;
-        xform[5] = cy;
-
         Self {
-            xform,
+            xform: Transform::create_translation(cx, cy),
             extent: [r, r],
             radius: r,
             feather: maxf(1.0, f),
@@ -102,12 +98,8 @@ impl Paint {
         inner_color: Color,
         outer_color: Color,
     ) -> Self {
-        let mut xform = transform::identity();
-        xform[4] = x+width*0.5;
-        xform[5] = y+height*0.5;
-
         Self {
-            xform,
+            xform: Transform::create_translation(x+width*0.5, y+height*0.5),
             extent: [width*0.5, height*0.5],
             radius,
             feather: maxf(1.0, feather),
@@ -127,9 +119,9 @@ impl Paint {
         w: f32, h: f32, angle: f32,
         image: Image, alpha: f32,
     ) -> Self {
-        let mut xform = transform::rotate(angle);
-        xform[4] = cx;
-        xform[5] = cy;
+        let mut xform = Transform::create_rotation(euclid::Angle::radians(angle));
+        xform.m31 = cx;
+        xform.m32 = cy;
 
         let white = Color::rgbaf(1.0, 1.0, 1.0, alpha);
 
@@ -146,7 +138,7 @@ impl Paint {
 
     pub fn with_color(color: Color) -> Self {
         Self {
-            xform: transform::identity(),
+            xform: Transform::identity(),
             extent: [0.0, 0.0],
             radius: 0.0,
             feather: 1.0,

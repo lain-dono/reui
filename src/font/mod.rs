@@ -153,6 +153,7 @@ impl Context {
 
         let mut iter = self.fs.text_iter_required(x*scale, y*scale, start, end);
         let mut prev_iter = iter;
+
         while let Some(mut q) = iter.next() {
             if iter.prev_glyph_index == -1 { // can not retrieve glyph?
                 if nverts != 0 {

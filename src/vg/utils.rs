@@ -4,6 +4,8 @@ use std::{
     slice::from_raw_parts,
 };
 
+use crate::transform::Transform;
+
 pub fn slice_start_end(b: &[u8]) -> (*const u8, *const u8) {
     unsafe {
         let start = b.as_ptr();
@@ -143,9 +145,9 @@ pub fn dist_pt_seg(x: f32, y: f32, px: f32, py: f32, qx: f32, qy: f32) -> f32 {
     dx*dx + dy*dy
 }
 
-pub fn average_scale(t: &[f32; 6]) -> f32 {
-    let sx = (t[0]*t[0] + t[2]*t[2]).sqrt();
-    let sy = (t[1]*t[1] + t[3]*t[3]).sqrt();
+pub fn average_scale(t: &Transform) -> f32 {
+    let sx = (t.m11*t.m11 + t.m12*t.m12).sqrt();
+    let sy = (t.m21*t.m21 + t.m22*t.m22).sqrt();
     (sx + sy) * 0.5
 }
 

@@ -1,10 +1,10 @@
 use crate::context::Context;
-use crate::transform;
+use crate::transform::{self, Transform};
 use super::utils::{minf, maxf};
 
 #[derive(Clone)]
 pub struct Scissor {
-    pub xform: [f32; 6],
+    pub xform: Transform,
     pub extent: [f32; 2],
 }
 
@@ -15,10 +15,10 @@ impl Context {
         let w = maxf(0.0, w);
         let h = maxf(0.0, h);
 
-        state.scissor.xform = transform::identity();
-        state.scissor.xform[4] = x+w*0.5;
-        state.scissor.xform[5] = y+h*0.5;
-        transform::mul(&mut state.scissor.xform, &state.xform);
+        state.scissor.xform = Transform::create_translation(
+            x+w*0.5,
+            y+h*0.5,
+        ).post_mul(&state.xform);
 
         state.scissor.extent[0] = w*0.5;
         state.scissor.extent[1] = h*0.5;
@@ -35,24 +35,23 @@ impl Context {
 
         // Transform the current scissor rect into current transform space.
         // If there is difference in rotation, this will be approximation.
-        let mut pxform = state.scissor.xform;
+        let pxform = state.scissor.xform.pre_mul(
+            &state.xform.inverse().unwrap_or_else(Transform::identity));
+
         let ex = state.scissor.extent[0];
         let ey = state.scissor.extent[1];
-        let mut invxorm = [0.0; 6];
-        transform::inverse_checked(&mut invxorm, &state.xform);
-        transform::mul(&mut pxform, &invxorm);
-        let tex = ex*pxform[0].abs() + ey*pxform[2].abs();
-        let tey = ex*pxform[1].abs() + ey*pxform[3].abs();
+        let tex = ex*pxform.m11.abs() + ey*pxform.m21.abs();
+        let tey = ex*pxform.m12.abs() + ey*pxform.m22.abs();
 
         // Intersect rects.
-        let rect = isect_rects([pxform[4]-tex,pxform[5]-tey,tex*2.0,tey*2.0], [x,y,w,h]);
+        let rect = isect_rects([pxform.m31-tex,pxform.m32-tey,tex*2.0,tey*2.0], [x,y,w,h]);
 
         self.scissor(rect[0], rect[1], rect[2], rect[3]);
     }
 
     pub fn reset_scissor(&mut self) {
         let state = self.states.last_mut();
-        state.scissor.xform = [0.0; 6];
+        state.scissor.xform = Transform::identity();
         state.scissor.extent = [-1.0, -1.0];
     }
 }

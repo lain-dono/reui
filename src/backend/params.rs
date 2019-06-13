@@ -6,6 +6,7 @@ use std::{
 use crate::{
     cache::{Path, Vertex},
     vg::{Scissor, Paint, CompositeState},
+    transform::Transform,
 };
 
 use super::{Image, ImageFlags, TEXTURE_RGBA};
@@ -23,11 +24,11 @@ fn check_error(msg: &str) {
     }
 }
 
-fn xform2mat3(t: [f32; 6]) -> [f32; 12] {
+fn xform2mat3(t: Transform) -> [f32; 12] {
     [
-        t[0], t[1], 0.0, 0.0,
-        t[2], t[3], 0.0, 0.0,
-        t[4], t[5], 1.0, 0.0,
+        t.m11, t.m12, 0.0, 0.0,
+        t.m21, t.m22, 0.0, 0.0,
+        t.m31, t.m32, 1.0, 0.0,
     ]
 }
 
@@ -366,11 +367,11 @@ impl BackendGL {
         } else {
             let xform = &scissor.xform;
             frag.set_scissor(
-                xform2mat3(crate::transform::inverse(xform)),
+                xform2mat3(xform.inverse().unwrap_or_else(Transform::identity)),
                 scissor.extent,
                 [
-                    (xform[0]*xform[0] + xform[2]*xform[2]).sqrt() / fringe,
-                    (xform[1]*xform[1] + xform[3]*xform[3]).sqrt() / fringe,
+                    (xform.m11*xform.m11 + xform.m12*xform.m12).sqrt() / fringe,
+                    (xform.m21*xform.m21 + xform.m22*xform.m22).sqrt() / fringe,
                 ],
             );
         }
@@ -394,21 +395,20 @@ impl BackendGL {
             }
             //      printf("frag.texType = %d\n", frag.texType);
             if tex.flags.contains(ImageFlags::FLIPY) {
-                let mut m1 = crate::transform::translate(0.0, paint.extent[1] * 0.5);
-                crate::transform::mul(&mut m1, &paint.xform);
-                let mut m2 = crate::transform::scale(1.0, -1.0);
-                crate::transform::mul(&mut m2, &m1);
-                let mut m1 = crate::transform::translate(0.0, -paint.extent[1] * 0.5);
-                crate::transform::mul(&mut m1, &m2);
-                crate::transform::inverse(&m1)
+                let t1 = Transform::create_translation(0.0, paint.extent[1] * 0.5);
+                let t2 = Transform::create_translation(0.0, -paint.extent[1] * 0.5);
+                let scale = Transform::create_scale(1.0, -1.0);
+
+                t2.post_mul(&scale.post_mul(&t1.post_mul(&paint.xform)))
+                    .inverse().unwrap_or_else(Transform::identity)
             } else {
-                crate::transform::inverse(&paint.xform)
+                paint.xform.inverse().unwrap_or_else(Transform::identity)
             }
         } else {
             frag.set_type(SHADER_FILLGRAD);
             frag.set_radius(paint.radius);
             frag.set_feather(paint.feather);
-            crate::transform::inverse(&paint.xform)
+            paint.xform.inverse().unwrap_or_else(Transform::identity)
         };
 
         frag.set_paint_mat(xform2mat3(invxform));

@@ -286,6 +286,7 @@ fn nvgRotate(ctx: &mut Context, angle: f32) {
     ctx.rotate(angle)
 }
 
+/*
 /// Skews the current coordinate system along X axis. Angle is specified in radians.
 #[no_mangle] extern "C"
 fn nvgSkewX(ctx: &mut Context, angle: f32) {
@@ -297,6 +298,7 @@ fn nvgSkewX(ctx: &mut Context, angle: f32) {
 fn nvgSkewY(ctx: &mut Context, angle: f32) {
     ctx.skew_y(angle)
 }
+*/
 
 /// Scales the current coordinate system.
 #[no_mangle] extern "C"
@@ -304,6 +306,7 @@ fn nvgScale(ctx: &mut Context, x: f32, y: f32) {
     ctx.scale(x, y)
 }
 
+/*
 /// Stores the top part (a-f) of the current transformation matrix in to the specified buffer.
 ///   [a c e]
 ///   [b d f]
@@ -311,8 +314,9 @@ fn nvgScale(ctx: &mut Context, x: f32, y: f32) {
 /// There should be space for 6 floats in the return buffer for the values a-f.
 #[no_mangle] extern "C"
 fn nvgCurrentTransform(ctx: &mut Context, xform: &mut [f32; 6]) {
-    *xform = *ctx.current_transform();
+    *xform = ctx.current_transform().to_array();
 }
+*/
 
 // The following functions can be used to make calculations on 2x3 transformation matrices.
 // A 2x3 matrix is represented as float[6].
@@ -388,12 +392,14 @@ fn nvgTransformPremultiply(dst: &mut [f32; 6], src: &[f32; 6]) {
     *dst = s2;
 }
 
+/*
 /// Sets the destination to inverse of specified transform.
 /// Returns 1 if the inverse could be calculated, else 0.
 #[no_mangle] pub extern "C"
 fn nvgTransformInverse(inv: &mut [f32; 6], t: &[f32; 6]) -> bool {
     crate::transform::inverse_checked(inv, t)
 }
+*/
 
 /// Transform a point by given transform.
 #[no_mangle] pub extern "C"

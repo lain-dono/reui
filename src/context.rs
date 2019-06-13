@@ -4,7 +4,7 @@ use crate::{
     backend::{BackendGL, Image, TEXTURE_ALPHA},
     cache::{PathCache, LineCap, LineJoin},
     vg::Counters,
-    transform,
+    transform::Transform,
     vg::*,
     font::*,
     vg::utils::raw_str,
@@ -72,7 +72,7 @@ pub struct State {
     pub line_join: LineJoin,
     pub line_cap: LineCap,
     pub alpha: f32,
-    pub xform: [f32; 6],
+    pub xform: Transform,
     pub scissor: Scissor,
 
     pub font_size: f32,
@@ -96,11 +96,11 @@ impl State {
             line_cap: LineCap::Butt,
             line_join: LineJoin::Miter,
             alpha: 1.0,
-            xform: transform::identity(),
+            xform: Transform::identity(),
 
             scissor: Scissor {
                 extent: [-1.0, -1.0],
-                xform: transform::identity()
+                xform: Transform::identity(),
             },
 
             font_size: 16.0,
@@ -219,12 +219,12 @@ impl Context {
     pub fn stroke_paint(&mut self, paint: Paint) {
         let state = self.states.last_mut();
         state.stroke = paint;
-        transform::mul(&mut state.stroke.xform, &state.xform);
+        state.stroke.xform = state.stroke.xform.post_mul(&state.xform);
     }
     pub fn fill_paint(&mut self, paint: Paint) {
         let state = self.states.last_mut();
         state.fill = paint;
-        transform::mul(&mut state.fill.xform, &state.xform);
+        state.fill.xform = state.fill.xform.post_mul(&state.xform);
     }
 
     pub fn font_size(&mut self, size: f32) {

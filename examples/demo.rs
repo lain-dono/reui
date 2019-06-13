@@ -6,7 +6,104 @@ extern crate oni2d;
 fn main() {
     env_logger::init();
     log::info!("start");
-    unsafe { _run(); }
+
+    use oni2d::{
+        perf::{GraphStyle, PerfGraph},
+        //Context,
+        BackendGL,
+        NFlags,
+        gl,
+    };
+
+    const GLFW_CONTEXT_VERSION_MAJOR: i32 = 0x00022002;
+    const GLFW_CONTEXT_VERSION_MINOR: i32 = 0x00022003;
+
+    unsafe {
+        assert!(glfwInit(), "Failed to init GLFW.");
+
+        let mut fps = PerfGraph::new(GraphStyle::Fps, "Frame Time");
+
+        glfwSetErrorCallback(errorcb);
+
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+
+        let window = glfwCreateWindow(1000, 600, b"NanoVG\0".as_ptr(), null(), null());
+        //window = glfwCreateWindow(1000, 600, "NanoVG", glfwGetPrimaryMonitor(), NULL);
+        if window.is_null() {
+            glfwTerminate();
+            panic!("cant create window");
+        }
+
+        glfwSetKeyCallback(window, key);
+        glfwMakeContextCurrent(window);
+
+        let flags = NFlags::ANTIALIAS | NFlags::STENCIL_STROKES | NFlags::DEBUG;
+        let mut vg = Context::new(BackendGL::new(flags));
+
+        let data = DemoData::new(&mut vg);
+
+        glfwSwapInterval(0);;
+
+        glfwSetTime(0.0);
+        let mut prevt = glfwGetTime();
+
+        while !glfwWindowShouldClose(window) {
+            let t = glfwGetTime();
+            let dt = t - prevt;
+            prevt = t;
+        
+            fps.update(dt as f32);
+            let (mut mx, mut my) = (0.0, 0.0);
+            glfwGetCursorPos(window, &mut mx, &mut my);
+            let (mut win_w, mut win_h) = (0, 0);
+            glfwGetWindowSize(window, &mut win_w, &mut win_h);
+            let (mut fb_w, mut fb_h) = (0, 0);
+            glfwGetFramebufferSize(window, &mut fb_w, &mut fb_h);
+
+            // Calculate pixel ration for hi-dpi devices.
+            let px_ratio = (fb_w as f32) / (win_w as f32);
+
+            // Update and render
+            gl::glViewport(0, 0, fb_w, fb_h);
+            if PREMULT != 0 {
+                gl::glClearColor(0.0,0.0,0.0,0.0);
+            } else {
+                gl::glClearColor(0.3, 0.3, 0.32, 1.0);
+            }
+
+            gl::glClear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT | gl::GL_STENCIL_BUFFER_BIT);
+
+            vg.begin_frame(win_w as f32, win_h as f32, px_ratio);
+
+            render_demo(
+                &mut vg,
+                mx as f32,my as f32,
+                win_w as f32,win_h as f32,
+                t as f32, BLOWUP != 0, &data,
+            );
+            fps.render(&mut vg, 5.0, 5.0);
+
+            vg.end_frame();
+
+            /*
+            if (screenshot) {
+                screenshot = 0;
+                save_screenshot(fbWidth, fbHeight, premult, "dump.png");
+            }
+            */
+            
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+        }
+
+        /*
+        free_demo_data(vg, &data);
+        nvgDeleteGL2(vg);
+        */
+
+        glfwTerminate();
+    }
 }
 
 
@@ -78,103 +175,6 @@ extern "C" fn key(window: *mut GLFWwindow, key: i32, _scancode: i32, action: i32
     }
 }
 
-unsafe fn _run() {
-    use oni2d::{
-        perf::{GraphStyle, PerfGraph},
-        //Context,
-        BackendGL,
-        NFlags,
-        gl,
-    };
-
-    const GLFW_CONTEXT_VERSION_MAJOR: i32 = 0x00022002;
-    const GLFW_CONTEXT_VERSION_MINOR: i32 = 0x00022003;
-
-    assert!(glfwInit(), "Failed to init GLFW.");
-
-    let mut fps = PerfGraph::new(GraphStyle::Fps, "Frame Time");
-
-    glfwSetErrorCallback(errorcb);
-
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-
-    let window = glfwCreateWindow(1000, 600, b"NanoVG\0".as_ptr(), null(), null());
-    //window = glfwCreateWindow(1000, 600, "NanoVG", glfwGetPrimaryMonitor(), NULL);
-    if window.is_null() {
-        glfwTerminate();
-        panic!("cant create window");
-    }
-
-    glfwSetKeyCallback(window, key);
-    glfwMakeContextCurrent(window);
-
-    let flags = NFlags::ANTIALIAS | NFlags::STENCIL_STROKES | NFlags::DEBUG;
-    let mut vg = Context::new(BackendGL::new(flags));
-
-    let data = DemoData::new(&mut vg);
-
-    glfwSwapInterval(0);;
-
-    glfwSetTime(0.0);
-    let mut prevt = glfwGetTime();
-
-    while !glfwWindowShouldClose(window) {
-        let t = glfwGetTime();
-        let dt = t - prevt;
-        prevt = t;
-    
-        fps.update(dt as f32);
-        let (mut mx, mut my) = (0.0, 0.0);
-        glfwGetCursorPos(window, &mut mx, &mut my);
-        let (mut win_w, mut win_h) = (0, 0);
-        glfwGetWindowSize(window, &mut win_w, &mut win_h);
-        let (mut fb_w, mut fb_h) = (0, 0);
-        glfwGetFramebufferSize(window, &mut fb_w, &mut fb_h);
-
-        // Calculate pixel ration for hi-dpi devices.
-        let px_ratio = (fb_w as f32) / (win_w as f32);
-
-        // Update and render
-        gl::glViewport(0, 0, fb_w, fb_h);
-        if PREMULT != 0 {
-            gl::glClearColor(0.0,0.0,0.0,0.0);
-        } else {
-            gl::glClearColor(0.3, 0.3, 0.32, 1.0);
-        }
-
-        gl::glClear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT | gl::GL_STENCIL_BUFFER_BIT);
-
-        vg.begin_frame(win_w as f32, win_h as f32, px_ratio);
-
-        render_demo(
-            &mut vg,
-            mx as f32,my as f32,
-            win_w as f32,win_h as f32,
-            t as f32, BLOWUP != 0, &data,
-        );
-        fps.render(&mut vg, 5.0, 5.0);
-
-        vg.end_frame();
-
-        /*
-        if (screenshot) {
-            screenshot = 0;
-            save_screenshot(fbWidth, fbHeight, premult, "dump.png");
-        }
-        */
-        
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-    }
-
-    /*
-    free_demo_data(vg, &data);
-    nvgDeleteGL2(vg);
-    */
-
-    glfwTerminate();
-}
 
 use slotmap::Key;
 
