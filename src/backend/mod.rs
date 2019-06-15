@@ -1,6 +1,10 @@
-pub mod gl;
 mod gl_shader;
 mod params;
+mod utils;
+
+pub mod gl {
+    include!(concat!(env!("OUT_DIR"), "/gl_bindings.rs"));
+}
 
 pub use self::params::{BackendGL, NFlags};
 

@@ -1,5 +1,5 @@
 use std::ptr::null;
-use super::gl::*;
+use super::gl::{self, types::{GLint, GLuint}};
 
 pub struct Shader {
     prog: GLuint,
@@ -13,39 +13,39 @@ pub struct Shader {
 
 impl Shader {
     pub fn new() -> Self {
-        let (vshader, fshader) = (VERT.as_ptr(), FRAG.as_ptr());
+        let (vshader, fshader) = (VERT.as_ptr() as *const i8, FRAG.as_ptr() as *const i8);
 
         unsafe {
-            let prog = glCreateProgram();
-            let vert = glCreateShader(GL_VERTEX_SHADER);
-            let frag = glCreateShader(GL_FRAGMENT_SHADER);
+            let prog = gl::CreateProgram();
+            let vert = gl::CreateShader(gl::VERTEX_SHADER);
+            let frag = gl::CreateShader(gl::FRAGMENT_SHADER);
             //str[2] = vshader;
-            glShaderSource(vert, 1, &vshader, null());
+            gl::ShaderSource(vert, 1, &vshader, null());
             //str[2] = fshader;
-            glShaderSource(frag, 1, &fshader, null());
+            gl::ShaderSource(frag, 1, &fshader, null());
 
-            glCompileShader(vert);
+            gl::CompileShader(vert);
             /*
             let mut status = 0;
             glGetShaderiv(vert, GL_COMPILE_STATUS, &status);
             assert!(status == 1);
             */
 
-            glCompileShader(frag);
+            gl::CompileShader(frag);
             /*
             glGetShaderiv(frag, GL_COMPILE_STATUS, &status);
             assert!(status == 1);
             */
 
-            glAttachShader(prog, vert);
-            glAttachShader(prog, frag);
+            gl::AttachShader(prog, vert);
+            gl::AttachShader(prog, frag);
 
-            glBindAttribLocation(prog, 0, b"vertex\0".as_ptr());
-            glBindAttribLocation(prog, 1, b"tcoord\0".as_ptr());
+            gl::BindAttribLocation(prog, 0, b"vertex\0".as_ptr() as *const i8);
+            gl::BindAttribLocation(prog, 1, b"tcoord\0".as_ptr() as *const i8);
 
-            glLinkProgram(prog);
+            gl::LinkProgram(prog);
             /*
-            glGetProgramiv(prog, GL_LINK_STATUS, &status);
+            gl::GetProgramiv(prog, GL_LINK_STATUS, &status);
             assert!(status == 1);
             */
 
@@ -54,35 +54,35 @@ impl Shader {
                 //vert,
                 //frag,
 
-                loc_viewsize: glGetUniformLocation(prog, b"viewSize\0".as_ptr()),
-                loc_tex:      glGetUniformLocation(prog, b"tex\0".as_ptr()),
-                loc_frag:     glGetUniformLocation(prog, b"frag\0".as_ptr()),
+                loc_viewsize: gl::GetUniformLocation(prog, b"viewSize\0".as_ptr() as *const i8),
+                loc_tex:      gl::GetUniformLocation(prog, b"tex\0".as_ptr() as *const i8),
+                loc_frag:     gl::GetUniformLocation(prog, b"frag\0".as_ptr() as *const i8),
             }
         }
     }
 
     pub fn bind(&self) {
         unsafe {
-            glUseProgram(self.prog);
+            gl::UseProgram(self.prog);
         }
     }
 
     pub fn unbind(&self) {
         unsafe {
-            glUseProgram(0);
+            gl::UseProgram(0);
         }
     }
 
     pub fn bind_frag(&self, array: &[f32; 11*4 + 1]) {
         unsafe {
-            glUniform4fv(self.loc_frag, 11, &(array[0]));
+            gl::Uniform4fv(self.loc_frag, 11, &(array[0]));
         }
     }
 
     pub fn bind_view(&self, view: *const [f32; 2]) {
         unsafe {
-            glUniform1i(self.loc_tex, 0);
-            glUniform2fv(self.loc_viewsize, 1, view as *const f32);
+            gl::Uniform1i(self.loc_tex, 0);
+            gl::Uniform2fv(self.loc_viewsize, 1, view as *const f32);
         }
     }
 }

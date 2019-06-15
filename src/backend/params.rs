@@ -10,15 +10,16 @@ use crate::{
 };
 
 use super::{Image, ImageFlags, TEXTURE_RGBA};
-use super::gl::*;
+use super::gl::{self, types::GLuint};
+use super::utils::*;
 use super::gl_shader::Shader;
 
 use slotmap::Key;
 
 fn check_error(msg: &str) {
     if true {
-        let err = unsafe { glGetError() };
-        if err != GL_NO_ERROR {
+        let err = unsafe { gl::GetError() };
+        if err != gl::NO_ERROR {
             log::debug!("GL Error {:08x} after {}", err, msg);
         }
     }
@@ -154,7 +155,7 @@ struct Texture {
 impl Drop for Texture {
     fn drop(&mut self) {
         if self.tex != 0 && !self.flags.contains(ImageFlags::NODELETE) {
-            unsafe { glDeleteTextures(1, &self.tex); }
+            unsafe { gl::DeleteTextures(1, &self.tex); }
             self.tex = 0;
         }
     }
@@ -333,10 +334,10 @@ impl BackendGL {
         unsafe {
             if !image.is_null() {
                 let tex = self.find_texture(image);
-                glBindTexture(GL_TEXTURE_2D, tex.map(|t| t.tex).unwrap_or(0));
+                gl::BindTexture(gl::TEXTURE_2D, tex.map(|t| t.tex).unwrap_or(0));
                 check_error("tex paint tex");
             } else {
-                glBindTexture(GL_TEXTURE_2D, 0);
+                gl::BindTexture(gl::TEXTURE_2D, 0);
             }
         }
     }
@@ -458,10 +459,10 @@ impl BackendGL {
 
         // Draw shapes
         unsafe {
-            glEnable(GL_STENCIL_TEST);
-            glStencilMask(0xff);
-            glStencilFunc(GL_ALWAYS, 0, 0xff);
-            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+            gl::Enable(gl::STENCIL_TEST);
+            gl::StencilMask(0xff);
+            gl::StencilFunc(gl::ALWAYS, 0, 0xff);
+            gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
         }
 
         // set bindpoint for solid loc
@@ -469,9 +470,9 @@ impl BackendGL {
         check_error("fill simple");
 
         unsafe {
-            glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_KEEP, GL_INCR_WRAP);
-            glStencilOpSeparate(GL_BACK, GL_KEEP, GL_KEEP, GL_DECR_WRAP);
-            glDisable(GL_CULL_FACE);
+            gl::StencilOpSeparate(gl::FRONT, gl::KEEP, gl::KEEP, gl::INCR_WRAP);
+            gl::StencilOpSeparate(gl::BACK, gl::KEEP, gl::KEEP, gl::DECR_WRAP);
+            gl::Disable(gl::CULL_FACE);
         }
         for path in &self.paths[start..end] {
             gl_draw_strip(path.fill_offset, path.fill_count);
@@ -479,8 +480,8 @@ impl BackendGL {
 
         // Draw anti-aliased pixels
         unsafe {
-            glEnable(GL_CULL_FACE);
-            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+            gl::Enable(gl::CULL_FACE);
+            gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
         }
 
         self.set_uniforms(data.uniform_offset + 1, data.image);
@@ -488,8 +489,8 @@ impl BackendGL {
 
         if self.flags.contains(NFlags::ANTIALIAS) {
             unsafe {
-                glStencilFunc(GL_EQUAL, 0x00, 0xff);
-                glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+                gl::StencilFunc(gl::EQUAL, 0x00, 0xff);
+                gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
             }
             // Draw fringes
             for path in &self.paths[start..end] {
@@ -500,14 +501,14 @@ impl BackendGL {
         // Draw fill
         if triangle_count == 4 {
             unsafe {
-                glStencilFunc(GL_NOTEQUAL, 0x00, 0xff);
-                glStencilOp(GL_ZERO, GL_ZERO, GL_ZERO);
+                gl::StencilFunc(gl::NOTEQUAL, 0x00, 0xff);
+                gl::StencilOp(gl::ZERO, gl::ZERO, gl::ZERO);
             }
             gl_draw_strip(triangle_offset, 4);
         }
 
         unsafe {
-            glDisable(GL_STENCIL_TEST);
+            gl::Disable(gl::STENCIL_TEST);
         }
     }
 
@@ -520,14 +521,14 @@ impl BackendGL {
 
         if self.flags.contains(NFlags::STENCIL_STROKES) {
             unsafe {
-                glEnable(GL_STENCIL_TEST);
-                glStencilMask(0xff);
+                gl::Enable(gl::STENCIL_TEST);
+                gl::StencilMask(0xff);
             }
 
             // Fill the stroke base without overlap
             unsafe {
-                glStencilFunc(GL_EQUAL, 0x0, 0xff);
-                glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+                gl::StencilFunc(gl::EQUAL, 0x0, 0xff);
+                gl::StencilOp(gl::KEEP, gl::KEEP, gl::INCR);
             }
             self.set_uniforms(data.uniform_offset + 1, data.image);
             check_error("stroke fill 0");
@@ -538,8 +539,8 @@ impl BackendGL {
             // Draw anti-aliased pixels.
             self.set_uniforms(data.uniform_offset, data.image);
             unsafe {
-                glStencilFunc(GL_EQUAL, 0x00, 0xff);
-                glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+                gl::StencilFunc(gl::EQUAL, 0x00, 0xff);
+                gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
             }
             for path in &self.paths[start..end] {
                 gl_draw_strip(path.stroke_offset, path.stroke_count);
@@ -547,9 +548,9 @@ impl BackendGL {
 
             // Clear stencil buffer.
             unsafe {
-                glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-                glStencilFunc(GL_ALWAYS, 0x0, 0xff);
-                glStencilOp(GL_ZERO, GL_ZERO, GL_ZERO);
+                gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
+                gl::StencilFunc(gl::ALWAYS, 0x0, 0xff);
+                gl::StencilOp(gl::ZERO, gl::ZERO, gl::ZERO);
             }
             check_error("stroke fill 1");
             for path in &self.paths[start..end] {
@@ -557,8 +558,8 @@ impl BackendGL {
             }
 
             unsafe {
-                glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-                glDisable(GL_STENCIL_TEST);
+                gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+                gl::Disable(gl::STENCIL_TEST);
             }
 
             //convertPaint(
@@ -746,18 +747,18 @@ impl BackendGL {
         unsafe {
             // Setup require GL state.
 
-            glEnable(GL_CULL_FACE);
-            glCullFace(GL_BACK);
-            glFrontFace(GL_CCW);
-            glEnable(GL_BLEND);
-            glDisable(GL_DEPTH_TEST);
-            glDisable(GL_SCISSOR_TEST);
-            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-            glStencilMask(0xffff_ffff);
-            glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-            glStencilFunc(GL_ALWAYS, 0, 0xffff_ffff);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, 0);
+            gl::Enable(gl::CULL_FACE);
+            gl::CullFace(gl::BACK);
+            gl::FrontFace(gl::CCW);
+            gl::Enable(gl::BLEND);
+            gl::Disable(gl::DEPTH_TEST);
+            gl::Disable(gl::SCISSOR_TEST);
+            gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+            gl::StencilMask(0xffff_ffff);
+            gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
+            gl::StencilFunc(gl::ALWAYS, 0, 0xffff_ffff);
+            gl::ActiveTexture(gl::TEXTURE0);
+            gl::BindTexture(gl::TEXTURE_2D, 0);
         }
 
         // Upload vertex data
@@ -765,11 +766,11 @@ impl BackendGL {
         let size = mem::size_of::<Vertex>();
 
         unsafe {
-            glEnableVertexAttribArray(0);
-            glEnableVertexAttribArray(1);
+            gl::EnableVertexAttribArray(0);
+            gl::EnableVertexAttribArray(1);
 
-            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, size as i32, 0);
-            glVertexAttribPointer(1, 2, GL_UNSIGNED_SHORT, GL_TRUE, size as i32, 2 * mem::size_of::<f32>());
+            gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, size as i32, 0 as *const libc::c_void);
+            gl::VertexAttribPointer(1, 2, gl::UNSIGNED_SHORT, gl::TRUE, size as i32, (2 * mem::size_of::<f32>()) as *const libc::c_void);
         }
 
         // Set view and texture just once per frame.
@@ -805,12 +806,12 @@ impl BackendGL {
         }
 
         unsafe {
-            glDisableVertexAttribArray(0);
-            glDisableVertexAttribArray(1);
+            gl::DisableVertexAttribArray(0);
+            gl::DisableVertexAttribArray(1);
 
-            glDisable(GL_CULL_FACE);
+            gl::Disable(gl::CULL_FACE);
 
-            glBindTexture(GL_TEXTURE_2D, 0);
+            gl::BindTexture(gl::TEXTURE_2D, 0);
         }
 
         self.vert_buf.unbind();
@@ -833,9 +834,9 @@ impl BackendGL {
 
         // No support for all of skip, need to update a whole row at a time.
         let (kind, stride) = if tex.kind == TEXTURE_RGBA {
-            (GL_RGBA, tex.width*4)
+            (gl::RGBA, tex.width*4)
         } else {
-            (GL_LUMINANCE, tex.width)
+            (gl::LUMINANCE, tex.width)
         };
 
         let stride = y * stride as i32;
@@ -845,13 +846,13 @@ impl BackendGL {
         let w = tex.width;
 
         unsafe {
-            glBindTexture(GL_TEXTURE_2D, tex.tex);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            gl::BindTexture(gl::TEXTURE_2D, tex.tex);
+            gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
 
-            glTexSubImage2D(GL_TEXTURE_2D, 0, x,y, w as i32,h as i32, kind, GL_UNSIGNED_BYTE, data);
+            gl::TexSubImage2D(gl::TEXTURE_2D, 0, x,y, w as i32,h as i32, kind, gl::UNSIGNED_BYTE, data as *const libc::c_void);
 
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-            glBindTexture(GL_TEXTURE_2D, 0);
+            gl::PixelStorei(gl::UNPACK_ALIGNMENT, 4);
+            gl::BindTexture(gl::TEXTURE_2D, 0);
         }
 
         true
@@ -864,55 +865,55 @@ impl BackendGL {
     pub fn create_texture(&mut self, kind: i32, w: u32, h: u32, flags: ImageFlags, data: *const u8) -> Image {
         // GL 1.4 and later has support for generating mipmaps using a tex parameter.
         let mipmaps = if flags.contains(ImageFlags::GENERATE_MIPMAPS) {
-            GL_TRUE
+            gl::TRUE
         } else {
-            GL_FALSE
+            gl::FALSE
         };
         let mipmaps = i32::from(mipmaps);
 
         let kind_tex = if kind == TEXTURE_RGBA {
-            GL_RGBA
+            gl::RGBA
         } else {
-            GL_LUMINANCE
+            gl::LUMINANCE
         };
 
         let min = if flags.contains(ImageFlags::GENERATE_MIPMAPS) {
             if flags.contains(ImageFlags::NEAREST) {
-                GL_NEAREST_MIPMAP_NEAREST
+                gl::NEAREST_MIPMAP_NEAREST
             } else {
-                GL_LINEAR_MIPMAP_LINEAR
+                gl::LINEAR_MIPMAP_LINEAR
             }
         } else if flags.contains(ImageFlags::NEAREST) {
-            GL_NEAREST
-        } else { GL_LINEAR };
+            gl::NEAREST
+        } else { gl::LINEAR };
 
-        let mag = if flags.contains(ImageFlags::NEAREST) { GL_NEAREST } else { GL_LINEAR };
-        let wrap_s = if flags.contains(ImageFlags::REPEATX) { GL_REPEAT } else { GL_CLAMP_TO_EDGE };
-        let wrap_t = if flags.contains(ImageFlags::REPEATY) { GL_REPEAT } else { GL_CLAMP_TO_EDGE };
+        let mag = if flags.contains(ImageFlags::NEAREST) { gl::NEAREST } else { gl::LINEAR };
+        let wrap_s = if flags.contains(ImageFlags::REPEATX) { gl::REPEAT } else { gl::CLAMP_TO_EDGE };
+        let wrap_t = if flags.contains(ImageFlags::REPEATY) { gl::REPEAT } else { gl::CLAMP_TO_EDGE };
 
         let mut tex = 0;
         unsafe {
-            glGenTextures(1, &mut tex);
-            glBindTexture(GL_TEXTURE_2D, tex);
-            glPixelStorei(GL_UNPACK_ALIGNMENT,1);
+            gl::GenTextures(1, &mut tex);
+            gl::BindTexture(gl::TEXTURE_2D, tex);
+            gl::PixelStorei(gl::UNPACK_ALIGNMENT,1);
 
-            glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, mipmaps);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::GENERATE_MIPMAP_HINT, mipmaps);
 
-            glTexImage2D(
-                GL_TEXTURE_2D, 0,
+            gl::TexImage2D(
+                gl::TEXTURE_2D, 0,
                 kind_tex as i32, w as i32, h as i32,
-                0, kind_tex, GL_UNSIGNED_BYTE, data);
+                0, kind_tex, gl::UNSIGNED_BYTE, data as *const libc::c_void);
 
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, min);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mag);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, min as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, mag as i32);
 
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_s);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_t);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, wrap_s as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, wrap_t as i32);
 
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+            gl::PixelStorei(gl::UNPACK_ALIGNMENT, 4);
 
             check_error("create tex");
-            glBindTexture(GL_TEXTURE_2D, 0);
+            gl::BindTexture(gl::TEXTURE_2D, 0);
         }
 
         self.textures.insert(Texture {

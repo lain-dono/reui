@@ -1,7 +1,7 @@
 use crate::{
     cache::{LineCap, LineJoin},
     vg::*,
-    vg::utils::maxf,
+    vg::utils::{minf, maxf},
     font::Align,
     rect, Rect, Transform,
 };
@@ -62,8 +62,7 @@ impl State {
 
 impl State {
     pub fn set_scissor(&mut self, rect: Rect) {
-        let x = rect.origin.x;
-        let y = rect.origin.y;
+        let (x, y) = rect.origin.into();
         let w = maxf(0.0, rect.size.width);
         let h = maxf(0.0, rect.size.height);
 
@@ -83,7 +82,7 @@ impl State {
         // Transform the current scissor rect into current transform space.
         // If there is difference in rotation, this will be approximation.
         let inv = self.xform.inverse().unwrap_or_else(Transform::identity);
-        let xform = self.scissor.xform.pre_mul(&inv);
+        let xform = self.scissor.xform.post_mul(&inv);
 
         let ex = self.scissor.extent[0];
         let ey = self.scissor.extent[1];
@@ -91,9 +90,24 @@ impl State {
         let tey = ex*xform.m12.abs() + ey*xform.m22.abs();
 
         // Intersect rects.
-        let r1 = rect(xform.m31-tex,xform.m32-tey, tex*2.0,tey*2.0);
+        let (ax, ay) = (r.origin.x, r.origin.y);
+        let (aw, ah) = (r.size.width, r.size.height);
 
-        self.set_scissor(r1.intersection(&r).unwrap_or_else(Rect::zero));
+        let (bx, by) = (xform.m31-tex,xform.m32-tey);
+        let (bw, bh) = (tex*2.0,tey*2.0);
+
+        //let r1 = rect(bx, by, bw, bh);
+        //self.set_scissor(r1.intersection(&r).unwrap_or_else(Rect::zero));
+
+        let minx = maxf(ax, bx);
+        let miny = maxf(ay, by);
+        let maxx = minf(ax+aw, bx+bw);
+        let maxy = minf(ay+ah, by+bh);
+        self.set_scissor(rect(
+            minx, miny,
+            maxf(0.0, maxx - minx),
+            maxf(0.0, maxy - miny),
+        ));
     }
 
     pub fn reset_scissor(&mut self) {

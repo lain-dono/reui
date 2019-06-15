@@ -4,7 +4,7 @@ use arrayvec::ArrayString;
 
 use crate::vg::*;
 use crate::vg::utils::min;
-use crate::{context::Context, font::Align};
+use crate::{context::Context, font::Align, rect};
 
 pub enum GraphStyle {
     Fps = 0,
@@ -81,7 +81,7 @@ impl PerfGraph {
         let height = 35.0;
 
         vg.begin_path();
-        vg.rect(x,y, width,height);
+        vg.rect(rect(x,y, width,height));
         vg.fill_color(Color::new(0x80_000000));
         vg.fill();
 

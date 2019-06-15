@@ -12,6 +12,8 @@ use crate::{
         average_scale,
     },
     Vector,
+    Rect,
+    rect,
 };
 
 use euclid::vec2;
@@ -182,7 +184,8 @@ impl Context {
         self.append_commands(&mut vals[..nvals]);
     }
 
-    pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
+    pub fn rect(&mut self, r: Rect) {
+        let (x, y, w, h) = (r.origin.x, r.origin.y, r.size.width, r.size.height);
         self.append_commands(&mut [
             MOVETO as f32, x,y,
             LINETO as f32, x,y+h,
@@ -203,7 +206,7 @@ impl Context {
         top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32,
     ) {
         if top_left < 0.1 && top_right < 0.1 && bottom_right < 0.1 && bottom_left < 0.1 {
-            self.rect(x, y, w, h);
+            self.rect(rect(x, y, w, h));
         } else {
             let halfw = w.abs()*0.5;
             let halfh = h.abs()*0.5;
