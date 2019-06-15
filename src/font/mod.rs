@@ -4,7 +4,6 @@ use slotmap::Key;
 use std::ptr::null;
 
 mod atlas;
-mod blur;
 mod fons;
 mod font_info;
 mod stash;
@@ -16,9 +15,7 @@ pub use self::stash::{Stash, Metrics};
 use crate::{
     vg::State,
     context::{
-        Context, Align,
-        TextRow,
-        GlyphPosition,
+        Context,
         MAX_FONTIMAGE_SIZE, MAX_FONTIMAGES,
     },
     backend::TEXTURE_ALPHA,
@@ -32,6 +29,46 @@ use crate::{
     },
     transform_point,
 };
+
+bitflags::bitflags!(
+    pub struct Align: i32 {
+        const LEFT      = 1;       // Default, align text horizontally to left.
+        const CENTER    = 1<<1;    // Align text horizontally to center.
+        const RIGHT     = 1<<2;    // Align text horizontally to right.
+
+        const TOP       = 1<<3;    // Align text vertically to top.
+        const MIDDLE    = 1<<4;    // Align text vertically to middle.
+        const BOTTOM    = 1<<5;    // Align text vertically to bottom.
+        const BASELINE  = 1<<6; // Default, align text vertically to baseline.
+    }
+);
+
+#[derive(Clone, Copy)]
+pub struct TextRow {
+    pub start: *const u8,   // Pointer to the input text where the row starts.
+    pub end: *const u8,     // Pointer to the input text where the row ends (one past the last character).
+    pub next: *const u8,    // Pointer to the beginning of the next row.
+    pub width: f32,         // Logical width of the row.
+
+    // Actual bounds of the row.
+    // Logical with and bounds can differ because of kerning and some parts over extending.
+    pub minx: f32,
+    pub maxx: f32,
+}
+
+impl TextRow {
+    pub fn text(&self) -> &str {
+        unsafe { raw_str(self.start, self.end) }
+    }
+}
+
+pub struct GlyphPosition {
+    pub s: *const u8,   // Position of the glyph in the input string.
+    pub x: f32,         // The x-coordinate of the logical glyph position.
+    // The bounds of the glyph shape.
+    pub minx: f32,
+    pub maxx: f32,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Codepoint {
@@ -51,7 +88,7 @@ fn font_scale(state: &State) -> f32 {
 
 impl Context {
     pub fn create_font(&mut self, name: &str, path: &str) -> i32 {
-        self.fs.add_font(name, path)
+        self.fs.add_font(name, path).unwrap_or(-1)
     }
 
     fn flush_text_texture(&mut self) {
@@ -203,15 +240,14 @@ impl Context {
         let scale = font_scale(state) * self.device_px_ratio;
         let invscale = 1.0 / scale;
 
-        let mut bounds = [0.0; 4];
         if state.font_id == FONS_INVALID {
-            return (0.0, bounds);
+            return (0.0, [0.0; 4]);
         }
 
         self.fs.sync_state(state, scale);
 
         let (start, end) = str_start_end(text);
-        let width = self.fs.text_bounds(x*scale, y*scale, start, end, bounds.as_mut_ptr());
+        let (width, mut bounds) = self.fs.text_bounds(x*scale, y*scale, start, end);
 
         // Use line bounds for height.
         let (rminy, rmaxy) = self.fs.line_bounds(y*scale);
@@ -387,11 +423,12 @@ impl Context {
 
         self.fs.sync_state(state, scale);
 
-        let mut m = self.fs.metrics();
-        m.ascender *= invscale;
-        m.descender *= invscale;
-        m.line_gap *= invscale;
-        Some(m)
+        self.fs.metrics().map(|mut m| {
+            m.ascender *= invscale;
+            m.descender *= invscale;
+            m.line_gap *= invscale;
+            m
+        })
     }
 
     pub fn text_break_lines<'a>(

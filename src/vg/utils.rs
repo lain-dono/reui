@@ -4,7 +4,9 @@ use std::{
     slice::from_raw_parts,
 };
 
-use crate::Transform;
+use euclid::approxeq::ApproxEq;
+
+use crate::{Transform, Vector, Point};
 
 pub fn slice_start_end(b: &[u8]) -> (*const u8, *const u8) {
     unsafe {
@@ -31,69 +33,12 @@ pub unsafe fn raw_slice<'a>(start: *const u8, end: *const u8) -> &'a [u8] {
     from_raw_parts(start, len)
 }
 
-#[derive(Clone, Copy)]
-pub struct Pt {
-    pub x: f32,
-    pub y: f32,
+pub fn vec_mul(lhs: Vector, rhs: Vector) -> Vector {
+    Vector::new(
+        lhs.x * rhs.x,
+        lhs.y * rhs.y,
+    )
 }
-
-impl Into<[f32; 2]> for Pt {
-    fn into(self) -> [f32; 2] {
-        [self.x, self.y]
-    }
-}
-
-impl From<[f32; 2]> for Pt {
-    fn from(p: [f32; 2]) -> Self {
-        Self::new(p[0], p[1])
-    }
-}
-
-impl std::ops::Mul<f32> for Pt {
-    type Output = Self;
-    fn mul(self, rhs: f32) -> Self {
-        Self {
-            x: self.x * rhs,
-            y: self.y * rhs,
-        }
-    }
-}
-
-impl std::ops::Add for Pt {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self {
-        Self {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
-    }
-}
-
-impl std::ops::Sub for Pt {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self {
-        Self {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-        }
-    }
-}
-impl std::ops::Mul for Pt {
-    type Output = Self;
-    fn mul(self, rhs: Self) -> Self {
-        Self {
-            x: self.x * rhs.x,
-            y: self.y * rhs.y,
-        }
-    }
-}
-
-impl Pt {
-    pub fn new(x: f32, y: f32) -> Self {
-        Self { x, y }
-    }
-}
-
 
 pub fn normalize(x: &mut f32, y: &mut f32) -> f32 {
     let xx = (*x) * (*x);
@@ -107,22 +52,17 @@ pub fn normalize(x: &mut f32, y: &mut f32) -> f32 {
     d
 }
 
-pub fn normalize_pt(x: f32, y: f32) -> (f32, f32) {
-    let d = (x * x + y * y).sqrt();
-    if d > 1e-6 {
-        let id = 1.0 / d;
-        (x * id, y * id)
-    } else {
-        (x, y)
-    }
-}
-
-pub fn cross(dx0: f32, dy0: f32, dx1: f32, dy1: f32) -> f32 { dx1*dy0 - dx0*dy1 }
-
 pub fn pt_eq(x1: f32, y1: f32, x2: f32, y2: f32, tol: f32) -> bool {
+    let p1 = Point::new(x1, y1);
+    let p2 = Point::new(x2, y2);
+    let tol = Point::new(tol, tol);
+    p1.approx_eq_eps(&p2, &tol)
+
+    /*
     let dx = x2 - x1;
     let dy = y2 - y1;
     dx*dx + dy*dy < tol*tol
+    */
 }
 
 pub fn dist_pt_seg(x: f32, y: f32, px: f32, py: f32, qx: f32, qy: f32) -> f32 {

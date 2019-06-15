@@ -8,11 +8,13 @@ use crate::{
         normalize,
         pt_eq,
         dist_pt_seg,
-        cross,
         clampf,
         average_scale,
     },
+    Vector,
 };
+
+use euclid::vec2;
 
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.
 const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
@@ -50,8 +52,8 @@ impl Context {
     }
 
     pub fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
-        let x0 = self.commandx;
-        let y0 = self.commandy;
+        let x0 = self.cmd.x;
+        let y0 = self.cmd.y;
         self.append_commands(&mut [
             BEZIERTO as f32,
             x0 + 2.0/3.0*(cx - x0),
@@ -63,8 +65,8 @@ impl Context {
     }
 
     pub fn arc_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, radius: f32) {
-        let x0 = self.commandx;
-        let y0 = self.commandy;
+        let x0 = self.cmd.x;
+        let y0 = self.cmd.y;
 
         if self.commands.is_empty() {
             return;
@@ -97,7 +99,8 @@ impl Context {
         }
 
         let (cx, cy, a0, a1, dir);
-        if cross(dx0,dy0, dx1,dy1) > 0.0 {
+        let dv: [Vector; 2] = [vec2(dx0,dy0), vec2(dx1,dy1)];
+        if dv[0].cross(dv[1]) > 0.0 {
             cx = x1 + dx0*d + dy0*radius;
             cy = y1 + dy0*d + -dx0*radius;
             a0 = ( dx0).atan2(-dy0);
@@ -251,7 +254,7 @@ impl Context {
     pub fn fill(&mut self) {
         let state = self.states.last_mut();
 
-        let w = if self.params.edge_aa() && state.shape_aa != 0 {
+        let w = if self.params.edge_aa() && state.shape_aa {
             self.cache.fringe_width
         } else {
             0.0
@@ -301,7 +304,7 @@ impl Context {
         paint.inner_color.a *= state.alpha;
         paint.outer_color.a *= state.alpha;
 
-        let w = if self.params.edge_aa() && state.shape_aa != 0 {
+        let w = if self.params.edge_aa() && state.shape_aa {
             self.cache.fringe_width
         } else {
             0.0

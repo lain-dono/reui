@@ -1,10 +1,8 @@
-#![allow(unused_attributes)]
-#![allow(clippy::many_single_char_names)]
-
-mod images;
+#![allow(unused_attributes, clippy::many_single_char_names)]
 
 use crate::{
-    context::{Context, Align, GlyphPosition, TextRow},
+    context::Context,
+    font::{Align, GlyphPosition, TextRow},
     backend::{Image, BackendGL, NFlags},
     cache::{Winding, LineJoin, LineCap},
     vg::*,

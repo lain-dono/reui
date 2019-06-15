@@ -6,9 +6,8 @@ use crate::{
     counters::Counters,
     vg::*,
     font::*,
-    vg::utils::raw_str,
-    Transform,
     transform_pt,
+    Point,
 };
 
 use std::ptr::null;
@@ -19,46 +18,6 @@ const INIT_COMMANDS_SIZE: usize = 256;
 const INIT_FONTIMAGE_SIZE: usize = 512;
 pub const MAX_FONTIMAGE_SIZE: u32 = 2048;
 pub const MAX_FONTIMAGES: usize = 4;
-
-bitflags::bitflags!(
-    pub struct Align: i32 {
-        const LEFT      = 1;       // Default, align text horizontally to left.
-        const CENTER    = 1<<1;    // Align text horizontally to center.
-        const RIGHT     = 1<<2;    // Align text horizontally to right.
-
-        const TOP       = 1<<3;    // Align text vertically to top.
-        const MIDDLE    = 1<<4;    // Align text vertically to middle.
-        const BOTTOM    = 1<<5;    // Align text vertically to bottom.
-        const BASELINE  = 1<<6; // Default, align text vertically to baseline.
-    }
-);
-
-#[derive(Clone, Copy)]
-pub struct TextRow {
-    pub start: *const u8,   // Pointer to the input text where the row starts.
-    pub end: *const u8,     // Pointer to the input text where the row ends (one past the last character).
-    pub next: *const u8,    // Pointer to the beginning of the next row.
-    pub width: f32,         // Logical width of the row.
-
-    // Actual bounds of the row.
-    // Logical with and bounds can differ because of kerning and some parts over extending.
-    pub minx: f32,
-    pub maxx: f32,
-}
-
-impl TextRow {
-    pub fn text(&self) -> &str {
-        unsafe { raw_str(self.start, self.end) }
-    }
-}
-
-pub struct GlyphPosition {
-    pub s: *const u8,   // Position of the glyph in the input string.
-    pub x: f32,         // The x-coordinate of the logical glyph position.
-    // The bounds of the glyph shape.
-    pub minx: f32,
-    pub maxx: f32,
-}
 
 pub struct States {
     states: ArrayVec<[State; 32]>,
@@ -76,18 +35,37 @@ impl States {
     pub(crate) fn last_mut(&mut self) -> &mut State {
         self.states.last_mut().expect("last_mut state")
     }
-
     pub(crate) fn clear(&mut self) {
         self.states.clear();
     }
+    fn save(&mut self) {
+        if self.states.len() >= self.states.capacity() {
+            return;
+        }
+        if let Some(state) = self.states.last().cloned() {
+            self.states.push(state);
+        }
+    }
+    fn restore(&mut self) {
+        self.states.pop();
+    }
+    fn reset(&mut self) {
+        let state = if let Some(state) = self.states.last_mut() {
+            state
+        } else {
+            self.states.push(unsafe { std::mem::zeroed() });
+            self.states.last_mut().expect("last mut state (reset)")
+        };
+        *state = State::new();
+    }
+
 }
 
 
 pub struct Context {
     pub commands: Vec<f32>,
 
-    pub commandx: f32,
-    pub commandy: f32,
+    pub cmd: Point,
 
     pub states: States,
     pub cache: PathCache,
@@ -104,26 +82,13 @@ pub struct Context {
 
 impl Context {
     pub fn save(&mut self) {
-        if self.states.states.len() >= self.states.states.capacity() {
-            return;
-        }
-        if let Some(state) = self.states.states.last().cloned() {
-            self.states.states.push(state);
-        }
+        self.states.save();
     }
-
     pub fn restore(&mut self) {
-        self.states.states.pop();
+        self.states.restore();
     }
-
     pub fn reset(&mut self) {
-        let state = if let Some(state) = self.states.states.last_mut() {
-            state
-        } else {
-            self.states.states.push(unsafe { std::mem::zeroed() });
-            self.states.states.last_mut().expect("last mut state (reset)")
-        };
-        *state = State::new();
+        self.states.reset();
     }
 
     pub fn add_fallback_font_id(&mut self, base: i32, fallback: i32) -> bool{
@@ -141,7 +106,7 @@ impl Context {
     // State setting
 
     pub fn shape_anti_alias(&mut self, enabled: bool) {
-        self.states.last_mut().shape_aa = enabled as i32;
+        self.states.last_mut().shape_aa = enabled;
     }
     pub fn stroke_width(&mut self, width: f32) {
         self.states.last_mut().stroke_width = width;
@@ -296,8 +261,7 @@ impl Context {
                 Image::null(),
             ],
 
-            commandx: 0.0,
-            commandy: 0.0,
+            cmd: Point::zero(),
             counters: Counters::default(),
             cache: PathCache::new(),
             commands: Vec::with_capacity(INIT_COMMANDS_SIZE),
@@ -314,8 +278,8 @@ impl Context {
         let xform = &self.states.last().xform;
 
         if vals[0] as i32 != CLOSE && vals[0] as i32 != WINDING {
-            self.commandx = vals[vals.len()-2];
-            self.commandy = vals[vals.len()-1];
+            self.cmd.x = vals[vals.len()-2];
+            self.cmd.y = vals[vals.len()-1];
         }
 
         // transform commands

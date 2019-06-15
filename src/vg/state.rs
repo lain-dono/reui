@@ -1,17 +1,15 @@
 use crate::{
     cache::{LineCap, LineJoin},
     vg::*,
-    context::Align,
+    vg::utils::maxf,
+    font::Align,
     rect, Rect, Transform,
 };
-use crate::vg::utils::maxf;
-
-
 
 #[derive(Clone)]
 pub struct State {
     pub composite: CompositeState,
-    pub shape_aa: i32,
+    pub shape_aa: bool,
 
     pub fill: Paint,
     pub stroke: Paint,
@@ -39,7 +37,7 @@ impl State {
             stroke: Paint::with_color(Color::new(0xFF_000000)),
 
             composite: CompositeOp::SrcOver.into(),
-            shape_aa: 1,
+            shape_aa: true,
             stroke_width: 1.0,
             miter_limit: 10.0,
             line_cap: LineCap::Butt,

@@ -4,7 +4,7 @@
 
 #![feature(extern_types)]
 
-mod api;
+//mod api;
 pub mod perf;
 mod vg;
 mod backend;
@@ -13,26 +13,25 @@ mod cache;
 mod draw_api;
 mod context;
 mod counters;
+mod images;
 
 //mod wgpu;
 
 pub use crate::{
     cache::{Winding, LineJoin, LineCap},
     backend::{BackendGL, NFlags, Image, ImageFlags, gl},
-    vg::{
-        Paint,
-        Color,
-        utils,
-    },
-    context::{Context, Align, TextRow, GlyphPosition},
+    vg::{Paint, Color, utils},
+    context::Context,
+    font::{Align, TextRow, GlyphPosition},
 };
 
 pub use euclid::{
-    rect, point2, size2,
+    rect, vec2, point2, size2,
 };
 
 pub type Transform = euclid::Transform2D<f32>;
 pub type Point = euclid::Point2D<f32>;
+pub type Vector = euclid::Vector2D<f32>;
 pub type Size = euclid::Size2D<f32>;
 pub type Rect = euclid::Rect<f32>;
 pub type Bounds = euclid::Box2D<f32>;

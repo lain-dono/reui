@@ -344,7 +344,7 @@ fn draw_window(vg: &mut Context, title: &str, x: f32, y: f32, w: f32, h: f32) {
 
     // Drop shadow
     let shadow_paint = Paint::box_gradient(
-        x,y+2.0, w,h,
+        rect(x,y+2.0, w,h),
         corner_radius*2.0, 10.0,
         Color::new(0x80_000000),
         Color::new(0x00_000000),
@@ -393,7 +393,7 @@ fn draw_search_box(vg: &mut Context, text: &str, x: f32, y: f32, w: f32, h: f32)
 
     // Edit
     let bg = Paint::box_gradient(
-        x,y+1.5, w,h, h/2.0,5.0,
+        rect(x,y+1.5, w,h), h/2.0,5.0,
         Color::rgba(0,0,0,16),
         Color::rgba(0,0,0,92),
     );
@@ -473,8 +473,7 @@ fn draw_label(vg: &mut Context, text: &str, x: f32, y: f32, _w: f32, h: f32) {
 fn draw_edit_box_base(vg: &mut Context, x: f32, y: f32, w: f32, h: f32) {
     // Edit
     let bg = Paint::box_gradient(
-        x+1.0,y+1.0+1.5,
-        w-2.0,h-2.0, 3.0,4.0,
+        rect(x+1.0,y+1.0+1.5, w-2.0,h-2.0), 3.0,4.0,
         Color::rgba(255,255,255,32),
         Color::rgba(32,32,32,32),
     );
@@ -528,8 +527,8 @@ fn draw_checkbox(vg: &mut Context, text: &str, x: f32, y: f32, _w: f32, h: f32) 
     vg.text(x+28.0,y+h*0.5,text);
 
     let bg = Paint::box_gradient(
-        x+1.0, y+(h*0.5).floor()-9.0+1.0,
-        18.0, 18.0, 3.0,3.0,
+        rect(x+1.0, y+(h*0.5).floor()-9.0+1.0, 18.0, 18.0),
+        3.0,3.0,
         Color::rgba(0,0,0,32), Color::rgba(0,0,0,92),
     );
     vg.begin_path();
@@ -608,8 +607,8 @@ fn draw_slider(vg: &mut Context, pos: f32, x: f32, y: f32, w: f32, h: f32) {
 
     // Slot
     let bg = Paint::box_gradient(
-        x,cy-2.0+1.0,
-        w,4.0, 2.0,2.0,
+        rect(x,cy-2.0+1.0, w,4.0),
+        2.0,2.0,
         Color::rgba(0,0,0,32), Color::rgba(0,0,0,128),
     );
     vg.begin_path();
@@ -847,7 +846,7 @@ fn draw_thumbnails(vg: &mut Context, x: f32, y: f32, w: f32, h: f32, images: &[I
 
     // Drop shadow
     let shadow = Paint::box_gradient(
-        x,y+4.0, w,h, corner_radius*2.0, 20.0,
+        rect(x,y+4.0, w,h), corner_radius*2.0, 20.0,
         Color::rgba(0,0,0,128), Color::rgba(0,0,0,0),
     );
     vg.begin_path();
@@ -906,7 +905,7 @@ fn draw_thumbnails(vg: &mut Context, x: f32, y: f32, w: f32, h: f32, images: &[I
         vg.fill();
 
         let shadow = Paint::box_gradient(
-            tx-1.0,ty, thumb+2.0,thumb+2.0, 5.0, 3.0,
+            rect(tx-1.0,ty, thumb+2.0,thumb+2.0), 5.0, 3.0,
             Color::rgba(0,0,0,128), Color::rgba(0,0,0,0));
         vg.begin_path();
         vg.rect(tx-5.0,ty-5.0, thumb+10.0,thumb+10.0);
@@ -942,7 +941,7 @@ fn draw_thumbnails(vg: &mut Context, x: f32, y: f32, w: f32, h: f32, images: &[I
 
     // Scroll bar
     let shadow = Paint::box_gradient(
-        x+w-12.0+1.0,y+4.0+1.0, 8.0,h-8.0, 3.0,4.0,
+        rect(x+w-12.0+1.0,y+4.0+1.0, 8.0,h-8.0), 3.0,4.0,
         Color::rgba(0,0,0,32), Color::rgba(0,0,0,92));
     vg.begin_path();
     vg.rrect(x+w-12.0,y+4.0, 8.0,h-8.0, 3.0);
@@ -952,7 +951,7 @@ fn draw_thumbnails(vg: &mut Context, x: f32, y: f32, w: f32, h: f32, images: &[I
 
     let scrollh = (h/stackh) * (h-8.0);
     let shadow = Paint::box_gradient(
-        x+w-12.0-1.0,y+4.0+(h-8.0-scrollh)*u-1.0, 8.0,scrollh, 3.0,4.0,
+        rect(x+w-12.0-1.0,y+4.0+(h-8.0-scrollh)*u-1.0, 8.0,scrollh), 3.0,4.0,
         Color::rgba(220,220,220,255), Color::rgba(128,128,128,255));
     vg.begin_path();
     vg.rrect(x+w-12.0+1.0,y+4.0+1.0 + (h-8.0-scrollh)*u, 8.0-2.0,scrollh-2.0, 2.0);
@@ -1021,7 +1020,7 @@ fn draw_colorwheel(vg: &mut Context, x: f32, y: f32, w: f32, h: f32, t: f32) {
     vg.stroke();
 
     let paint = Paint::box_gradient(
-        r0-3.0,-5.0,r1-r0+6.0,10.0, 2.0,4.0,
+        rect(r0-3.0,-5.0,r1-r0+6.0,10.0), 2.0,4.0,
         Color::rgba(0,0,0,128), Color::rgba(0,0,0,0));
     vg.begin_path();
     vg.rect(r0-2.0-10.0,-4.0-10.0,r1-r0+4.0+20.0,8.0+20.0);

@@ -1,8 +1,7 @@
-#![allow(clippy::too_many_arguments)]
-
 use super::{Color, utils::maxf};
-use crate::{backend::Image, Transform};
+use crate::{backend::Image, Transform, Rect};
 use slotmap::Key;
+use euclid::Angle;
 
 #[derive(Clone, Copy)]
 pub struct Paint {
@@ -91,15 +90,17 @@ impl Paint {
     /// Parameter icol specifies the inner color and ocol the outer color of the gradient.
     /// The gradient is transformed by the current transform when it is passed to FillPaint() or StrokePaint().
     pub fn box_gradient(
-        x: f32, y: f32,
-        width: f32, height: f32,
+        rect: Rect,
         radius: f32, feather: f32,
         inner_color: Color,
         outer_color: Color,
     ) -> Self {
         Self {
-            xform: Transform::create_translation(x+width*0.5, y+height*0.5),
-            extent: [width*0.5, height*0.5],
+            xform: Transform::create_translation(
+                rect.origin.x + rect.size.width*0.5,
+                rect.origin.y + rect.size.height*0.5,
+            ),
+            extent: [rect.size.width*0.5, rect.size.height*0.5],
             radius,
             feather: maxf(1.0, feather),
             inner_color,
@@ -118,7 +119,7 @@ impl Paint {
         w: f32, h: f32, angle: f32,
         image: Image, alpha: f32,
     ) -> Self {
-        let mut xform = Transform::create_rotation(euclid::Angle::radians(angle));
+        let mut xform = Transform::create_rotation(Angle::radians(angle));
         xform.m31 = cx;
         xform.m32 = cy;
 

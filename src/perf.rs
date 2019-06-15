@@ -4,7 +4,7 @@ use arrayvec::ArrayString;
 
 use crate::vg::*;
 use crate::vg::utils::min;
-use crate::context::{Context, Align};
+use crate::{context::Context, font::Align};
 
 pub enum GraphStyle {
     Fps = 0,

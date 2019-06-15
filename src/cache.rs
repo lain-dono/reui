@@ -6,14 +6,17 @@ use std::{
     slice::from_raw_parts,
 };
 
+use euclid::vec2;
+
+use crate::Vector;
+
 use crate::vg::utils::{
     clampi,
     max,
     minf, maxf,
     normalize,
-    normalize_pt,
     pt_eq,
-    Pt,
+    vec_mul,
 };
 
 const INIT_POINTS_SIZE: usize = 128;
@@ -516,7 +519,7 @@ impl PathCache {
         }
     }
 
-    fn tesselate_bezier<P: Into<Pt>>(
+    fn tesselate_bezier<P: Into<Vector>>(
         &mut self, p1: P, p2: P, p3: P, p4: P,
         level: i32, flags: PointFlags,
     ) {
@@ -524,7 +527,7 @@ impl PathCache {
     }
 
     fn tesselate_bezier_impl(
-        &mut self, p1: Pt, p2: Pt, p3: Pt, p4: Pt,
+        &mut self, p1: Vector, p2: Vector, p3: Vector, p4: Vector,
         level: i32, flags: PointFlags,
     ) {
         if level > 10 {
@@ -533,12 +536,12 @@ impl PathCache {
 
         let [dx, dy]: [f32; 2] = (p4 - p1).into();
 
-        let dp = Pt::new(dy, dx);
+        let dp = Vector::new(dy, dx);
 
-        let d2 = (p2 - p4) * dp;
+        let d2 = vec_mul(p2 - p4, dp);
         let d2 = (d2.x - d2.y).abs();
 
-        let d3 = (p3 - p4) * dp;
+        let d3 = vec_mul(p3 - p4, dp);
         let d3 = (d3.x - d3.y).abs();
 
         if (d2 + d3)*(d2 + d3) < self.tess_tol * (dx*dx + dy*dy) {
@@ -633,15 +636,13 @@ impl PathCache {
             }
 
             if !looped {
-                let (p0, p1) = (&pts[p0_idx], &pts[p1_idx]);
                 // Add cap
-                let dx = p1.x - p0.x;
-                let dy = p1.y - p0.y;
-                let (dx, dy) = normalize_pt(dx, dy);
+                let (p0, p1) = (&pts[p0_idx], &pts[p1_idx]);
+                let d: Vector = vec2(p1.x - p0.x, p1.y - p0.y).normalize();
                 match line_cap {
-                    LineCap::Butt => dst.butt_cap_start(p0, dx, dy, w, -aa*0.5, aa, u0, u1),
-                    LineCap::Square => dst.butt_cap_start(p0, dx, dy, w, w-aa, aa, u0, u1),
-                    LineCap::Round => dst.round_cap_start(p0, dx, dy, w, ncap as i32, aa, u0, u1),
+                    LineCap::Butt => dst.butt_cap_start(p0, d.x, d.y, w, -aa*0.5, aa, u0, u1),
+                    LineCap::Square => dst.butt_cap_start(p0, d.x, d.y, w, w-aa, aa, u0, u1),
+                    LineCap::Round => dst.round_cap_start(p0, d.x, d.y, w, ncap as i32, aa, u0, u1),
                 };
             }
 
@@ -671,13 +672,11 @@ impl PathCache {
             } else {
                 // Add cap
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx % pts.len()]); // XXX
-                let dx = p1.x - p0.x;
-                let dy = p1.y - p0.y;
-                let (dx, dy) = normalize_pt(dx, dy);
+                let d: Vector = vec2(p1.x - p0.x, p1.y - p0.y).normalize();
                 match line_cap {
-                    LineCap::Butt => dst.butt_cap_end(p1, dx, dy, w, -aa*0.5, aa, u0, u1),
-                    LineCap::Square => dst.butt_cap_end(p1, dx, dy, w, w-aa, aa, u0, u1),
-                    LineCap::Round => dst.round_cap_end(p1, dx, dy, w, ncap as i32, aa, u0, u1),
+                    LineCap::Butt => dst.butt_cap_end(p1, d.x, d.y, w, -aa*0.5, aa, u0, u1),
+                    LineCap::Square => dst.butt_cap_end(p1, d.x, d.y, w, w-aa, aa, u0, u1),
+                    LineCap::Round => dst.round_cap_end(p1, d.x, d.y, w, ncap as i32, aa, u0, u1),
                 };
             }
 

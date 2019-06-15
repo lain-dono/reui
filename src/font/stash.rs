@@ -10,10 +10,7 @@
 
 #![deny(dead_code)]
 
-use super::atlas::Atlas;
-use super::blur::blur;
-use super::font_info::*;
-use super::utils::*;
+use super::{atlas::Atlas, font_info::*, utils::*};
 
 pub struct Metrics {
     pub ascender: f32,
@@ -22,10 +19,8 @@ pub struct Metrics {
 }
 
 use std::cmp::{max, min};
-use std::mem::{size_of, transmute};
+use std::mem::{size_of, uninitialized};
 use std::ptr::null_mut;
-
-
 
 extern crate libc;
 extern "C" {
@@ -35,27 +30,9 @@ extern "C" {
 
     fn malloc(_: u64) -> *mut libc::c_void;
     fn realloc(_: *mut libc::c_void, _: u64) -> *mut libc::c_void;
-    fn free(__ptr: *mut libc::c_void);
-    fn fclose(__stream: *mut FILE) -> i32;
-    fn fopen(_: *const i8, _: *const i8) -> *mut FILE;
-    fn fread(_: *mut libc::c_void, _: u64, _: u64, _: *mut FILE) -> u64;
-    fn fseek(__stream: *mut FILE, __off: libc::c_long, __whence: i32) -> i32;
-    fn ftell(__stream: *mut FILE) -> libc::c_long;
 
-    fn sqrt(_: f64) -> f64;
-    fn fabs(_: f64) -> f64;
-
-    fn memcpy(_: *mut libc::c_void, _: *const libc::c_void, _: u64) -> *mut libc::c_void;
-    fn strncpy(_: *mut i8, _: *const i8, _: u64) -> *mut i8;
     fn strcmp(_: *const i8, _: *const i8) -> i32;
     fn strlen(_: *const i8) -> u64;
-
-    fn __assert_fail(
-        __assertion: *const i8,
-        __file: *const i8,
-        __line: u32,
-        __function: *const i8,
-    ) -> !;
 }
 
 pub type size_t = u64;
@@ -96,7 +73,6 @@ pub struct _IO_FILE {
     pub _unused2: [i8; 20],
 }
 pub type _IO_lock_t = ();
-pub type FILE = _IO_FILE;
 //
 // Copyright (c) 2009-2013 Mikko Mononen memon@inside.org
 //
@@ -139,6 +115,7 @@ pub struct Quad {
     pub y0: f32,
     pub s0: f32,
     pub t0: f32,
+
     pub x1: f32,
     pub y1: f32,
     pub s1: f32,
@@ -171,74 +148,66 @@ pub struct TextIter {
 impl Iterator for TextIter {
     type Item = Quad;
     fn next(&mut self) -> Option<Self::Item> {
+        let mut s: *const u8 = self.next;
+        self.str_0 = self.next;
+        if s == self.end {
+            return None;
+        }
+        let mut quad: Quad = unsafe { uninitialized() };
         unsafe {
-            let mut q = std::mem::uninitialized();
-            let ok = fonsTextIterNext(self.fs, self, &mut q);
-            if ok != 0 {
-                Some(q)
-            } else {
-                None
+            while s != self.end {
+                if 0 == decutf8(&mut self.utf8state, &mut self.codepoint, u32::from(*s)) {
+                    s = s.offset(1);
+                    self.x = self.nextx;
+                    self.y = self.nexty;
+                    let glyph = fons__getGlyph(
+                        self.fs,
+                        self.font,
+                        self.codepoint,
+                        self.isize_0,
+                        self.iblur,
+                        self.bitmapOption,
+                    );
+                    if !glyph.is_null() {
+                        (*self.fs).get_quad(
+                            self.font,
+                            self.prev_glyph_index,
+                            &*glyph,
+                            self.scale,
+                            self.spacing,
+                            &mut self.nextx,
+                            &mut self.nexty,
+                            &mut quad,
+                        );
+                    }
+                    self.prev_glyph_index = if !glyph.is_null() { (*glyph).index } else { -1 };
+                    break;
+                }
+
+                s = s.offset(1)
             }
         }
+        self.next = s;
+        Some(quad)
     }
-}
-
-pub unsafe fn fonsTextIterNext(stash: *mut Stash, mut iter: &mut TextIter, quad: &mut Quad) -> i32 {
-    let mut str: *const u8 = (*iter).next;
-    iter.str_0 = iter.next;
-    if str == iter.end {
-        return 0;
-    }
-    while str != iter.end {
-        if 0 == decutf8(&mut iter.utf8state, &mut iter.codepoint, u32::from(*str)) {
-            str = str.offset(1);
-            iter.x = iter.nextx;
-            iter.y = iter.nexty;
-            let glyph = fons__getGlyph(
-                stash,
-                iter.font,
-                iter.codepoint,
-                iter.isize_0,
-                iter.iblur,
-                iter.bitmapOption,
-            );
-            if !glyph.is_null() {
-                (*stash).get_quad(
-                    iter.font,
-                    iter.prev_glyph_index,
-                    glyph,
-                    iter.scale,
-                    iter.spacing,
-                    &mut iter.nextx,
-                    &mut iter.nexty,
-                    quad,
-                );
-            }
-            iter.prev_glyph_index = if !glyph.is_null() { (*glyph).index } else { -1 };
-            break;
-        }
-
-        str = str.offset(1)
-    }
-    iter.next = str;
-    1
 }
 
 #[derive(Clone)]
 #[repr(C)]
 pub struct Font {
+    pub data: Vec<u8>,
+
     pub font: FontInfo,
-    pub name: [i8; 64],
-    pub data: *mut u8,
-    pub dataSize: i32,
-    pub freeData: u8,
+    pub name: [u8; 64],
+
     pub ascender: f32,
     pub descender: f32,
     pub lineh: f32,
-    pub glyphs: *mut Glyph,
-    pub cglyphs: i32,
-    pub nglyphs: i32,
+
+    pub glyphs: Vec<Glyph>,
+
     pub lut: [i32; 256],
+
     pub fallbacks: [i32; 20],
     pub nfallbacks: i32,
 }
@@ -275,9 +244,7 @@ pub struct Stash {
 
     pub atlas: Atlas,
 
-    pub fonts: *mut *mut Font,
-    pub cfonts: usize,
-    pub nfonts: usize,
+    pub fonts: Vec<Font>,
 
     pub verts: [f32; VERTEX_COUNT * 2],
     pub tcoords: [f32; VERTEX_COUNT * 2],
@@ -285,14 +252,13 @@ pub struct Stash {
 
     pub nverts: i32,
 
-    pub scratch: *mut u8,
-    pub nscratch: i32,
+    pub scratch: Vec<u8>,
 
     pub states: [State; MAX_STATES],
     pub nstates: i32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct State {
     pub font: i32,
     pub align: i32,
@@ -307,7 +273,7 @@ pub struct State {
 // can't use i16 because that's not visible in the header file
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub struct stbtt_vertex {
+pub struct Vertex {
     pub x: i16,
     pub y: i16,
     pub cx: i16,
@@ -316,9 +282,9 @@ pub struct stbtt_vertex {
     pub padding: u8,
 }
 
-pub const STBTT_vline: u32 = 2;
-pub const STBTT_vcurve: u32 = 3;
-pub const STBTT_vmove: u32 = 1;
+const VLINE: u32 = 2;
+const VCURVE: u32 = 3;
+const VMOVE: u32 = 1;
 
 // @TODO: don't expose this structure
 #[derive(Copy, Clone)]
@@ -336,7 +302,7 @@ pub struct Point {
     pub y: f32,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct Edge {
     pub x0: f32,
     pub y0: f32,
@@ -370,24 +336,23 @@ impl Heap {
         self.first_free = p;
     }
 
-    pub unsafe fn alloc(&mut self, size: size_t, userdata: *mut libc::c_void) -> *mut libc::c_void {
+    pub unsafe fn alloc(&mut self, size: size_t, stash: &mut Stash) -> *mut libc::c_void {
         if !self.first_free.is_null() {
             let p: *mut libc::c_void = self.first_free;
             self.first_free = *(p as *mut *mut libc::c_void);
             p
         } else {
             if self.num_remaining_in_head_chunk == 0 {
-                let count: i32 = if size < 32 {
+                let count = if size < 32 {
                     2000
                 } else if size < 128 {
                     800
                 } else {
                     100
                 };
-                let mut c = fons__tmpalloc(
-                    (size_of::<HeapChunk>() as u64).wrapping_add(size.wrapping_mul(count as u64)),
-                    userdata,
-                ) as *mut HeapChunk;
+                let size = (size_of::<HeapChunk>() as u64)
+                    .wrapping_add(size.wrapping_mul(count as u64));
+                let mut c = stash.tmpalloc(size) as *mut HeapChunk;
                 if c.is_null() {
                     return null_mut();
                 }
@@ -419,218 +384,43 @@ pub struct ActiveEdge {
     pub sy: f32,
     pub ey: f32,
 }
-// #define your own STBTT_ifloor/STBTT_iceil() to avoid math.h
-// #define your own functions "STBTT_malloc" / "STBTT_free" to avoid malloc.h
-// /////////////////////////////////////////////////////////////////////////////
-// /////////////////////////////////////////////////////////////////////////////
-// //
-// //   INTERFACE
-// //
-// //
-// ////////////////////////////////////////////////////////////////////////////
-//
-// TEXTURE BAKING API
-//
-// If you use this API, you only have to call two functions ever.
-//
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct stbtt_bakedchar {
-    pub x0: u16,
-    pub y0: u16,
-    pub x1: u16,
-    pub y1: u16,
-    pub xoff: f32,
-    pub yoff: f32,
-    pub xadvance: f32,
-}
-// height of font in pixels
-// bitmap to be filled in
-// characters to bake
-// you allocate this, it's num_chars long
-// if return is positive, the first unused row of the bitmap
-// if return is negative, returns the negative of the number of characters that fit
-// if return is 0, no characters fit and no rows were used
-// This uses a very crappy packing.
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct stbtt_aligned_quad {
-    pub x0: f32,
-    pub y0: f32,
-    pub s0: f32,
-    pub t0: f32,
-    pub x1: f32,
-    pub y1: f32,
-    pub s1: f32,
-    pub t1: f32,
-}
-// character to display
-// pointers to current position in screen pixel space
-// output: quad to draw
-// true if opengl fill rule; false if DX9 or earlier
-// Call GetBakedQuad with char_index = 'character - first_char', and it
-// creates the quad you need to draw and advances the current position.
-//
-// The coordinate system used assumes y increases downwards.
-//
-// Characters will extend both above and below the current position;
-// see discussion of "BASELINE" above.
-//
-// It's inefficient; you might want to c&p it and optimize it.
-// ////////////////////////////////////////////////////////////////////////////
-//
-// NEW TEXTURE BAKING API
-//
-// This provides options for packing multiple fonts into one atlas, not
-// perfectly but better than nothing.
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct stbtt_packedchar {
-    pub x0: u16,
-    pub y0: u16,
-    pub x1: u16,
-    pub y1: u16,
-    pub xoff: f32,
-    pub yoff: f32,
-    pub xadvance: f32,
-    pub xoff2: f32,
-    pub yoff2: f32,
-}
-// Calling these functions in sequence is roughly equivalent to calling
-// stbtt_PackFontRanges(). If you more control over the packing of multiple
-// fonts, or if you want to pack custom data into a font texture, take a look
-// at the source to of stbtt_PackFontRanges() and create a custom version
-// using these functions, e.g. call GatherRects multiple times,
-// building up a single array of rects, then call PackRects once,
-// then call RenderIntoRects repeatedly. This may result in a
-// better packing than calling PackFontRanges multiple times
-// (or it may not).
-// this is an opaque structure that you shouldn't mess with which holds
-// all the context needed from PackBegin to PackEnd.
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct stbtt_pack_context {
-    pub user_allocator_context: *mut libc::c_void,
-    pub pack_info: *mut libc::c_void,
-    pub width: i32,
-    pub height: i32,
-    pub stride_in_bytes: i32,
-    pub padding: i32,
-    pub h_oversample: u32,
-    pub v_oversample: u32,
-    pub pixels: *mut u8,
-    pub nodes: *mut libc::c_void,
-}
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct stbrp_rect {
-    pub x: i32,
-    pub y: i32,
-    pub id: i32,
-    pub w: i32,
-    pub h: i32,
-    pub was_packed: i32,
-}
-// ////////////////////////////////////////////////////////////////////////////
-//
-// rectangle packing replacement routines if you don't have stb_rect_pack.h
-//
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct stbrp_node {
-    pub x: u8,
-}
-// //////////////////////////////////////////////////////////////////////////////////
-//                                                                                //
-//                                                                                //
-// COMPILER WARNING ?!?!?                                                         //
-//                                                                                //
-//                                                                                //
-// if you get a compile warning due to these symbols being defined more than      //
-// once, move #include "stb_rect_pack.h" before #include "stb_truetype.h"         //
-//                                                                                //
-// //////////////////////////////////////////////////////////////////////////////////
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct stbrp_context {
-    pub width: i32,
-    pub height: i32,
-    pub x: i32,
-    pub y: i32,
-    pub bottom_y: i32,
-}
-// Creates character bitmaps from the font_index'th font found in fontdata (use
-// font_index=0 if you don't know what that is). It creates num_chars_in_range
-// bitmaps for characters with unicode values starting at first_unicode_char_in_range
-// and increasing. Data for how to render them is stored in chardata_for_range;
-// pass these to stbtt_GetPackedQuad to get back renderable quads.
-//
-// font_size is the full height of the character from ascender to descender,
-// as computed by stbtt_ScaleForPixelHeight. To use a point size as computed
-// by stbtt_ScaleForMappingEmToPixels, wrap the point size in STBTT_POINT_SIZE()
-// and pass that result as 'font_size':
-//       ...,                  20 , ... // font max minus min y is 20 pixels tall
-//       ..., STBTT_POINT_SIZE(20), ... // 'M' is 20 pixels tall
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct stbtt_pack_range {
-    pub font_size: f32,
-    pub first_unicode_codepoint_in_range: i32,
-    pub array_of_unicode_codepoints: *mut i32,
-    pub num_chars: i32,
-    pub chardata_for_range: *mut stbtt_packedchar,
-    pub h_oversample: u8,
-    pub v_oversample: u8,
-}
 
-pub unsafe fn fons__freeFont(font: *mut Font) {
-    if font.is_null() {
-        return;
-    }
-    if !(*font).glyphs.is_null() {
-        free((*font).glyphs as *mut libc::c_void);
-    }
-    if 0 != (*font).freeData && !(*font).data.is_null() {
-        free((*font).data as *mut libc::c_void);
-    }
-    free(font as *mut libc::c_void);
-}
 
 impl Stash {
     pub fn new(width: i32, height: i32) -> Box<Stash> {
-        unsafe {
-            let stash = malloc(size_of::<Stash>() as u64) as *mut Stash;
-            assert!(!stash.is_null());
-            stash.write_bytes(0, 1);
+        let tex_data = unsafe { malloc((width * height) as u64) as *mut u8 };
+        assert!(!tex_data.is_null());
 
-            (*stash).width = width;
-            (*stash).height = height;
+        let mut stash = Box::new(Stash {
+            width,
+            height,
 
-            (*stash).scratch = malloc(96000) as *mut u8;
-            assert!(!(*stash).scratch.is_null());
+            scratch: Vec::with_capacity(96000),
 
-            (*stash).atlas = Atlas::new(width, height, 256);
+            atlas: Atlas::new(width, height, 256),
 
-            (*stash).fonts = malloc((size_of::<*mut Font>() as u64).wrapping_mul(4)) as *mut *mut Font;
-            assert!(!(*stash).fonts.is_null());
-            (*stash).fonts.write_bytes(0, 4);
-            (*stash).cfonts = 4;
-            (*stash).nfonts = 0;
+            fonts: Vec::with_capacity(4),
 
-            (*stash).itw = 1.0 / width as f32;
-            (*stash).ith = 1.0 / height as f32;
+            itw: 1.0 / width as f32,
+            ith: 1.0 / height as f32,
 
-            (*stash).tex_data = malloc((width * height) as u64) as *mut u8;
-            assert!(!(*stash).tex_data.is_null());
-            (*stash).tex_data.write_bytes(0, (width * height) as usize);
+            tex_data,
 
-            (*stash).dirty_rect = [width, height, 0, 0];
-            (*stash).add_white_rect(2, 2);
-            (*stash).push_state();
-            (*stash).clear_state();
+            dirty_rect: [width, height, 0, 0],
 
-            Box::from_raw(stash)
-        }
+            verts: [0.0; VERTEX_COUNT * 2],
+            tcoords: [0.0; VERTEX_COUNT * 2],
+            colors: [0; VERTEX_COUNT],
+            nverts: 0,
+
+            states: Default::default(),
+            nstates: 0,
+        });
+
+        stash.add_white_rect(2, 2);
+        stash.push_state();
+        stash.clear_state();
+        stash
     }
 
     pub fn state(&self) -> &State {
@@ -662,32 +452,34 @@ impl Stash {
     }
 
 
-    unsafe fn add_white_rect(&mut self, w: i32, h: i32) {
-        let (gx, gy) = if let Some(p) = self.atlas.add_rect(w, h) {
-            p
-        } else {
-            return;
-        };
+    fn add_white_rect(&mut self, w: i32, h: i32) {
+        unsafe {
+            let (gx, gy) = if let Some(p) = self.atlas.add_rect(w, h) {
+                p
+            } else {
+                return;
+            };
 
-        let mut dst = self.tex_data.offset((gx + gy * self.width) as isize) as *mut u8;
+            let mut dst = self.tex_data.offset((gx + gy * self.width) as isize) as *mut u8;
 
-        let mut y = 0;
-        while y < h {
-            let mut x = 0;
-            while x < w {
-                *dst.offset(x as isize) = 0xff;
-                x += 1
+            let mut y = 0;
+            while y < h {
+                let mut x = 0;
+                while x < w {
+                    *dst.offset(x as isize) = 0xff;
+                    x += 1
+                }
+                dst = dst.offset(self.width as isize);
+                y += 1
             }
-            dst = dst.offset(self.width as isize);
-            y += 1
-        }
 
-        self.dirty_rect = [
-            min(self.dirty_rect[0], gx),
-            min(self.dirty_rect[1], gy),
-            max(self.dirty_rect[2], gx + w),
-            max(self.dirty_rect[3], gy + h),
-        ];
+            self.dirty_rect = [
+                min(self.dirty_rect[0], gx),
+                min(self.dirty_rect[1], gy),
+                max(self.dirty_rect[2], gx + w),
+                max(self.dirty_rect[3], gy + h),
+            ];
+        }
     }
 
     fn flush(&mut self) {
@@ -720,13 +512,10 @@ impl Stash {
         }
         self.dirty_rect = [width, height, 0, 0];
 
-        unsafe {
-            for i in 0..self.nfonts {
-                let mut font: *mut Font = *self.fonts.add(i);
-                (*font).nglyphs = 0;
-                for j in 0..256 {
-                    (*font).lut[j] = -1;
-                }
+        for font in &mut self.fonts {
+            font.glyphs.clear();
+            for j in 0..256 {
+                font.lut[j] = -1;
             }
         }
 
@@ -734,121 +523,66 @@ impl Stash {
         self.height = height;
         self.itw = 1.0 / self.width as f32;
         self.ith = 1.0 / self.height as f32;
-        unsafe {
-            self.add_white_rect(2, 2);
-        }
+        self.add_white_rect(2, 2);
 
         true
     }
-}
 
-// Add fonts
+    pub fn add_font<P: AsRef<std::path::Path>>(&mut self, name: &str, path: P) -> std::io::Result<i32> {
+        use std::fs::File;
+        use std::io::BufReader;
+        use std::io::prelude::*;
 
-pub unsafe fn fonsAddFont(stash: *mut Stash, name: *const i8, path: *const i8) -> i32 {
-    let mut data: *mut u8 = null_mut();
-    let mut fp = fopen(path, b"rb\x00" as *const u8 as *const i8);
-    if !fp.is_null() {
-        fseek(fp, 0 as libc::c_long, 2i32);
-        let size = ftell(fp) as i32;
-        fseek(fp, 0 as libc::c_long, 0);
-        data = malloc(size as u64) as *mut u8;
-        if !data.is_null() {
-            let readed = fread(data as *mut libc::c_void, 1 as u64, size as u64, fp);
-            fclose(fp);
-            fp = null_mut();
-            if readed == size as u64 {
-                return fonsAddFontMem(stash, name, data, size, 1);
+        let file = File::open(path)?;
+        let mut buf = BufReader::new(file);
+        let mut contents = Vec::new();
+        buf.read_to_end(&mut contents)?;
+
+        Ok(self.add_font_mem(name, contents))
+    }
+
+    pub fn add_font_mem(&mut self, name: &str, mut data: Vec<u8>) -> i32 {
+        let mut font: Font = unsafe { std::mem::zeroed() };
+        font.glyphs = Vec::with_capacity(256);
+        self.fonts.push(font);
+        let idx = self.fonts.len() as i32 - 1;
+
+        let stash: *mut Self = self;
+        let font = &mut self.fonts[idx as usize];
+        unsafe {
+            let name = name.as_bytes();
+            for i in 0..64 {
+                if i >= name.len() { break }
+                font.name[i] = name[i];
+            }
+            font.name[64 - 1] = 0;
+
+            for i in 0..256 {
+                font.lut[i] = -1;
+            }
+
+            let data_ptr = data.as_mut_ptr();
+            font.data = data;
+            self.scratch.clear();
+            if 0 == fons__tt_loadFont(stash, &mut (*font).font, data_ptr) {
+                self.fonts.pop();
+                -1
+            } else {
+                let info = &mut font.font;
+                let hhea = info.hhea as isize;
+
+                let ascent = read_i16(info.data.offset(hhea).offset(4));
+                let descent = read_i16(info.data.offset(hhea).offset(6));
+                let line_gap = read_i16(info.data.offset(hhea).offset(8));
+
+                let fh = ascent - descent;
+                font.ascender = ascent as f32 / fh as f32;
+                font.descender = descent as f32 / fh as f32;
+                font.lineh = (fh + line_gap) as f32 / fh as f32;
+                idx
             }
         }
     }
-    if !data.is_null() {
-        free(data as *mut libc::c_void);
-    }
-    if !fp.is_null() {
-        fclose(fp);
-    }
-    -1
-}
-
-pub unsafe fn fonsAddFontMem(
-    mut stash: *mut Stash,
-    name: *const i8,
-    data: *mut u8,
-    dataSize: i32,
-    freeData: i32,
-) -> i32 {
-    let idx: i32 = fons__allocFont(stash);
-    if idx == -1 {
-        return -1;
-    }
-    let font = *(*stash).fonts.offset(idx as isize);
-    strncpy(
-        (*font).name.as_mut_ptr(),
-        name,
-        size_of::<[i8; 64]>() as u64,
-    );
-    (*font).name[(size_of::<[i8; 64]>() as u64).wrapping_sub(1 as u64) as usize] =
-        '\u{0}' as i32 as i8;
-
-    for i in 0..256 {
-        (*font).lut[i] = -1;
-    }
-
-    (*font).dataSize = dataSize;
-    (*font).data = data;
-    (*font).freeData = freeData as u8;
-    (*stash).nscratch = 0;
-    if 0 == fons__tt_loadFont(stash, &mut (*font).font, data, dataSize) {
-        fons__freeFont(font);
-        (*stash).nfonts -= 1;
-        -1
-    } else {
-        let info = &mut (*font).font;
-        let hhea = info.hhea as isize;
-
-        let ascent = read_i16((*info).data.offset(hhea).offset(4));
-        let descent = read_i16((*info).data.offset(hhea).offset(6));
-        let line_gap = read_i16((*info).data.offset(hhea).offset(8));
-
-        let fh = ascent - descent;
-        (*font).ascender = ascent as f32 / fh as f32;
-        (*font).descender = descent as f32 / fh as f32;
-        (*font).lineh = (fh + line_gap) as f32 / fh as f32;
-        idx
-    }
-}
-
-pub unsafe fn fons__allocFont(mut stash: *mut Stash) -> i32 {
-    if (*stash).nfonts + 1 > (*stash).cfonts {
-        (*stash).cfonts = if (*stash).cfonts == 0 {
-            8
-        } else {
-            (*stash).cfonts * 2
-        };
-        (*stash).fonts = realloc(
-            (*stash).fonts as *mut libc::c_void,
-            (size_of::<*mut Font>() as u64).wrapping_mul((*stash).cfonts as u64),
-        ) as *mut *mut Font;
-        if (*stash).fonts.is_null() {
-            return -1;
-        }
-    }
-    let font = malloc(size_of::<Font>() as u64) as *mut Font;
-    if !font.is_null() {
-        font.write_bytes(0, 1);
-        (*font).glyphs = malloc((size_of::<Glyph>() as u64).wrapping_mul(256i32 as u64)) as *mut Glyph;
-        if !(*font).glyphs.is_null() {
-            (*font).cglyphs = 256i32;
-            (*font).nglyphs = 0;
-            let fresh3 = (*stash).nfonts;
-            (*stash).nfonts += 1;
-            let fresh4 = &mut (*(*stash).fonts.add(fresh3));
-            *fresh4 = font;
-            return (*stash).nfonts as i32 - 1;
-        }
-    }
-    fons__freeFont(font);
-    -1
 }
 
 // computes a scale factor to produce a font whose EM size is mapped to
@@ -856,68 +590,62 @@ pub unsafe fn fons__allocFont(mut stash: *mut Stash) -> i32 {
 // I'm not positive.
 
 pub unsafe fn fons__tt_loadFont(
-    context: *mut Stash,
-    info: *mut FontInfo,
+    stash: *mut Stash,
+    info: &mut FontInfo,
     data: *mut u8,
-    _dataSize: i32,
 ) -> i32 {
-    (*info).userdata = context as *mut libc::c_void;
     let fontstart = 0;
+    let cmap = find_table(data, fontstart, *b"cmap");
 
-    (*info).data = data;
-    (*info).fontstart = fontstart;
+    info.userdata = stash;
+    info.data = data;
+    info.fontstart = fontstart as i32;
+    info.loca = find_table(data, fontstart, *b"loca") as i32;
+    info.head = find_table(data, fontstart, *b"head") as i32;
+    info.glyf = find_table(data, fontstart, *b"glyf") as i32;
+    info.hhea = find_table(data, fontstart, *b"hhea") as i32;
+    info.hmtx = find_table(data, fontstart, *b"hmtx") as i32;
+    info.kern = find_table(data, fontstart, *b"kern") as i32;
 
-    let cmap = find_table(data, fontstart as u32, *b"cmap");
-    (*info).loca = find_table(data, fontstart as u32, *b"loca") as i32;
-    (*info).head = find_table(data, fontstart as u32, *b"head") as i32;
-    (*info).glyf = find_table(data, fontstart as u32, *b"glyf") as i32;
-    (*info).hhea = find_table(data, fontstart as u32, *b"hhea") as i32;
-    (*info).hmtx = find_table(data, fontstart as u32, *b"hmtx") as i32;
-    (*info).kern = find_table(data, fontstart as u32, *b"kern") as i32;
-    if 0 == cmap
-        || 0 == (*info).loca
-        || 0 == (*info).head
-        || 0 == (*info).glyf
-        || 0 == (*info).hhea
-        || 0 == (*info).hmtx
-    {
+    if 0 == cmap || 0 == info.loca || 0 == info.head || 0 == info.glyf || 0 == info.hhea || 0 == info.hmtx {
         return 0;
     }
 
-    let t = find_table(data, fontstart as u32, *b"maxp");
-    (*info).numGlyphs = if 0 != t {
-        read_u16(data.offset(t as isize).offset(4)) as i32
+    let maxp = find_table(data, fontstart, *b"maxp");
+    info.num_glyphs = if 0 != maxp {
+        read_u16(data.offset(maxp as isize + 4)) as i32
     } else {
         0xffff
     };
 
-    let num_tables = read_u16(data.offset(cmap as isize).offset(2)) as i32;
-    (*info).index_map = 0;
+    let num_tables = read_u16(data.offset(cmap as isize + 2)) as isize;
+    info.index_map = 0;
 
     for i in 0..num_tables {
-        let encoding_record = cmap.wrapping_add(4).wrapping_add((8 * i) as u32) as isize;
+        let encoding_record = cmap as isize + 4 + (8 * i);
         match read_u16(data.offset(encoding_record)) {
-            3 => match read_u16(data.offset(encoding_record).offset(2)) {
+            3 => match read_u16(data.offset(encoding_record + 2)) {
                 1 | 10 => {
-                    (*info).index_map =
-                        cmap.wrapping_add(read_u32(data.offset(encoding_record).offset(4))) as i32
+                    info.index_map =
+                        cmap.wrapping_add(read_u32(data.offset(encoding_record + 4))) as i32
                 }
                 _ => {}
             },
             0 => {
-                (*info).index_map =
-                    cmap.wrapping_add(read_u32(data.offset(encoding_record).offset(4))) as i32
+                info.index_map =
+                    cmap.wrapping_add(read_u32(data.offset(encoding_record + 4))) as i32
             }
             _ => {}
         }
     }
 
-    if (*info).index_map == 0 {
+    if info.index_map == 0 {
         return 0;
     }
-    (*info).indexToLocFormat = read_u16(data.offset((*info).head as isize).offset(50)) as i32;
+    info.index2loc_format = read_u16(data.offset(info.head as isize + 50)) as i32;
     1
 }
+
 // @OPTIMIZE: binary search
 unsafe fn find_table(data: *mut u8, fontstart: u32, tag: [u8; 4]) -> u32 {
     let num_tables: i32 = read_u16(data.offset(fontstart as isize).offset(4)) as i32;
@@ -932,8 +660,9 @@ unsafe fn find_table(data: *mut u8, fontstart: u32, tag: [u8; 4]) -> u32 {
 }
 
 pub unsafe fn fonsGetFontByName(s: *mut Stash, name: *const i8) -> i32 {
-    for i in 0..(*s).nfonts {
-        if strcmp((**(*s).fonts.offset(i as isize)).name.as_mut_ptr(), name) == 0 {
+    for i in 0..(*s).fonts.len() {
+        let font = &mut (*s).fonts[i];
+        if strcmp(font.name.as_mut_ptr() as *const i8, name) == 0 {
             return i as i32;
         }
     }
@@ -945,39 +674,32 @@ impl Stash {
     pub unsafe fn get_quad(
         &mut self,
         font: *mut Font,
-        prevGlyphIndex: i32,
-        glyph: *mut Glyph,
+        prev_glyph: i32,
+        glyph: &Glyph,
         scale: f32,
         spacing: f32,
         x: &mut f32,
         y: &mut f32,
         mut q: &mut Quad,
     ) {
-        let mut rx: f32 = 0.;
-        let mut ry: f32 = 0.;
-        let mut xoff: f32 = 0.;
-        let mut yoff: f32 = 0.;
-        let mut x0: f32 = 0.;
-        let mut y0: f32 = 0.;
-        let mut x1: f32 = 0.;
-        let mut y1: f32 = 0.;
-        if prevGlyphIndex != -1 {
+        if prev_glyph != -1 {
             let adv: f32 = (*font)
                 .font
-                .glyph_kern_advance(prevGlyphIndex, (*glyph).index)
+                .glyph_kern_advance(prev_glyph, (*glyph).index)
                 as f32
                 * scale;
             *x += (adv + spacing + 0.5) as i32 as f32
         }
-        xoff = ((*glyph).xoff as i32 + 1) as i16 as f32;
-        yoff = ((*glyph).yoff as i32 + 1) as i16 as f32;
-        x0 = ((*glyph).x0 as i32 + 1) as f32;
-        y0 = ((*glyph).y0 as i32 + 1) as f32;
-        x1 = ((*glyph).x1 as i32 - 1) as f32;
-        y1 = ((*glyph).y1 as i32 - 1) as f32;
 
-        rx = (*x + xoff) as i32 as f32;
-        ry = (*y + yoff) as i32 as f32;
+        let xoff = ((*glyph).xoff as i32 + 1) as i16 as f32;
+        let yoff = ((*glyph).yoff as i32 + 1) as i16 as f32;
+        let x0 = ((*glyph).x0 as i32 + 1) as f32;
+        let y0 = ((*glyph).y0 as i32 + 1) as f32;
+        let x1 = ((*glyph).x1 as i32 - 1) as f32;
+        let y1 = ((*glyph).y1 as i32 - 1) as f32;
+
+        let rx = (*x + xoff) as i32 as f32;
+        let ry = (*y + yoff) as i32 as f32;
 
         q.x0 = rx;
         q.y0 = ry;
@@ -1000,61 +722,47 @@ pub unsafe fn fons__getGlyph(
     mut iblur: i16,
     bitmapOption: i32,
 ) -> *mut Glyph {
-    let mut i: i32 = 0;
-    let mut g: i32 = 0;
     let mut advance: i32 = 0;
     let mut lsb: i32 = 0;
-    let mut x0: i32 = 0;
-    let mut y0: i32 = 0;
-    let mut x1: i32 = 0;
-    let mut y1: i32 = 0;
-    let mut x: i32 = 0;
-    let mut y: i32 = 0;
-    let mut scale: f32 = 0.;
-    let mut glyph: *mut Glyph = 0 as *mut Glyph;
-    let mut h: u32 = 0;
-    let size: f32 = isize as i32 as f32 / 10.0;
-    let mut pad: i32 = 0;
-    let _added: i32 = 0;
-    let mut bdst: *mut u8 = 0 as *mut u8;
-    let mut dst: *mut u8 = 0 as *mut u8;
-    let mut renderFont: *mut Font = font;
-    if (isize as i32) < 2i32 {
-        return 0 as *mut Glyph;
+    let mut glyph: *mut Glyph = null_mut();
+    let size: f32 = isize as f32 / 10.0;
+
+    if isize < 2 {
+        return null_mut();
     }
-    if iblur as i32 > 20 {
-        iblur = 20 as i16
+    if iblur > 20 {
+        iblur = 20
     }
-    pad = iblur as i32 + 2i32;
-    (*stash).nscratch = 0;
-    h = fons__hashint(codepoint) & (256i32 - 1) as u32;
-    i = (*font).lut[h as usize];
+
+    let pad = iblur as i32 + 2;
+    (*stash).scratch.clear();
+    let h = hashint(codepoint) & (256 - 1);
+    let mut i = (*font).lut[h as usize];
     while i != -1 {
-        if (*(*font).glyphs.offset(i as isize)).codepoint == codepoint
-            && (*(*font).glyphs.offset(i as isize)).size as i32 == isize as i32
-            && (*(*font).glyphs.offset(i as isize)).blur as i32 == iblur as i32
+        let glyph = &mut (*font).glyphs[i as usize];
+        if glyph.codepoint == codepoint
+            && glyph.size as i32 == isize as i32
+            && glyph.blur as i32 == iblur as i32
         {
-            glyph = &mut *(*font).glyphs.offset(i as isize) as *mut Glyph;
             if bitmapOption == FONS_GLYPH_BITMAP_OPTIONAL as i32
-                || (*glyph).x0 as i32 >= 0 && (*glyph).y0 as i32 >= 0
+                || glyph.x0 as i32 >= 0 && glyph.y0 as i32 >= 0
             {
                 return glyph;
             }
             // At this point, glyph exists but the bitmap data is not yet created.
             break;
         } else {
-            i = (*(*font).glyphs.offset(i as isize)).next
+            i = glyph.next;
         }
     }
-    g = fons__tt_getGlyphIndex(&mut (*font).font, codepoint as i32);
+
+    let mut g = (*font).font.glyph_index(codepoint as i32);
+    let mut renderFont: *mut Font = font;
     if g == 0 {
         i = 0;
         while i < (*font).nfallbacks {
-            let fallbackFont: *mut Font = *(*stash)
-                .fonts
-                .offset((*font).fallbacks[i as usize] as isize);
-            let fallbackIndex: i32 =
-                fons__tt_getGlyphIndex(&mut (*fallbackFont).font, codepoint as i32);
+            let fallbackFont = &mut (*stash).fonts[(*font).fallbacks[i as usize] as usize];
+            let fallbackIndex: i32 = (*fallbackFont).font.glyph_index(codepoint as i32);
             if fallbackIndex != 0 {
                 g = fallbackIndex;
                 renderFont = fallbackFont;
@@ -1064,22 +772,18 @@ pub unsafe fn fons__getGlyph(
             }
         }
     }
-    scale = (*renderFont).font.pixel_height_scale(size);
-    fons__tt_buildGlyphBitmap(
-        &mut (*renderFont).font,
+
+    let scale = (*renderFont).font.pixel_height_scale(size);
+    let [x0, y0, x1, y1] = (*renderFont).font.build_glyph_bitmap(
         g,
         size,
         scale,
         &mut advance,
         &mut lsb,
-        &mut x0,
-        &mut y0,
-        &mut x1,
-        &mut y1,
     );
 
-    let gw = x1 - x0 + pad * 2i32;
-    let gh = y1 - y0 + pad * 2i32;
+    let gw = x1 - x0 + pad * 2;
+    let gh = y1 - y0 + pad * 2;
     let (gx, gy) = if bitmapOption == FONS_GLYPH_BITMAP_REQUIRED as i32 {
         if let Some(p) = (*stash).atlas.add_rect(gw, gh) {
             p
@@ -1097,7 +801,7 @@ pub unsafe fn fons__getGlyph(
         (*glyph).blur = iblur;
         (*glyph).next = 0;
         (*glyph).next = (*font).lut[h as usize];
-        (*font).lut[h as usize] = (*font).nglyphs - 1
+        (*font).lut[h as usize] = (*font).glyphs.len() as i32 - 1;
     }
     (*glyph).index = g;
     (*glyph).x0 = gx as i16;
@@ -1110,12 +814,11 @@ pub unsafe fn fons__getGlyph(
     if bitmapOption == FONS_GLYPH_BITMAP_OPTIONAL as i32 {
         return glyph;
     }
-    dst = &mut *(*stash)
+
+    let dst = (*stash)
         .tex_data
-        .offset(((*glyph).x0 as i32 + pad + ((*glyph).y0 as i32 + pad) * (*stash).width) as isize)
-        as *mut u8;
-    fons__tt_renderGlyphBitmap(
-        &mut (*renderFont).font,
+        .offset(((*glyph).x0 as i32 + pad + ((*glyph).y0 as i32 + pad) * (*stash).width) as isize);
+    (*renderFont).font.render_glyph_bitmap(
         dst,
         gw - pad * 2,
         gh - pad * 2,
@@ -1124,28 +827,23 @@ pub unsafe fn fons__getGlyph(
         scale,
         g,
     );
-    dst = &mut *(*stash)
-        .tex_data
-        .offset(((*glyph).x0 as i32 + (*glyph).y0 as i32 * (*stash).width) as isize)
-        as *mut u8;
-    y = 0;
-    while y < gh {
-        *dst.offset((y * (*stash).width) as isize) = 0 as u8;
-        *dst.offset((gw - 1 + y * (*stash).width) as isize) = 0 as u8;
-        y += 1
+
+    let dst = (*stash).tex_data
+        .offset((*glyph).x0 as isize + (*glyph).y0 as isize * (*stash).width as isize);
+
+    for y in 0..gh {
+        *dst.offset((y * (*stash).width) as isize) = 0;
+        *dst.offset((gw - 1 + y * (*stash).width) as isize) = 0;
     }
-    x = 0;
-    while x < gw {
-        *dst.offset(x as isize) = 0 as u8;
-        *dst.offset((x + (gh - 1) * (*stash).width) as isize) = 0 as u8;
-        x += 1
+    for x in 0..gw {
+        *dst.offset(x as isize) = 0;
+        *dst.offset((x + (gh - 1) * (*stash).width) as isize) = 0;
     }
+
     if iblur as i32 > 0 {
-        (*stash).nscratch = 0;
-        bdst = &mut *(*stash)
-            .tex_data
-            .offset(((*glyph).x0 as i32 + (*glyph).y0 as i32 * (*stash).width) as isize)
-            as *mut u8;
+        (*stash).scratch.clear();
+        let bdst = (*stash).tex_data
+            .offset((*glyph).x0 as isize + (*glyph).y0 as isize * (*stash).width as isize);
         blur(bdst, gw, gh, (*stash).width, iblur as i32);
     }
     (*stash).dirty_rect = [
@@ -1157,200 +855,103 @@ pub unsafe fn fons__getGlyph(
     glyph
 }
 
-pub unsafe fn fons__tt_renderGlyphBitmap(
-    info: *const FontInfo,
-    output: *mut u8,
-    out_w: i32,
-    out_h: i32,
-    out_stride: i32,
-    scale_x: f32,
-    scale_y: f32,
-    glyph: i32,
-) {
-    let shift_x = 0.0;
-    let shift_y = 0.0;
-
-    let mut ix0: i32 = 0;
-    let mut iy0: i32 = 0;
-    let mut vertices: *mut stbtt_vertex = 0 as *mut stbtt_vertex;
-    let num_verts: i32 = stbtt_GetGlyphShape(info, glyph, &mut vertices);
-    stbtt_GetGlyphBitmapBoxSubpixel(
-        info,
-        glyph,
-        scale_x,
-        scale_y,
-        shift_x,
-        shift_y,
-        &mut ix0,
-        &mut iy0,
-        null_mut(),
-        null_mut(),
-    );
-
-    let mut gbm = Bitmap {
-        pixels: output,
-        w: out_w,
-        h: out_h,
-        stride: out_stride,
-    };
-
-    if 0 != gbm.w && 0 != gbm.h {
-        stbtt_Rasterize(
-            &mut gbm,
-            0.35,
-            vertices,
-            num_verts,
-            scale_x,
-            scale_y,
-            shift_x,
-            shift_y,
-            ix0,
-            iy0,
-            1,
-            (*info).userdata,
-        );
-    }
-}
-
 pub unsafe fn stbtt_GetGlyphShape(
     info: *const FontInfo,
     glyph_index: i32,
-    pvertices: *mut *mut stbtt_vertex,
+    pvertices: *mut *mut Vertex,
 ) -> i32 {
-    let mut numberOfContours: i16 = 0;
-    let mut endPtsOfContours: *mut u8 = 0 as *mut u8;
     let data: *mut u8 = (*info).data;
-    let mut vertices: *mut stbtt_vertex = 0 as *mut stbtt_vertex;
+    let mut vertices: *mut Vertex = null_mut();
     let mut num_vertices: i32 = 0;
-    let g: i32 = stbtt__GetGlyfOffset(info, glyph_index);
-    *pvertices = 0 as *mut stbtt_vertex;
-    if g < 0 {
-        return 0;
-    }
-    numberOfContours = read_i16(data.offset(g as isize));
-    if numberOfContours as i32 > 0 {
-        let mut flags: u8 = 0 as u8;
-        let mut flagcount: u8 = 0;
-        let mut ins: i32 = 0;
-        let mut i: i32 = 0;
-        let mut j: i32 = 0;
-        let mut m: i32 = 0;
-        let mut n: i32 = 0;
-        let mut next_move: i32 = 0;
-        let mut was_off: i32 = 0;
-        let mut off: i32 = 0;
-        let mut start_off: i32 = 0;
-        let mut x: i32 = 0;
-        let mut y: i32 = 0;
-        let mut cx: i32 = 0;
-        let mut cy: i32 = 0;
-        let mut sx: i32 = 0;
-        let mut sy: i32 = 0;
-        let mut scx: i32 = 0;
-        let mut scy: i32 = 0;
-        let mut points: *mut u8 = 0 as *mut u8;
-        endPtsOfContours = data.offset(g as isize).offset(10);
-        ins = read_u16(
-            data.offset(g as isize)
-                .offset(10)
-                .offset((numberOfContours as i32 * 2i32) as isize),
-        ) as i32;
-        points = data
-            .offset(g as isize)
-            .offset(10)
-            .offset((numberOfContours as i32 * 2i32) as isize)
-            .offset(2)
-            .offset(ins as isize);
-        n = 1 + read_u16(
-            endPtsOfContours
-                .offset((numberOfContours as i32 * 2i32) as isize)
-                .offset(-2),
-        ) as i32;
-        m = n + 2i32 * numberOfContours as i32;
-        vertices = fons__tmpalloc(
-            (m as u64).wrapping_mul(size_of::<stbtt_vertex>() as u64),
-            (*info).userdata,
-        ) as *mut stbtt_vertex;
+    *pvertices = null_mut();
+
+    let g = match (*info).glyf_offset(glyph_index) {
+        Some(g) => g as isize,
+        None => return 0,
+    };
+
+    let num_contours = read_i16(data.offset(g)) as isize;
+    if num_contours > 0 {
+        let mut j = 0;
+        let mut was_off = 0;
+        let mut start_off = 0;
+
+        let endPtsOfContours = data.offset(g + 10);
+        let ins = read_u16(data.offset(g + 10 + num_contours * 2)) as isize;
+
+        let mut points = data
+            .offset(g + 10 + num_contours * 2 + 2 + ins);
+
+        let n = 1 + read_u16(endPtsOfContours.offset(num_contours * 2 - 2)) as i32;
+
+        let m = n + 2 * num_contours as i32;
+        vertices = (*(*info).userdata).calloc(m as usize);
         if vertices.is_null() {
             return 0;
         }
-        next_move = 0;
-        flagcount = 0 as u8;
-        off = m - n;
-        i = 0;
-        while i < n {
-            if flagcount as i32 == 0 {
-                let fresh5 = points;
+
+        let mut next_move = 0;
+        let mut flagcount = 0;
+        let off = m - n;
+
+        let mut flags = 0;
+        for i in 0..n {
+            if flagcount == 0 {
+                flags = *points;
                 points = points.offset(1);
-                flags = *fresh5;
-                if 0 != flags as i32 & 8i32 {
-                    let fresh6 = points;
+                if 0 != flags & 8 {
+                    flagcount = *points;
                     points = points.offset(1);
-                    flagcount = *fresh6
                 }
             } else {
                 flagcount = flagcount.wrapping_sub(1)
             }
             (*vertices.offset((off + i) as isize)).type_0 = flags;
-            i += 1
         }
-        x = 0;
-        i = 0;
-        while i < n {
-            flags = (*vertices.offset((off + i) as isize)).type_0;
-            if 0 != flags as i32 & 2i32 {
-                let fresh7 = points;
+
+        let mut x = 0;
+        for i in 0..n {
+            let flags = (*vertices.offset((off + i) as isize)).type_0;
+            if 0 != flags & 2 {
+                let dx = *points as i32;
                 points = points.offset(1);
-                let dx: i16 = *fresh7 as i16;
-                x += if 0 != flags as i32 & 16i32 {
-                    dx as i32
-                } else {
-                    -(dx as i32)
-                }
-            } else if 0 == flags as i32 & 16i32 {
-                x = x
-                    + (*points.offset(0) as i32 * 256i32 + *points.offset(1) as i32) as i16 as i32;
+                x += if 0 != flags & 16 { dx } else { -dx };
+            } else if 0 == flags & 16 {
+                x += *points.offset(0) as i32 * 256 + *points.offset(1) as i32;
                 points = points.offset(2)
             }
             (*vertices.offset((off + i) as isize)).x = x as i16;
-            i += 1
         }
-        y = 0;
-        i = 0;
-        while i < n {
-            flags = (*vertices.offset((off + i) as isize)).type_0;
-            if 0 != flags as i32 & 4i32 {
-                let fresh8 = points;
+
+        let mut y = 0;
+        for i in 0..n {
+            let flags = (*vertices.offset((off + i) as isize)).type_0;
+            if 0 != flags & 4 {
+                let dy = *points as i32;
                 points = points.offset(1);
-                let dy: i16 = *fresh8 as i16;
-                y += if 0 != flags as i32 & 32i32 {
-                    dy as i32
-                } else {
-                    -(dy as i32)
-                }
-            } else if 0 == flags as i32 & 32i32 {
-                y = y
-                    + (*points.offset(0) as i32 * 256i32 + *points.offset(1) as i32) as i16 as i32;
+                y += if 0 != flags & 32 { dy } else { -dy }
+            } else if 0 == flags & 32 {
+                y += *points.offset(0) as i32 * 256 + *points.offset(1) as i32;
                 points = points.offset(2)
             }
             (*vertices.offset((off + i) as isize)).y = y as i16;
-            i += 1
         }
+
         num_vertices = 0;
-        scy = 0;
-        scx = scy;
-        cy = scx;
-        cx = cy;
-        sy = cx;
-        sx = sy;
-        i = 0;
+        let mut scy = 0;
+        let mut scx = 0;
+        let mut cy = 0;
+        let mut cx = 0;
+        let mut sy = 0;
+        let mut sx = 0;
+        let mut i = 0;
         while i < n {
-            flags = (*vertices.offset((off + i) as isize)).type_0;
-            x = (*vertices.offset((off + i) as isize)).x as i16 as i32;
-            y = (*vertices.offset((off + i) as isize)).y as i16 as i32;
+            let flags = (*vertices.offset((off + i) as isize)).type_0;
+            x = (*vertices.offset((off + i) as isize)).x as i32;
+            y = (*vertices.offset((off + i) as isize)).y as i32;
             if next_move == i {
                 if i != 0 {
-                    num_vertices = stbtt__close_shape(
+                    num_vertices = close_shape(
                         vertices,
                         num_vertices,
                         was_off,
@@ -1368,8 +969,8 @@ pub unsafe fn stbtt_GetGlyphShape(
                     scx = x;
                     scy = y;
                     if 0 == (*vertices.offset((off + i + 1) as isize)).type_0 as i32 & 1 {
-                        sx = x + (*vertices.offset((off + i + 1) as isize)).x as i32 >> 1;
-                        sy = y + (*vertices.offset((off + i + 1) as isize)).y as i32 >> 1
+                        sx = (x + (*vertices.offset((off + i + 1) as isize)).x as i32) >> 1;
+                        sy = (y + (*vertices.offset((off + i + 1) as isize)).y as i32) >> 1;
                     } else {
                         sx = (*vertices.offset((off + i + 1) as isize)).x as i32;
                         sy = (*vertices.offset((off + i + 1) as isize)).y as i32;
@@ -1377,66 +978,52 @@ pub unsafe fn stbtt_GetGlyphShape(
                     }
                 } else {
                     sx = x;
-                    sy = y
+                    sy = y;
                 }
-                let fresh9 = num_vertices;
-                num_vertices = num_vertices + 1;
                 setvertex(
-                    &mut *vertices.offset(fresh9 as isize),
-                    STBTT_vmove as i32 as u8,
-                    sx,
-                    sy,
-                    0,
-                    0,
+                    &mut *vertices.offset(num_vertices as isize),
+                    VMOVE as i32 as u8,
+                    sx, sy, 0, 0,
                 );
+                num_vertices += 1;
                 was_off = 0;
-                next_move = 1 + read_u16(endPtsOfContours.offset((j * 2i32) as isize)) as i32;
+                next_move = 1 + read_u16(endPtsOfContours.offset((j * 2) as isize)) as i32;
                 j += 1
             } else if 0 == flags as i32 & 1 {
                 if 0 != was_off {
-                    let fresh10 = num_vertices;
-                    num_vertices = num_vertices + 1;
                     setvertex(
-                        &mut *vertices.offset(fresh10 as isize),
-                        STBTT_vcurve as i32 as u8,
-                        cx + x >> 1,
-                        cy + y >> 1,
-                        cx,
-                        cy,
+                        &mut *vertices.offset(num_vertices as isize),
+                        VCURVE as i32 as u8,
+                        (cx + x) >> 1,
+                        (cy + y) >> 1,
+                        cx, cy,
                     );
+                    num_vertices += 1;
                 }
                 cx = x;
                 cy = y;
                 was_off = 1
             } else {
                 if 0 != was_off {
-                    let fresh11 = num_vertices;
-                    num_vertices = num_vertices + 1;
                     setvertex(
-                        &mut *vertices.offset(fresh11 as isize),
-                        STBTT_vcurve as i32 as u8,
-                        x,
-                        y,
-                        cx,
-                        cy,
+                        &mut *vertices.offset(num_vertices as isize),
+                        VCURVE as i32 as u8,
+                        x, y, cx, cy,
                     );
+                    num_vertices += 1;
                 } else {
-                    let fresh12 = num_vertices;
-                    num_vertices = num_vertices + 1;
                     setvertex(
-                        &mut *vertices.offset(fresh12 as isize),
-                        STBTT_vline as i32 as u8,
-                        x,
-                        y,
-                        0,
-                        0,
+                        &mut *vertices.offset(num_vertices as isize),
+                        VLINE as i32 as u8,
+                        x, y, 0, 0,
                     );
+                    num_vertices += 1;
                 }
                 was_off = 0
             }
             i += 1
         }
-        num_vertices = stbtt__close_shape(
+        num_vertices = close_shape(
             vertices,
             num_vertices,
             was_off,
@@ -1448,151 +1035,124 @@ pub unsafe fn stbtt_GetGlyphShape(
             cx,
             cy,
         )
-    } else if numberOfContours as i32 == -1 {
-        let mut more: i32 = 1;
-        let mut comp: *mut u8 = data.offset(g as isize).offset(10);
-        num_vertices = 0;
-        vertices = 0 as *mut stbtt_vertex;
-        while 0 != more {
-            let mut flags_0: u16 = 0;
-            let mut gidx: u16 = 0;
-            let mut comp_num_verts: i32 = 0;
-            let mut i_0: i32 = 0;
-            let mut comp_verts: *mut stbtt_vertex = 0 as *mut stbtt_vertex;
-            let mut tmp: *mut stbtt_vertex = 0 as *mut stbtt_vertex;
-            let mut mtx: [f32; 6] = [1 as f32, 0 as f32, 0 as f32, 1 as f32, 0 as f32, 0 as f32];
-            let mut m_0: f32 = 0.;
-            let mut n_0: f32 = 0.;
-            flags_0 = read_i16(comp) as u16;
-            comp = comp.offset(2);
-            gidx = read_i16(comp) as u16;
-            comp = comp.offset(2);
-            if 0 != flags_0 as i32 & 2i32 {
-                if 0 != flags_0 as i32 & 1 {
-                    mtx[4] = read_i16(comp) as f32;
-                    comp = comp.offset(2);
-                    mtx[5] = read_i16(comp) as f32;
-                    comp = comp.offset(2)
-                } else {
-                    mtx[4] = *(comp as *mut i8) as f32;
-                    comp = comp.offset(1);
-                    mtx[5] = *(comp as *mut i8) as f32;
-                    comp = comp.offset(1)
-                }
-            } else {
-                __assert_fail(b"0\x00" as *const u8 as *const i8,
-                              b"/home/lain/WORK/oni2d/nvg/src/stb_truetype.h\x00"
-                                  as *const u8 as *const i8,
-                              1407i32 as u32,
-                              (*::std::mem::transmute::<&[u8; 70],
-                                                        &[i8; 70]>(b"int stbtt_GetGlyphShape(const stbtt_fontinfo *, int, stbtt_vertex **)\x00")).as_ptr());
-            }
-            if 0 != flags_0 as i32 & 1 << 3i32 {
-                mtx[3] = read_i16(comp) as i32 as f32 / 16384.0;
-                mtx[0] = mtx[3];
-                comp = comp.offset(2);
-                mtx[2] = 0 as f32;
-                mtx[1] = mtx[2]
-            } else if 0 != flags_0 as i32 & 1 << 6i32 {
-                mtx[0] = read_i16(comp) as i32 as f32 / 16384.0;
-                comp = comp.offset(2);
-                mtx[2] = 0 as f32;
-                mtx[1] = mtx[2];
-                mtx[3] = read_i16(comp) as i32 as f32 / 16384.0;
-                comp = comp.offset(2)
-            } else if 0 != flags_0 as i32 & 1 << 7i32 {
-                mtx[0] = read_i16(comp) as i32 as f32 / 16384.0;
-                comp = comp.offset(2);
-                mtx[1] = read_i16(comp) as i32 as f32 / 16384.0;
-                comp = comp.offset(2);
-                mtx[2] = read_i16(comp) as i32 as f32 / 16384.0;
-                comp = comp.offset(2);
-                mtx[3] = read_i16(comp) as i32 as f32 / 16384.0;
-                comp = comp.offset(2)
-            }
-            m_0 = sqrt((mtx[0] * mtx[0] + mtx[1] * mtx[1]) as f64) as f32;
-            n_0 = sqrt((mtx[2] * mtx[2] + mtx[3] * mtx[3]) as f64) as f32;
-            comp_num_verts = stbtt_GetGlyphShape(info, gidx as i32, &mut comp_verts);
-            if comp_num_verts > 0 {
-                i_0 = 0;
-                while i_0 < comp_num_verts {
-                    let mut v: *mut stbtt_vertex =
-                        &mut *comp_verts.offset(i_0 as isize) as *mut stbtt_vertex;
-                    let mut x_0: i16 = 0;
-                    let mut y_0: i16 = 0;
-                    x_0 = (*v).x;
-                    y_0 = (*v).y;
-                    (*v).x = (m_0
-                        * (mtx[0] * x_0 as i32 as f32 + mtx[2] * y_0 as i32 as f32 + mtx[4]))
-                        as i16;
-                    (*v).y = (n_0
-                        * (mtx[1] * x_0 as i32 as f32 + mtx[3] * y_0 as i32 as f32 + mtx[5]))
-                        as i16;
-                    x_0 = (*v).cx;
-                    y_0 = (*v).cy;
-                    (*v).cx = (m_0
-                        * (mtx[0] * x_0 as i32 as f32 + mtx[2] * y_0 as i32 as f32 + mtx[4]))
-                        as i16;
-                    (*v).cy = (n_0
-                        * (mtx[1] * x_0 as i32 as f32 + mtx[3] * y_0 as i32 as f32 + mtx[5]))
-                        as i16;
-                    i_0 += 1
-                }
-                tmp = fons__tmpalloc(
-                    ((num_vertices + comp_num_verts) as u64)
-                        .wrapping_mul(size_of::<stbtt_vertex>() as u64),
-                    (*info).userdata,
-                ) as *mut stbtt_vertex;
-                if tmp.is_null() {
-                    return 0;
-                }
-                if num_vertices > 0 {
-                    memcpy(
-                        tmp as *mut libc::c_void,
-                        vertices as *const libc::c_void,
-                        (num_vertices as u64).wrapping_mul(size_of::<stbtt_vertex>() as u64),
-                    );
-                }
-                memcpy(
-                    tmp.offset(num_vertices as isize) as *mut libc::c_void,
-                    comp_verts as *const libc::c_void,
-                    (comp_num_verts as u64).wrapping_mul(size_of::<stbtt_vertex>() as u64),
-                );
-                vertices = tmp;
-                num_vertices += comp_num_verts
-            }
-            more = flags_0 as i32 & 1 << 5i32
-        }
-    } else if (numberOfContours as i32) < 0 {
-        __assert_fail(
-            b"0\x00" as *const u8 as *const i8,
-            b"/home/lain/WORK/oni2d/nvg/src/stb_truetype.h\x00" as *const u8 as *const i8,
-            1460 as u32,
-            (*::std::mem::transmute::<&[u8; 70], &[i8; 70]>(
-                b"int stbtt_GetGlyphShape(const stbtt_fontinfo *, int, stbtt_vertex **)\x00",
-            ))
-            .as_ptr(),
-        );
+    } else if num_contours == -1 {
+        return bad_contour(info, data, pvertices, g);
+    } else if num_contours < 0 {
+        unimplemented!();
     }
+
     *pvertices = vertices;
-    return num_vertices;
+    num_vertices
 }
-// FONTSTASH_H
 
-pub unsafe fn fons__tmpalloc(mut size: size_t, up: *mut libc::c_void) -> *mut libc::c_void {
-    let mut ptr: *mut u8 = 0 as *mut u8;
-    let mut stash: *mut Stash = up as *mut Stash;
-    size = size.wrapping_add(0xfi32 as u64) & !0xfi32 as u64;
-    if (*stash).nscratch + size as i32 > 96000 {
-        return 0 as *mut libc::c_void;
+unsafe fn bad_contour(
+    info: *const FontInfo,
+    data: *mut u8,
+    pvertices: *mut *mut Vertex,
+    g: isize,
+) -> i32 {
+    let mut more: i32 = 1;
+    let mut comp: *mut u8 = data.offset(g).offset(10);
+    let mut num_vertices = 0;
+    let mut vertices = null_mut();
+    while 0 != more {
+        let mut mtx: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let flags_0 = read_i16(comp) as u16;
+        comp = comp.offset(2);
+        let gidx = read_i16(comp) as u16;
+        comp = comp.offset(2);
+
+        assert!(0 != flags_0 & 2);
+        if 0 != flags_0 as i32 & 1 {
+            mtx[4] = read_i16(comp) as f32;
+            comp = comp.offset(2);
+            mtx[5] = read_i16(comp) as f32;
+            comp = comp.offset(2)
+        } else {
+            mtx[4] = *(comp as *mut i8) as f32;
+            comp = comp.offset(1);
+            mtx[5] = *(comp as *mut i8) as f32;
+            comp = comp.offset(1)
+        }
+
+        if 0 != flags_0 & 1 << 3 {
+            mtx[0] = read_i16(comp) as f32 / 16384.0;
+            comp = comp.offset(2);
+            mtx[1] = 0.0;
+            mtx[2] = 0.0;
+            mtx[3] = mtx[0];
+        } else if 0 != flags_0 & 1 << 6 {
+            mtx[0] = read_i16(comp) as f32 / 16384.0;
+            comp = comp.offset(2);
+            mtx[1] = 0.0;
+            mtx[2] = 0.0;
+            mtx[3] = read_i16(comp) as f32 / 16384.0;
+            comp = comp.offset(2)
+        } else if 0 != flags_0 as i32 & 1 << 7 {
+            mtx[0] = read_i16(comp) as f32 / 16384.0;
+            comp = comp.offset(2);
+            mtx[1] = read_i16(comp) as f32 / 16384.0;
+            comp = comp.offset(2);
+            mtx[2] = read_i16(comp) as f32 / 16384.0;
+            comp = comp.offset(2);
+            mtx[3] = read_i16(comp) as f32 / 16384.0;
+            comp = comp.offset(2)
+        }
+
+        let m_0 = (mtx[0] * mtx[0] + mtx[1] * mtx[1]).sqrt();
+        let n_0 = (mtx[2] * mtx[2] + mtx[3] * mtx[3]).sqrt();
+        let mut comp_verts = null_mut();
+        let comp_num_verts = stbtt_GetGlyphShape(info, gidx as i32, &mut comp_verts);
+        if comp_num_verts > 0 {
+            for i_0 in 0..comp_num_verts {
+                let mut v = &mut *comp_verts.offset(i_0 as isize);
+                let x = v.x as f32;
+                let y = v.y as f32;
+                v.x = (m_0 * (mtx[0] * x + mtx[2] * y + mtx[4])) as i16;
+                v.y = (n_0 * (mtx[1] * x + mtx[3] * y + mtx[5])) as i16;
+                let x = v.cx as f32;
+                let y = v.cy as f32;
+                v.cx = (m_0 * (mtx[0] * x + mtx[2] * y + mtx[4])) as i16;
+                v.cy = (n_0 * (mtx[1] * x + mtx[3] * y + mtx[5])) as i16;
+            }
+            let tmp: *mut Vertex = (*(*info).userdata).calloc((num_vertices + comp_num_verts) as usize);
+            if tmp.is_null() {
+                return 0;
+            }
+            if num_vertices > 0 {
+                std::ptr::copy(vertices, tmp, num_vertices as usize);
+            }
+            std::ptr::copy(comp_verts, tmp.offset(num_vertices as isize), comp_num_verts as usize);
+            vertices = tmp;
+            num_vertices += comp_num_verts
+        }
+        more = flags_0 as i32 & 1 << 5
     }
-    ptr = (*stash).scratch.offset((*stash).nscratch as isize);
-    (*stash).nscratch += size as i32;
-    return ptr as *mut libc::c_void;
+
+    *pvertices = vertices;
+    num_vertices
 }
 
-unsafe fn stbtt__close_shape(
-    vertices: *mut stbtt_vertex,
+impl Stash {
+    fn calloc<T>(&mut self, count: usize) -> *mut T {
+        let size = count * size_of::<T>();
+        self.tmpalloc(size as u64)
+    }
+
+    fn tmpalloc<T>(&mut self, size: u64) -> *mut T {
+        let size = (size.wrapping_add(0xf) & !0xf) as usize;
+        if self.scratch.len() + size > 96000 {
+            null_mut()
+        } else {
+            let ptr = unsafe { self.scratch.as_mut_ptr().add(self.scratch.len()) };
+            self.scratch.resize_with(self.scratch.len() + size, Default::default);
+            ptr as *mut T
+        }
+    }
+}
+
+unsafe fn close_shape(
+    vertices: *mut Vertex,
     mut num_vertices: i32,
     was_off: i32,
     start_off: i32,
@@ -1605,54 +1165,41 @@ unsafe fn stbtt__close_shape(
 ) -> i32 {
     if 0 != start_off {
         if 0 != was_off {
-            let fresh13 = num_vertices;
-            num_vertices = num_vertices + 1;
             setvertex(
-                &mut *vertices.offset(fresh13 as isize),
-                STBTT_vcurve as i32 as u8,
-                cx + scx >> 1,
-                cy + scy >> 1,
-                cx,
-                cy,
+                &mut *vertices.offset(num_vertices as isize),
+                VCURVE as u8,
+                (cx + scx) >> 1,
+                (cy + scy) >> 1,
+                cx, cy,
             );
+            num_vertices += 1;
         }
-        let fresh14 = num_vertices;
-        num_vertices = num_vertices + 1;
         setvertex(
-            &mut *vertices.offset(fresh14 as isize),
-            STBTT_vcurve as i32 as u8,
-            sx,
-            sy,
-            scx,
-            scy,
+            &mut *vertices.offset(num_vertices as isize),
+            VCURVE as u8,
+            sx, sy,
+            scx, scy,
         );
     } else if 0 != was_off {
-        let fresh15 = num_vertices;
-        num_vertices = num_vertices + 1;
         setvertex(
-            &mut *vertices.offset(fresh15 as isize),
-            STBTT_vcurve as i32 as u8,
-            sx,
-            sy,
-            cx,
-            cy,
+            &mut *vertices.offset(num_vertices as isize),
+            VCURVE as u8,
+            sx, sy,
+            cx, cy,
         );
     } else {
-        let fresh16 = num_vertices;
-        num_vertices = num_vertices + 1;
         setvertex(
-            &mut *vertices.offset(fresh16 as isize),
-            STBTT_vline as i32 as u8,
-            sx,
-            sy,
-            0,
-            0,
+            &mut *vertices.offset(num_vertices as isize),
+            VLINE as u8,
+            sx, sy,
+            0, 0,
         );
     }
-    num_vertices
+    num_vertices + 1
 }
 
-unsafe fn setvertex(mut v: *mut stbtt_vertex, type_0: u8, x: i32, y: i32, cx: i32, cy: i32) {
+#[inline(always)]
+unsafe fn setvertex(mut v: *mut Vertex, type_0: u8, x: i32, y: i32, cx: i32, cy: i32) {
     (*v).type_0 = type_0;
     (*v).x = x as i16;
     (*v).y = y as i16;
@@ -1665,7 +1212,7 @@ unsafe fn setvertex(mut v: *mut stbtt_vertex, type_0: u8, x: i32, y: i32, cx: i3
 pub unsafe fn stbtt_Rasterize(
     result: *mut Bitmap,
     flatness_in_pixels: f32,
-    vertices: *mut stbtt_vertex,
+    vertices: *mut Vertex,
     num_verts: i32,
     scale_x: f32,
     scale_y: f32,
@@ -1674,7 +1221,7 @@ pub unsafe fn stbtt_Rasterize(
     x_off: i32,
     y_off: i32,
     invert: i32,
-    userdata: *mut libc::c_void,
+    stash: &mut Stash,
 ) {
     let scale: f32 = if scale_x > scale_y { scale_y } else { scale_x };
     let mut winding_count: i32 = 0;
@@ -1685,7 +1232,7 @@ pub unsafe fn stbtt_Rasterize(
         flatness_in_pixels / scale,
         &mut winding_lengths,
         &mut winding_count,
-        userdata,
+        stash,
     );
     if !windings.is_null() {
         stbtt__rasterize(
@@ -1693,65 +1240,57 @@ pub unsafe fn stbtt_Rasterize(
             windings,
             winding_lengths,
             winding_count,
-            scale_x,
-            scale_y,
-            shift_x,
-            shift_y,
-            x_off,
-            y_off,
+            [scale_x, scale_y],
+            [shift_x, shift_y],
+            [x_off, y_off],
             invert,
-            userdata,
+            stash,
         );
     };
 }
+
 // returns number of contours
 unsafe fn stbtt_FlattenCurves(
-    vertices: *mut stbtt_vertex,
+    vertices: *mut Vertex,
     num_verts: i32,
     objspace_flatness: f32,
     contour_lengths: *mut *mut i32,
     num_contours: *mut i32,
-    userdata: *mut libc::c_void,
+    stash: &mut Stash,
 ) -> *mut Point {
     let current_block: u64;
-    let mut points: *mut Point = 0 as *mut Point;
+    let mut points: *mut Point = null_mut();
     let mut num_points: i32 = 0;
     let objspace_flatness_squared: f32 = objspace_flatness * objspace_flatness;
-    let mut i: i32 = 0;
     let mut n: i32 = 0;
     let mut start: i32 = 0;
-    let mut pass: i32 = 0;
-    i = 0;
+    let mut i = 0;
     while i < num_verts {
-        if (*vertices.offset(i as isize)).type_0 as i32 == STBTT_vmove as i32 {
+        if (*vertices.offset(i as isize)).type_0 as i32 == VMOVE as i32 {
             n += 1
         }
         i += 1
     }
     *num_contours = n;
     if n == 0 {
-        return 0 as *mut Point;
+        return null_mut();
     }
-    *contour_lengths =
-        fons__tmpalloc((size_of::<i32>() as u64).wrapping_mul(n as u64), userdata) as *mut i32;
+    *contour_lengths = stash.calloc(n as usize);
     if (*contour_lengths).is_null() {
         *num_contours = 0;
-        return 0 as *mut Point;
+        return null_mut();
     }
     // make two passes through the points so we don't need to realloc
-    pass = 0;
+    let mut pass = 0;
     loop {
-        if !(pass < 2) {
+        if pass >= 2 {
             current_block = 8845338526596852646;
             break;
         }
         let mut x: f32 = 0 as f32;
         let mut y: f32 = 0 as f32;
         if pass == 1 {
-            points = fons__tmpalloc(
-                (num_points as u64).wrapping_mul(size_of::<Point>() as u64),
-                userdata,
-            ) as *mut Point;
+            points = stash.calloc(num_points as usize);
             if points.is_null() {
                 current_block = 9535040653783544971;
                 break;
@@ -1770,27 +1309,27 @@ unsafe fn stbtt_FlattenCurves(
                     start = num_points;
                     x = (*vertices.offset(i as isize)).x as f32;
                     y = (*vertices.offset(i as isize)).y as f32;
-                    let fresh17 = num_points;
-                    num_points = num_points + 1;
-                    stbtt__add_point(points, fresh17, x, y);
+                    Points(points).add_point(num_points, x, y);
+                    num_points += 1;
                 }
                 2 => {
                     x = (*vertices.offset(i as isize)).x as f32;
                     y = (*vertices.offset(i as isize)).y as f32;
-                    let fresh18 = num_points;
-                    num_points = num_points + 1;
-                    stbtt__add_point(points, fresh18, x, y);
+                    Points(points).add_point(num_points, x, y);
+                    num_points += 1;
                 }
                 3 => {
-                    stbtt__tesselate_curve(
+                    tesselate_curve(
                         points,
                         &mut num_points,
-                        x,
-                        y,
-                        (*vertices.offset(i as isize)).cx as f32,
-                        (*vertices.offset(i as isize)).cy as f32,
-                        (*vertices.offset(i as isize)).x as f32,
-                        (*vertices.offset(i as isize)).y as f32,
+                        [
+                            x,
+                            y,
+                            (*vertices.offset(i as isize)).cx as f32,
+                            (*vertices.offset(i as isize)).cy as f32,
+                            (*vertices.offset(i as isize)).x as f32,
+                            (*vertices.offset(i as isize)).y as f32,
+                        ],
                         objspace_flatness_squared,
                         0,
                     );
@@ -1804,183 +1343,169 @@ unsafe fn stbtt_FlattenCurves(
         *(*contour_lengths).offset(n as isize) = num_points - start;
         pass += 1
     }
+
     match current_block {
-        8845338526596852646 => return points,
+        8845338526596852646 => points,
         _ => {
-            *contour_lengths = 0 as *mut i32;
+            *contour_lengths = null_mut();
             *num_contours = 0;
-            return 0 as *mut Point;
+            null_mut()
         }
-    };
+    }
 }
 // tesselate until threshhold p is happy... @TODO warped to compensate for non-linear stretching
-unsafe fn stbtt__tesselate_curve(
+unsafe fn tesselate_curve(
     points: *mut Point,
     num_points: *mut i32,
-    x0: f32,
-    y0: f32,
-    x1: f32,
-    y1: f32,
-    x2: f32,
-    y2: f32,
+
+    curve: [f32; 6],
+
     objspace_flatness_squared: f32,
     n: i32,
-) -> i32 {
+) {
+    let [x0, y0, x1, y1, x2, y2] = curve;
+
     // midpoint
-    let mx: f32 = (x0 + 2i32 as f32 * x1 + x2) / 4i32 as f32;
-    let my: f32 = (y0 + 2i32 as f32 * y1 + y2) / 4i32 as f32;
+    let mx = (x0 + 2.0 * x1 + x2) / 4.0;
+    let my = (y0 + 2.0 * y1 + y2) / 4.0;
     // versus directly drawn line
-    let dx: f32 = (x0 + x2) / 2i32 as f32 - mx;
-    let dy: f32 = (y0 + y2) / 2i32 as f32 - my;
-    if n > 16i32 {
-        return 1;
-    }
+    let dx = (x0 + x2) / 2.0 - mx;
+    let dy = (y0 + y2) / 2.0 - my;
+    if n > 16 { return; }
+
     if dx * dx + dy * dy > objspace_flatness_squared {
-        stbtt__tesselate_curve(
+        tesselate_curve(
             points,
             num_points,
-            x0,
-            y0,
-            (x0 + x1) / 2.0,
-            (y0 + y1) / 2.0,
-            mx,
-            my,
+            [
+                x0,
+                y0,
+                (x0 + x1) / 2.0,
+                (y0 + y1) / 2.0,
+                mx,
+                my,
+            ],
             objspace_flatness_squared,
             n + 1,
         );
-        stbtt__tesselate_curve(
+        tesselate_curve(
             points,
             num_points,
-            mx,
-            my,
-            (x1 + x2) / 2.0,
-            (y1 + y2) / 2.0,
-            x2,
-            y2,
+            [
+                mx,
+                my,
+                (x1 + x2) / 2.0,
+                (y1 + y2) / 2.0,
+                x2,
+                y2,
+            ],
             objspace_flatness_squared,
             n + 1,
         );
     } else {
-        stbtt__add_point(points, *num_points, x2, y2);
-        *num_points = *num_points + 1
+        Points(points).add_point(*num_points, x2, y2);
+        *num_points += 1;
     }
-    return 1;
 }
-unsafe fn stbtt__add_point(points: *mut Point, n: i32, x: f32, y: f32) {
-    if points.is_null() {
-        return;
+
+struct Points(*mut Point);
+
+impl Points {
+    fn add_point(self, n: i32, x: f32, y: f32) {
+        unsafe {
+            if self.0.is_null() { return; }
+            (*self.0.offset(n as isize)).x = x;
+            (*self.0.offset(n as isize)).y = y;
+        }
     }
-    (*points.offset(n as isize)).x = x;
-    (*points.offset(n as isize)).y = y;
 }
+
 unsafe fn stbtt__rasterize(
     result: *mut Bitmap,
     pts: *mut Point,
     wcount: *mut i32,
     windings: i32,
-    scale_x: f32,
-    scale_y: f32,
-    shift_x: f32,
-    shift_y: f32,
-    off_x: i32,
-    off_y: i32,
+    scale: [f32; 2],
+    shift: [f32; 2],
+    off: [i32; 2],
     invert: i32,
-    userdata: *mut libc::c_void,
+    stash: &mut Stash,
 ) {
-    let y_scale_inv: f32 = if 0 != invert { -scale_y } else { scale_y };
-    let mut e: *mut Edge = 0 as *mut Edge;
-    let mut n: i32 = 0;
-    let mut i: i32 = 0;
-    let mut j: i32 = 0;
-    let mut k: i32 = 0;
-    let mut m: i32 = 0;
-    let vsubsample: i32 = 1;
-    n = 0;
-    i = 0;
-    while i < windings {
+    let y_scale_inv: f32 = if 0 != invert { -scale[1] } else { scale[1] };
+    let vsubsample = 1;
+
+    let mut n = 0;
+    for i in 0..windings {
         n += *wcount.offset(i as isize);
-        i += 1
     }
-    e = fons__tmpalloc(
-        (size_of::<Edge>() as u64).wrapping_mul((n + 1) as u64),
-        userdata,
-    ) as *mut Edge;
+
+    let e: *mut Edge = stash.calloc((n + 1) as usize);
     if e.is_null() {
         return;
     }
-    n = 0;
-    m = 0;
-    i = 0;
-    while i < windings {
-        let p: *mut Point = pts.offset(m as isize);
-        m += *wcount.offset(i as isize);
-        j = *wcount.offset(i as isize) - 1;
-        k = 0;
-        while k < *wcount.offset(i as isize) {
-            let mut a: i32 = k;
-            let mut b: i32 = j;
+
+    let mut n = 0isize;
+    let mut m = 0isize;
+    for i in 0..windings as isize {
+        let p: *mut Point = pts.offset(m);
+        m += *wcount.offset(i) as isize;
+        let mut j = *wcount.offset(i) as isize - 1;
+        for k in 0..*wcount.offset(i) as isize {
+            let mut a = k;
+            let mut b = j;
             // skip the edge if horizontal
-            if !((*p.offset(j as isize)).y == (*p.offset(k as isize)).y) {
-                (*e.offset(n as isize)).invert = 0;
+            if !((*p.offset(j)).y == (*p.offset(k)).y) {
+                (*e.offset(n)).invert = 0;
                 if 0 != if 0 != invert {
-                    ((*p.offset(j as isize)).y > (*p.offset(k as isize)).y) as i32
+                    ((*p.offset(j)).y > (*p.offset(k)).y) as i32
                 } else {
-                    ((*p.offset(j as isize)).y < (*p.offset(k as isize)).y) as i32
+                    ((*p.offset(j)).y < (*p.offset(k)).y) as i32
                 } {
-                    (*e.offset(n as isize)).invert = 1;
+                    (*e.offset(n)).invert = 1;
                     a = j;
-                    b = k
+                    b = k;
                 }
-                (*e.offset(n as isize)).x0 = (*p.offset(a as isize)).x * scale_x + shift_x;
-                (*e.offset(n as isize)).y0 =
-                    ((*p.offset(a as isize)).y * y_scale_inv + shift_y) * vsubsample as f32;
-                (*e.offset(n as isize)).x1 = (*p.offset(b as isize)).x * scale_x + shift_x;
-                (*e.offset(n as isize)).y1 =
-                    ((*p.offset(b as isize)).y * y_scale_inv + shift_y) * vsubsample as f32;
+                (*e.offset(n)).x0 =  (*p.offset(a)).x * scale[0] + shift[0];
+                (*e.offset(n)).y0 = ((*p.offset(a)).y * y_scale_inv + shift[1]) * vsubsample as f32;
+                (*e.offset(n)).x1 =  (*p.offset(b)).x * scale[0] + shift[0];
+                (*e.offset(n)).y1 = ((*p.offset(b)).y * y_scale_inv + shift[1]) * vsubsample as f32;
                 n += 1
             }
-            let fresh19 = k;
-            k = k + 1;
-            j = fresh19
+            j = k; 
         }
-        i += 1
     }
-    sort_edges(e, n);
-    stbtt__rasterize_sorted_edges(result, e, n, vsubsample, off_x, off_y, userdata);
+
+    sort_edges(e, n as i32);
+    stbtt__rasterize_sorted_edges(result, e, n as i32, vsubsample, off[0], off[1], stash);
 }
 // directly AA rasterize edges w/o supersampling
 unsafe fn stbtt__rasterize_sorted_edges(
     result: *mut Bitmap,
-    mut e: *mut Edge,
-    n: i32,
+    mut edge: *mut Edge,
+    len: i32,
     _vsubsample: i32,
     off_x: i32,
     off_y: i32,
-    userdata: *mut libc::c_void,
+    stash: &mut Stash,
 ) {
     let mut hh: Heap = Heap {
-        head: 0 as *mut HeapChunk,
-        first_free: 0 as *mut libc::c_void,
+        head: null_mut(),
+        first_free: null_mut(),
         num_remaining_in_head_chunk: 0,
     };
-    let mut active: *mut ActiveEdge = 0 as *mut ActiveEdge;
-    let mut y: i32 = 0;
-    let mut j: i32 = 0;
-    let mut i: i32 = 0;
+    let mut active: *mut ActiveEdge = null_mut();
     let mut scanline_data: [f32; 129] = [0.; 129];
-    let scanline;
-    if (*result).w > 64i32 {
-        scanline = fons__tmpalloc(
-            (((*result).w * 2i32 + 1) as u64).wrapping_mul(size_of::<f32>() as u64),
-            userdata,
-        ) as *mut f32
+
+    let scanline = if (*result).w > 64 {
+        stash.calloc(((*result).w * 2 + 1) as usize)
     } else {
-        scanline = scanline_data.as_mut_ptr()
-    }
+        scanline_data.as_mut_ptr()
+    };
+
     let scanline2 = scanline.offset((*result).w as isize);
-    y = off_y;
-    (*e.offset(n as isize)).y0 = (off_y + (*result).h) as f32 + 1 as f32;
-    while j < (*result).h {
+    let mut y = off_y;
+    (*edge.offset(len as isize)).y0 = (off_y + (*result).h) as f32 + 1.0;
+    for j in 0..(*result).h {
         let scan_y_top: f32 = y as f32 + 0.0;
         let scan_y_bottom: f32 = y as f32 + 1.0;
         let mut step: *mut *mut ActiveEdge = &mut active;
@@ -1997,17 +1522,16 @@ unsafe fn stbtt__rasterize_sorted_edges(
                 step = &mut (**step).next
             }
         }
-        while (*e).y0 <= scan_y_bottom {
-            if (*e).y0 != (*e).y1 {
-                let mut z_0: *mut ActiveEdge =
-                    stbtt__new_active(&mut hh, e, off_x, scan_y_top, userdata);
+        while (*edge).y0 <= scan_y_bottom {
+            if (*edge).y0 != (*edge).y1 {
+                let mut z_0 = stbtt__new_active(&mut hh, edge, off_x, scan_y_top, stash);
                 if !z_0.is_null() {
                     assert!((*z_0).ey >= scan_y_top);
                     (*z_0).next = active;
                     active = z_0
                 }
             }
-            e = e.offset(1)
+            edge = edge.offset(1)
         }
         if !active.is_null() {
             stbtt__fill_active_edges_new(
@@ -2019,19 +1543,15 @@ unsafe fn stbtt__rasterize_sorted_edges(
             );
         }
         let mut sum: f32 = 0 as f32;
-        i = 0;
-        while i < (*result).w {
-            let mut k: f32 = 0.;
-            let mut m: i32 = 0;
+        for i in 0..(*result).w {
             sum += *scanline2.offset(i as isize);
-            k = *scanline.offset(i as isize) + sum;
-            k = fabs(k as f64) as f32 * 255i32 as f32 + 0.5f32;
-            m = k as i32;
+            let k = *scanline.offset(i as isize) + sum;
+            let k = k.abs() * 255.0 + 0.5;
+            let mut m = k as i32;
             if m > 255 {
                 m = 255
             }
             *(*result).pixels.offset((j * (*result).stride + i) as isize) = m as u8;
-            i += 1
         }
         step = &mut active;
         while !(*step).is_null() {
@@ -2040,7 +1560,6 @@ unsafe fn stbtt__rasterize_sorted_edges(
             step = &mut (**step).next
         }
         y += 1;
-        j += 1
     }
 
     hh.cleanup();
@@ -2052,14 +1571,14 @@ unsafe fn stbtt__fill_active_edges_new(
     mut e: *mut ActiveEdge,
     y_top: f32,
 ) {
-    let y_bottom: f32 = y_top + 1 as f32;
+    let y_bottom: f32 = y_top + 1.0;
     while !e.is_null() {
         assert!((*e).ey >= y_top);
 
-        if (*e).fdx == 0 as f32 {
+        if (*e).fdx == 0.0 {
             let x0: f32 = (*e).fx;
             if x0 < len as f32 {
-                if x0 >= 0 as f32 {
+                if x0 >= 0.0 {
                     handle_clipped_edge(scanline, x0 as i32, e, x0, y_top, x0, y_bottom);
                     handle_clipped_edge(
                         scanline_fill.offset(-1),
@@ -2078,10 +1597,10 @@ unsafe fn stbtt__fill_active_edges_new(
             let mut x0_0: f32 = (*e).fx;
             let mut dx: f32 = (*e).fdx;
             let mut xb: f32 = x0_0 + dx;
-            let mut x_top: f32 = 0.;
-            let mut x_bottom: f32 = 0.;
-            let mut sy0: f32 = 0.;
-            let mut sy1: f32 = 0.;
+            let mut x_top;
+            let mut x_bottom;
+            let mut sy0;
+            let mut sy1;
             let mut dy: f32 = (*e).fdy;
 
             assert!((*e).sy <= y_bottom && (*e).ey >= y_top);
@@ -2100,45 +1619,31 @@ unsafe fn stbtt__fill_active_edges_new(
                 x_bottom = xb;
                 sy1 = y_bottom
             }
+
             if x_top >= 0 as f32
                 && x_bottom >= 0 as f32
                 && x_top < len as f32
                 && x_bottom < len as f32
             {
                 if x_top as i32 == x_bottom as i32 {
-                    let mut height: f32 = 0.;
                     let x: i32 = x_top as i32;
-                    height = sy1 - sy0;
-                    if x >= 0 && x < len {
-                    } else {
-                        __assert_fail(b"x >= 0 && x < len\x00" as *const u8 as
-                                          *const i8,
-                                      b"/home/lain/WORK/oni2d/nvg/src/stb_truetype.h\x00"
-                                          as *const u8 as *const i8,
-                                      1959i32 as u32,
-                                      (*::std::mem::transmute::<&[u8; 86],
-                                                                &[i8; 86]>(b"void stbtt__fill_active_edges_new(float *, float *, int, stbtt__active_edge *, float)\x00")).as_ptr());
-                    }
+                    let height = sy1 - sy0;
+                    assert!(x >= 0 && x < len);
                     *scanline.offset(x as isize) += (*e).direction
-                        * (1 as f32 - (x_top - x as f32 + (x_bottom - x as f32)) / 2i32 as f32)
+                        * (1.0 - (x_top - x as f32 + (x_bottom - x as f32)) / 2.0)
                         * height;
                     *scanline_fill.offset(x as isize) += (*e).direction * height
                 } else {
                     if x_top > x_bottom {
-                        let mut t: f32 = 0.;
                         sy0 = y_bottom - (sy0 - y_top);
                         sy1 = y_bottom - (sy1 - y_top);
-                        t = sy0;
-                        sy0 = sy1;
-                        sy1 = t;
-                        t = x_bottom;
-                        x_bottom = x_top;
-                        x_top = t;
+
+                        std::mem::swap(&mut sy0, &mut sy1);
+                        std::mem::swap(&mut x_top, &mut x_bottom);
+                        std::mem::swap(&mut x0_0, &mut xb);
+
                         dx = -dx;
                         dy = -dy;
-                        t = x0_0;
-                        x0_0 = xb;
-                        xb = t
                     }
                     let x1 = x_top as i32;
                     let x2 = x_bottom as i32;
@@ -2146,20 +1651,19 @@ unsafe fn stbtt__fill_active_edges_new(
                     let sign = (*e).direction;
                     let mut area = sign * (y_crossing - sy0);
                     *scanline.offset(x1 as isize) += area
-                        * (1 as f32 - (x_top - x1 as f32 + (x1 + 1 - x1) as f32) / 2i32 as f32);
+                        * (1.0 - (x_top - x1 as f32 + (x1 + 1 - x1) as f32) / 2.0);
                     let step = sign * dy;
                     let mut x_0 = x1 + 1;
                     while x_0 < x2 {
-                        *scanline.offset(x_0 as isize) += area + step / 2i32 as f32;
+                        *scanline.offset(x_0 as isize) += area + step / 2.0;
                         area += step;
                         x_0 += 1
                     }
                     y_crossing += dy * (x2 - (x1 + 1)) as f32;
-                    assert!(fabs(area as f64) <= 1.01f32 as f64);
+                    assert!(area.abs() <= 1.01);
                     *scanline.offset(x2 as isize) += area
                         + sign
-                            * (1 as f32
-                                - ((x2 - x2) as f32 + (x_bottom - x2 as f32)) / 2i32 as f32)
+                            * (1.0 - ((x2 - x2) as f32 + (x_bottom - x2 as f32)) / 2.0)
                             * (sy1 - y_crossing);
                     *scanline_fill.offset(x2 as isize) += sign * (sy1 - sy0)
                 }
@@ -2255,137 +1759,100 @@ unsafe fn handle_clipped_edge(
             (*e).direction * (y1 - y0) * (1.0 - (x0 - x as f32 + (x1 - x as f32)) / 2.0)
     };
 }
+
 unsafe fn stbtt__new_active(
     hh: *mut Heap,
     e: *mut Edge,
     off_x: i32,
     start_point: f32,
-    userdata: *mut libc::c_void,
+    stash: &mut Stash,
 ) -> *mut ActiveEdge {
-    let mut z: *mut ActiveEdge =
-        (*hh).alloc(size_of::<ActiveEdge>() as u64, userdata) as *mut ActiveEdge;
+    let z = (*hh).alloc(size_of::<ActiveEdge>() as u64, stash) as *mut ActiveEdge;
     let dxdy: f32 = ((*e).x1 - (*e).x0) / ((*e).y1 - (*e).y0);
     assert!(!z.is_null());
     if z.is_null() {
         return z;
     }
-    (*z).fdx = dxdy;
-    (*z).fdy = if dxdy != 0.0 { 1.0 / dxdy } else { 0.0 };
-    (*z).fx = (*e).x0 + dxdy * (start_point - (*e).y0);
-    (*z).fx -= off_x as f32;
-    (*z).direction = if 0 != (*e).invert { 1.0 } else { -1.0 };
-    (*z).sy = (*e).y0;
-    (*z).ey = (*e).y1;
-    (*z).next = 0 as *mut ActiveEdge;
+
+    let z = &mut *z;
+    z.fdx = dxdy;
+    z.fdy = if dxdy != 0.0 { 1.0 / dxdy } else { 0.0 };
+    z.fx = (*e).x0 + dxdy * (start_point - (*e).y0);
+    z.fx -= off_x as f32;
+    z.direction = if 0 != (*e).invert { 1.0 } else { -1.0 };
+    z.sy = (*e).y0;
+    z.ey = (*e).y1;
+    z.next = null_mut();
     z
 }
 
-unsafe fn sort_edges(p: *mut Edge, n: i32) {
-    stbtt__sort_edges_quicksort(p, n);
+unsafe fn sort_edges(edges: *mut Edge, len: i32) {
+    sort_edges_quicksort(edges, len);
 
-    let mut i = 1;
-    while i < n {
-        let mut t: Edge = *p.offset(i as isize);
-        let a: *mut Edge = &mut t;
+    let edges = std::slice::from_raw_parts_mut(edges, len as usize);
+
+    for i in 0..edges.len() {
+        let first = edges[i];
         let mut j = i;
         while j > 0 {
-            let b: *mut Edge = &mut *p.offset((j - 1) as isize) as *mut Edge;
-            let c: i32 = ((*a).y0 < (*b).y0) as i32;
-            if 0 == c {
+            let second = &edges[j - 1];
+            if first.y0 >= second.y0 {
                 break;
             }
-            *p.offset(j as isize) = *p.offset((j - 1) as isize);
-            j -= 1
+            edges[j] = *second;
+            j -= 1;
         }
         if i != j {
-            *p.offset(j as isize) = t
+            edges[j] = first;
         }
-        i += 1
     }
 }
-unsafe fn stbtt__sort_edges_quicksort(mut p: *mut Edge, mut n: i32) {
-    while n > 12i32 {
-        let mut t: Edge = Edge {
-            x0: 0.,
-            y0: 0.,
-            x1: 0.,
-            y1: 0.,
-            invert: 0,
-        };
-        let c01;
-        let c12;
-        let c;
-        let m;
-        let mut i;
-        let mut j;
-        m = n >> 1;
-        c01 = ((*p.offset(0)).y0 < (*p.offset(m as isize)).y0) as i32;
-        c12 = ((*p.offset(m as isize)).y0 < (*p.offset((n - 1) as isize)).y0) as i32;
+unsafe fn sort_edges_quicksort(mut ptr: *mut Edge, len: i32) {
+    let mut len = len as isize;
+    while len > 12 {
+        let m = len >> 1;
+        let c01 = (*ptr.offset(0)).y0 < (*ptr.offset(m)).y0;
+        let c12 = (*ptr.offset(m)).y0 < (*ptr.offset(len - 1)).y0;
         if c01 != c12 {
-            let mut z: i32 = 0;
-            c = ((*p.offset(0)).y0 < (*p.offset((n - 1) as isize)).y0) as i32;
-            z = if c == c12 { 0 } else { n - 1 };
-            t = *p.offset(z as isize);
-            *p.offset(z as isize) = *p.offset(m as isize);
-            *p.offset(m as isize) = t
+            let c = (*ptr.offset(0)).y0 < (*ptr.offset(len - 1)).y0;
+            let z = if c == c12 { 0 } else { len - 1 };
+            std::ptr::swap(ptr.offset(z), ptr.offset(m));
         }
-        t = *p.offset(0);
-        *p.offset(0) = *p.offset(m as isize);
-        *p.offset(m as isize) = t;
-        i = 1;
-        j = n - 1;
+
+        std::ptr::swap(ptr.offset(0), ptr.offset(m));
+
+        let mut i = 1;
+        let mut j = len - 1;
         loop {
-            while (*p.offset(i as isize)).y0 < (*p.offset(0)).y0 {
+            while (*ptr.offset(i)).y0 < (*ptr.offset(0)).y0 {
                 i += 1
             }
-            while (*p.offset(0)).y0 < (*p.offset(j as isize)).y0 {
+            while (*ptr.offset(0)).y0 < (*ptr.offset(j)).y0 {
                 j -= 1
             }
             /* make sure we haven't crossed */
             if i >= j {
                 break;
             }
-            t = *p.offset(i as isize);
-            *p.offset(i as isize) = *p.offset(j as isize);
-            *p.offset(j as isize) = t;
+
+            std::ptr::swap(ptr.offset(i), ptr.offset(j));
+
             i += 1;
-            j -= 1
+            j -= 1;
         }
-        if j < n - i {
-            stbtt__sort_edges_quicksort(p, j);
-            p = p.offset(i as isize);
-            n = n - i
+
+        if j < len - i {
+            sort_edges_quicksort(ptr, j as i32);
+            ptr = ptr.offset(i);
+            len -= i
         } else {
-            stbtt__sort_edges_quicksort(p.offset(i as isize), n - i);
-            n = j
+            sort_edges_quicksort(ptr.offset(i), (len - i) as i32);
+            len = j
         }
     }
 }
 
-
-impl Font {
-    unsafe fn alloc_glyph(&mut self) -> *mut Glyph {
-        if self.nglyphs + 1 > self.cglyphs {
-            self.cglyphs = if self.cglyphs == 0 {
-                8
-            } else {
-                self.cglyphs * 2
-            };
-            self.glyphs = realloc(
-                self.glyphs as *mut libc::c_void,
-                (size_of::<Glyph>() as u64).wrapping_mul(self.cglyphs as u64),
-            ) as *mut Glyph;
-            if self.glyphs.is_null() {
-                return 0 as *mut Glyph;
-            }
-        }
-        self.nglyphs += 1;
-        &mut *self.glyphs.offset((self.nglyphs - 1) as isize) as *mut Glyph
-    }
-}
-
-
-pub fn fons__hashint(mut a: u32) -> u32 {
+fn hashint(mut a: u32) -> u32 {
     a = a.wrapping_add(!(a << 15));
     a ^= a >> 10;
     a = a.wrapping_add(a << 3);
@@ -2394,169 +1861,160 @@ pub fn fons__hashint(mut a: u32) -> u32 {
     a ^= a >> 16;
     a
 }
-// empty
-// STB_TRUETYPE_IMPLEMENTATION
 
-pub unsafe fn fons__getVertAlign(
-    _stash: *mut Stash,
-    font: *mut Font,
-    align: i32,
-    isize: i16,
-) -> f32 {
-    let font: &mut Font = transmute(font);
+impl Font {
+    unsafe fn alloc_glyph(&mut self) -> *mut Glyph {
+        self.glyphs.push(std::mem::zeroed());
+        self.glyphs.last_mut().unwrap()
+    }
 
-    if 0 != align & FONS_ALIGN_TOP as i32 {
-        font.ascender * isize as f32 / 10.0
-    } else if 0 != align & FONS_ALIGN_MIDDLE as i32 {
-        (font.ascender + font.descender) / 2.0 * isize as f32 / 10.0
-    } else if 0 != align & FONS_ALIGN_BASELINE as i32 {
-        0.0
-    } else if 0 != align & FONS_ALIGN_BOTTOM as i32 {
-        font.descender * isize as f32 / 10.0
-    } else {
-        0.0
+    fn vert_align(&self, align: i32, isize: i16) -> f32 {
+        if 0 != align & FONS_ALIGN_TOP as i32 {
+            self.ascender * isize as f32 / 10.0
+        } else if 0 != align & FONS_ALIGN_MIDDLE as i32 {
+            (self.ascender + self.descender) / 2.0 * isize as f32 / 10.0
+        } else if 0 != align & FONS_ALIGN_BASELINE as i32 {
+            0.0
+        } else if 0 != align & FONS_ALIGN_BOTTOM as i32 {
+            self.descender * isize as f32 / 10.0
+        } else {
+            0.0
+        }
     }
 }
-// Measure text
 
-pub unsafe fn fonsTextBounds(
-    stash: *mut Stash,
-    mut x: f32,
-    mut y: f32,
-    mut str: *const i8,
-    mut end: *const i8,
-    bounds: *mut f32,
-) -> f32 {
-    let state: *mut State = (*stash).state_mut();
-    let mut codepoint: u32 = 0;
-    let mut utf8state: u32 = 0 as u32;
-    let mut q: Quad = Default::default();
-    let mut prevGlyphIndex: i32 = -1;
-    let isize: i16 = ((*state).size * 10.0) as i16;
-    let iblur: i16 = (*state).blur as i16;
 
-    if stash.is_null() {
-        return 0 as f32;
-    }
-    if (*state).font < 0 || (*state).font >= (*stash).nfonts as i32 {
-        return 0 as f32;
-    }
+impl Stash {
+    pub fn text_bounds(&mut self, mut x: f32, mut y: f32, mut str: *const u8, mut end: *const u8) -> (f32, [f32; 4]) {
+        unsafe {
+            let state: *mut State = self.state_mut();
+            let mut codepoint = 0;
+            let mut utf8state = 0;
+            let mut q: Quad = Default::default();
+            let mut prevGlyphIndex = -1;
+            let isize: i16 = ((*state).size * 10.0) as i16;
+            let iblur: i16 = (*state).blur as i16;
 
-    let font = *(*stash).fonts.offset((*state).font as isize);
-    if (*font).data.is_null() {
-        return 0 as f32;
-    }
+            if (*state).font < 0 || (*state).font >= self.fonts.len() as i32 {
+                return Default::default();
+            }
 
-    let scale = (*font).font.pixel_height_scale(isize as f32 / 10.0);
-    y += fons__getVertAlign(stash, font, (*state).align, isize);
+            let font: *mut Font = {
+                &mut self.fonts[(*state).font as usize]
+            };
 
-    let mut maxx = x;
-    let mut minx = maxx;
-    let mut maxy = y;
-    let mut miny = maxy;
-    let startx = x;
-    if end.is_null() {
-        end = str.offset(strlen(str) as isize)
-    }
-    while str != end {
-        if !(0 != decutf8(&mut utf8state, &mut codepoint, *(str as *const u8) as u32)) {
-            let glyph = fons__getGlyph(
-                stash,
-                font,
-                codepoint,
-                isize,
-                iblur,
-                FONS_GLYPH_BITMAP_OPTIONAL as i32,
-            );
-            if !glyph.is_null() {
-                (*stash).get_quad(
-                    font,
-                    prevGlyphIndex,
-                    glyph,
-                    scale,
-                    (*state).spacing,
-                    &mut x,
-                    &mut y,
-                    &mut q,
-                );
-                if q.x0 < minx {
-                    minx = q.x0
+            let scale = (*font).font.pixel_height_scale(isize as f32 / 10.0);
+            y += (*font).vert_align((*state).align, isize);
+
+            let mut maxx = x;
+            let mut minx = maxx;
+            let mut maxy = y;
+            let mut miny = maxy;
+            let startx = x;
+            if end.is_null() {
+                end = str.offset(strlen(str as *const i8) as isize)
+            }
+            while str != end {
+                if 0 == decutf8(&mut utf8state, &mut codepoint, *(str as *const u8) as u32) {
+                    let glyph = fons__getGlyph(
+                        self,
+                        font,
+                        codepoint,
+                        isize,
+                        iblur,
+                        FONS_GLYPH_BITMAP_OPTIONAL as i32,
+                    );
+                    if !glyph.is_null() {
+                        self.get_quad(
+                            font,
+                            prevGlyphIndex,
+                            &*glyph,
+                            scale,
+                            (*state).spacing,
+                            &mut x,
+                            &mut y,
+                            &mut q,
+                        );
+
+                        if q.x0 < minx {
+                            minx = q.x0
+                        }
+                        if q.x1 > maxx {
+                            maxx = q.x1
+                        }
+
+                        if q.y0 < miny {
+                            miny = q.y0
+                        }
+                        if q.y1 > maxy {
+                            maxy = q.y1
+                        }
+                    }
+                    prevGlyphIndex = if !glyph.is_null() { (*glyph).index } else { -1 }
                 }
-                if q.x1 > maxx {
-                    maxx = q.x1
-                }
-
-                if q.y0 < miny {
-                    miny = q.y0
-                }
-                if q.y1 > maxy {
-                    maxy = q.y1
+                str = str.offset(1)
+            }
+            let advance = x - startx;
+            if 0 == (*state).align & FONS_ALIGN_LEFT as i32 {
+                if 0 != (*state).align & FONS_ALIGN_RIGHT as i32 {
+                    minx -= advance;
+                    maxx -= advance
+                } else if 0 != (*state).align & FONS_ALIGN_CENTER as i32 {
+                    minx -= advance * 0.5;
+                    maxx -= advance * 0.5;
                 }
             }
-            prevGlyphIndex = if !glyph.is_null() { (*glyph).index } else { -1 }
-        }
-        str = str.offset(1)
-    }
-    let advance = x - startx;
-    if !(0 != (*state).align & FONS_ALIGN_LEFT as i32) {
-        if 0 != (*state).align & FONS_ALIGN_RIGHT as i32 {
-            minx -= advance;
-            maxx -= advance
-        } else if 0 != (*state).align & FONS_ALIGN_CENTER as i32 {
-            minx -= advance * 0.5f32;
-            maxx -= advance * 0.5f32
+
+            (advance, [minx, miny, maxx, maxy])
         }
     }
-    if !bounds.is_null() {
-        *bounds.offset(0) = minx;
-        *bounds.offset(1) = miny;
-        *bounds.offset(2) = maxx;
-        *bounds.offset(3isize) = maxy
-    }
-    advance
-}
 
-pub unsafe fn fonsLineBounds(stash: *mut Stash, mut y: f32, miny: *mut f32, maxy: *mut f32) {
-    let state: *mut State = (*stash).state_mut();
-    if stash.is_null() {
-        return;
-    }
-    if (*state).font < 0 || (*state).font >= (*stash).nfonts as i32 {
-        return;
-    }
-    let font = *(*stash).fonts.offset((*state).font as isize);
-    let isize = ((*state).size * 10.0) as i16;
-    if (*font).data.is_null() {
-        return;
-    }
-    y += fons__getVertAlign(stash, font, (*state).align, isize);
-    *miny = y - (*font).ascender * isize as f32 / 10.0;
-    *maxy = *miny + (*font).lineh * isize as i32 as f32 / 10.0
-}
+    pub fn line_bounds(&self, y: f32) -> (f32, f32) {
+        let state = self.state();
+        if state.font < 0 || state.font >= self.fonts.len() as i32 {
+            return Default::default();
+        }
+        let align = state.align;
+        let isize = (state.size * 10.0) as i16;
 
-pub unsafe fn fonsVertMetrics(stash: &mut Stash) -> Option<Metrics> {
-    let nfonts = stash.nfonts as i32;
-    let state = stash.state();
-    if state.font < 0 || state.font >= nfonts {
-        return None;
+        let font = &self.fonts[state.font as usize];
+        let y = y + font.vert_align(align, isize);
+        let miny = y - font.ascender * isize as f32 / 10.0;
+        let maxy = miny + font.lineh * isize as f32 / 10.0;
+        (miny, maxy)
     }
-    let font = &*(*stash.fonts.offset(state.font as isize));
-    let size = (state.size * 10.0) as i16;
-    if font.data.is_null() {
-        return None;
+
+    pub fn metrics(&self) -> Option<Metrics> {
+        let state = self.state();
+        if state.font < 0 || state.font >= self.fonts.len() as i32 {
+            return None;
+        }
+        let font = &self.fonts[state.font as usize];
+        let size = ((state.size * 10.0) as i16) as f32;
+        Some(Metrics {
+            ascender: font.ascender * size / 10.,
+            descender: font.descender * size / 10.,
+            line_gap: font.lineh * size / 10.,
+        })
     }
-    Some(Metrics {
-        ascender: font.ascender * size as f32 / 10.,
-        descender: font.descender * size as f32 / 10.,
-        line_gap: font.lineh * size as f32 / 10.,
-    })
+
+    pub fn add_fallback_font(&mut self, base: i32, fallback: i32) -> i32 {
+        let base = &mut self.fonts[base as usize];
+        if base.nfallbacks < 20 {
+            base.fallbacks[base.nfallbacks as usize] = fallback;
+            base.nfallbacks += 1;
+            1
+        } else {
+            0
+        }
+    }
 }
 
 // Text iterator
 
 pub unsafe fn fonsTextIterInit(
     stash: *mut Stash,
-    mut iter: *mut TextIter,
+    mut iter: &mut TextIter,
     mut x: f32,
     mut y: f32,
     str: *const u8,
@@ -2564,72 +2022,48 @@ pub unsafe fn fonsTextIterInit(
     bitmapOption: i32,
 ) -> i32 {
     let state: *mut State = (*stash).state_mut();
-    iter.write_bytes(0, 1);
 
     if stash.is_null() {
         return 0;
     }
-    if (*state).font < 0 || (*state).font >= (*stash).nfonts as i32 {
+    *iter = std::mem::zeroed();
+
+    if (*state).font < 0 || (*state).font >= (*stash).fonts.len() as i32 {
         return 0;
     }
-    (*iter).font = *(*stash).fonts.offset((*state).font as isize);
-    if (*(*iter).font).data.is_null() {
-        return 0;
-    }
-    (*iter).isize_0 = ((*state).size * 10.0) as i16;
-    (*iter).iblur = (*state).blur as i16;
-    (*iter).scale = (*(*iter).font)
+    iter.font = &mut(*stash).fonts[(*state).font as usize];
+    iter.isize_0 = ((*state).size * 10.0) as i16;
+    iter.iblur = (*state).blur as i16;
+    iter.scale = (*iter.font)
         .font
-        .pixel_height_scale((*iter).isize_0 as f32 / 10.0);
-    if !(0 != (*state).align & FONS_ALIGN_LEFT as i32) {
+        .pixel_height_scale(iter.isize_0 as f32 / 10.0);
+    if 0 == (*state).align & FONS_ALIGN_LEFT as i32 {
         if 0 != (*state).align & FONS_ALIGN_RIGHT as i32 {
-            let width = fonsTextBounds(
-                stash,
-                x,
-                y,
-                str as *const i8,
-                end as *const i8,
-                0 as *mut f32,
-            );
+            let (width, _) = (*stash).text_bounds(x, y, str, end);
             x -= width;
         } else if 0 != (*state).align & FONS_ALIGN_CENTER as i32 {
-            let width = fonsTextBounds(
-                stash,
-                x,
-                y,
-                str as *const i8,
-                end as *const i8,
-                0 as *mut f32,
-            );
+            let (width, _) = (*stash).text_bounds(x, y, str, end);
             x -= width * 0.5;
         }
     }
-    y += fons__getVertAlign(stash, (*iter).font, (*state).align, (*iter).isize_0);
+
+    y += (*iter.font).vert_align((*state).align, iter.isize_0);
     if end.is_null() {
         end = str.offset(strlen(str as *const i8) as isize)
     }
-    (*iter).nextx = x;
-    (*iter).x = (*iter).nextx;
-    (*iter).nexty = y;
-    (*iter).y = (*iter).nexty;
-    (*iter).spacing = (*state).spacing;
-    (*iter).str_0 = str;
-    (*iter).next = str;
-    (*iter).end = end;
-    (*iter).codepoint = 0 as u32;
-    (*iter).prev_glyph_index = -1;
-    (*iter).bitmapOption = bitmapOption;
+
+    iter.nextx = x;
+    iter.nexty = y;
+
+    iter.x = iter.nextx;
+    iter.y = iter.nexty;
+
+    iter.spacing = (*state).spacing;
+    iter.str_0 = str;
+    iter.next = str;
+    iter.end = end;
+    iter.codepoint = 0 as u32;
+    iter.prev_glyph_index = -1;
+    iter.bitmapOption = bitmapOption;
     1
-}
-
-
-pub unsafe fn fonsAddFallbackFont(stash: *mut Stash, base: i32, fallback: i32) -> i32 {
-    let mut baseFont: *mut Font = *(*stash).fonts.offset(base as isize);
-    if (*baseFont).nfallbacks < 20 {
-        let fresh34 = (*baseFont).nfallbacks;
-        (*baseFont).nfallbacks = (*baseFont).nfallbacks + 1;
-        (*baseFont).fallbacks[fresh34 as usize] = fallback;
-        return 1;
-    }
-    0
 }
