@@ -6,8 +6,9 @@ use crate::{
     counters::Counters,
     vg::*,
     font::*,
-    transform_pt,
+    picture::Picture,
     Point,
+    Transform,
 };
 
 use std::ptr::null;
@@ -63,9 +64,7 @@ impl States {
 
 
 pub struct Context {
-    pub commands: Vec<f32>,
-
-    pub cmd: Point,
+    pub picture: Picture,
 
     pub states: States,
     pub cache: PathCache,
@@ -261,10 +260,14 @@ impl Context {
                 Image::null(),
             ],
 
-            cmd: Point::zero(),
             counters: Counters::default(),
             cache: PathCache::new(),
-            commands: Vec::with_capacity(INIT_COMMANDS_SIZE),
+
+            picture: Picture {
+                commands: Vec::with_capacity(INIT_COMMANDS_SIZE),
+                cmd: Point::zero(),
+                xform: Transform::identity(),
+            },
 
             device_px_ratio: 1.0,
 
@@ -273,40 +276,7 @@ impl Context {
     }
 
     pub(crate) fn append_commands(&mut self, vals: &mut [f32]) {
-        use crate::draw_api::{MOVETO, LINETO, BEZIERTO, CLOSE, WINDING};
-
-        let xform = &self.states.last().xform;
-
-        if vals[0] as i32 != CLOSE && vals[0] as i32 != WINDING {
-            self.cmd.x = vals[vals.len()-2];
-            self.cmd.y = vals[vals.len()-1];
-        }
-
-        // transform commands
-        let mut i = 0;
-        while i < vals.len() {
-            let cmd = vals[i] as i32;
-            match cmd {
-            MOVETO => {
-                transform_pt(&mut vals[i+1..], xform);
-                i += 3;
-            }
-            LINETO => {
-                transform_pt(&mut vals[i+1..], xform);
-                i += 3;
-            }
-            BEZIERTO => {
-                transform_pt(&mut vals[i+1..], xform);
-                transform_pt(&mut vals[i+3..], xform);
-                transform_pt(&mut vals[i+5..], xform);
-                i += 7;
-            }
-            CLOSE => i += 1,
-            WINDING => i += 2,
-            _ => unreachable!(),
-            }
-        }
-
-        self.commands.extend_from_slice(vals);
+        self.picture.xform = self.states.last().xform;
+        self.picture.append_commands(vals)
     }
 }

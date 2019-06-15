@@ -304,8 +304,8 @@ impl PathCache {
     }
 
     pub fn clear(&mut self) {
-	self.points.clear();
-	self.paths.clear();
+        self.points.clear();
+        self.paths.clear();
     }
 
     pub(crate) fn add_path(&mut self) {

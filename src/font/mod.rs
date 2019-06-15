@@ -24,11 +24,27 @@ use crate::{
         min, max,
         average_scale,
         str_start_end,
-        raw_slice,
-        raw_str,
     },
     transform_point,
 };
+
+use std::{
+    str::from_utf8_unchecked,
+    slice::from_raw_parts,
+};
+
+unsafe fn raw_str<'a>(start: *const u8, end: *const u8) -> &'a str {
+    from_utf8_unchecked(raw_slice(start, end))
+}
+
+unsafe fn raw_slice<'a>(start: *const u8, end: *const u8) -> &'a [u8] {
+    let len = if end.is_null() {
+        libc::strlen(start as *const i8)
+    } else {
+        end.offset_from(start) as usize
+    };
+    from_raw_parts(start, len)
+}
 
 bitflags::bitflags!(
     pub struct Align: i32 {

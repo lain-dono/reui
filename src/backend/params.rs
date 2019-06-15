@@ -731,8 +731,8 @@ impl BackendGL {
         })
     }
 
-    pub fn set_viewport(&mut self, width: f32, height: f32, _pixel_ratio: f32) {
-        self.view = [width, height];
+    pub fn set_viewport(&mut self, width: f32, height: f32, pixel_ratio: f32) {
+        self.view = [width / pixel_ratio, height / pixel_ratio];
     }
 
     pub fn flush(&mut self) {

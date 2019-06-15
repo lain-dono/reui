@@ -15,6 +15,8 @@ mod context;
 mod counters;
 mod images;
 
+mod picture;
+
 //mod wgpu;
 
 pub use crate::{

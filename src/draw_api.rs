@@ -27,7 +27,7 @@ pub const WINDING: i32 = 4;
 
 impl Context {
     pub fn begin_path(&mut self) {
-        self.commands.clear();
+        self.picture.commands.clear();
         self.cache.clear();
     }
 
@@ -52,8 +52,8 @@ impl Context {
     }
 
     pub fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
-        let x0 = self.cmd.x;
-        let y0 = self.cmd.y;
+        let x0 = self.picture.cmd.x;
+        let y0 = self.picture.cmd.y;
         self.append_commands(&mut [
             BEZIERTO as f32,
             x0 + 2.0/3.0*(cx - x0),
@@ -65,10 +65,10 @@ impl Context {
     }
 
     pub fn arc_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, radius: f32) {
-        let x0 = self.cmd.x;
-        let y0 = self.cmd.y;
+        let x0 = self.picture.cmd.x;
+        let y0 = self.picture.cmd.y;
 
-        if self.commands.is_empty() {
+        if self.picture.commands.is_empty() {
             return;
         }
 
@@ -120,7 +120,7 @@ impl Context {
     }
 
     pub fn arc(&mut self, cx: f32, cy: f32, r: f32, a0: f32, a1: f32, dir: Winding) {
-        let mov = if !self.commands.is_empty() { LINETO } else { MOVETO };
+        let mov = if !self.picture.commands.is_empty() { LINETO } else { MOVETO };
 
         // Clamp angles
         let mut da = a1 - a0;
@@ -260,7 +260,7 @@ impl Context {
             0.0
         };
 
-        self.cache.flatten_paths(&self.commands);
+        self.cache.flatten_paths(&self.picture.commands);
         self.cache.expand_fill(w, LineJoin::Miter, 2.4);
 
         // Apply global alpha
@@ -310,7 +310,7 @@ impl Context {
             0.0
         };
 
-        self.cache.flatten_paths(&self.commands);
+        self.cache.flatten_paths(&self.picture.commands);
         self.cache.expand_stroke(stroke_width*0.5, w, state.line_cap, state.line_join, state.miter_limit);
 
         self.params.draw_stroke(

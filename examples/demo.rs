@@ -28,7 +28,7 @@ fn main() {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
-        let window = glfwCreateWindow(1000, 600, b"NanoVG\0".as_ptr(), null(), null());
+        let window = glfwCreateWindow(2000, 1200, b"NanoVG\0".as_ptr(), null(), null());
         //window = glfwCreateWindow(1000, 600, "NanoVG", glfwGetPrimaryMonitor(), NULL);
         if window.is_null() {
             glfwTerminate();
@@ -74,12 +74,12 @@ fn main() {
 
             gl::glClear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT | gl::GL_STENCIL_BUFFER_BIT);
 
-            vg.begin_frame(win_w as f32, win_h as f32, px_ratio);
+            vg.begin_frame(win_w as f32, win_h as f32, px_ratio * 2.0);
 
             render_demo(
                 &mut vg,
-                mx as f32,my as f32,
-                win_w as f32,win_h as f32,
+                mx as f32 / 2.0,my as f32 / 2.0,
+                win_w as f32 / 2.0,win_h as f32 / 2.0,
                 t as f32, BLOWUP != 0, &data,
             );
             fps.render(&mut vg, 5.0, 5.0);
@@ -1081,32 +1081,32 @@ fn draw_colorwheel(vg: &mut Context, x: f32, y: f32, w: f32, h: f32, t: f32) {
 
 fn draw_lines(vg: &mut Context, x: f32, y: f32, w: f32, _h: f32, t: f32) {
     let pad = 5.0;
-    let s = w/9.0 - pad*2.0;
+    let size = w/9.0 - pad*2.0;
 
     let joins = [ LineJoin::Miter, LineJoin::Round, LineJoin::Bevel ];
     let caps = [ LineCap::Butt, LineCap::Round, LineCap::Square ];
 
     vg.save();
     let pts = [
-        -s*0.25 + (t*0.3).cos() * s*0.5,
-        (t*0.3).sin() * s*0.5,
-        -s*0.25,
+        -size*0.25 + (t*0.3).cos() * size*0.5,
+        (t*0.3).sin() * size*0.5,
+        -size*0.25,
         0.0,
-        s*0.25,
+        size*0.25,
         0.0,
-        s*0.25 + (-t*0.3).cos() * s*0.5,
-        (-t*0.3).sin() * s*0.5,
+        size*0.25 + (-t*0.3).cos() * size*0.5,
+        (-t*0.3).sin() * size*0.5,
     ];
 
-    for i in 0..3 {
-        for j in 0..3 {
-            let fx = x + s*0.5 + ((i*3+j) as f32)/9.0*w + pad;
-            let fy = y - s*0.5 + pad;
+    for (i, &cap) in caps.iter().enumerate() {
+        for (j, &join) in joins.iter().enumerate() {
+            let fx = x + size*0.5 + ((i*3+j) as f32)/9.0*w + pad;
+            let fy = y - size*0.5 + pad;
 
-            vg.line_cap(caps[i]);
-            vg.line_join(joins[j]);
+            vg.line_cap(cap);
+            vg.line_join(join);
 
-            vg.stroke_width(s*0.3);
+            vg.stroke_width(size*0.3);
             vg.stroke_color(Color::rgba(0,0,0,160));
             vg.begin_path();
             vg.move_to(fx+pts[0], fy+pts[1]);
@@ -1169,9 +1169,13 @@ fn draw_paragraph(vg: &mut Context, x: f32, mut y: f32, width: f32, _height: f32
     let mut gutter = 0isize;
 
     loop {
-        let text = unsafe { oni2d::utils::raw_str(start, end) };
+        let text = unsafe {
+            let len = end as usize - start as usize;
+            let slice = std::slice::from_raw_parts(start, len);
+            std::str::from_utf8_unchecked(slice)
+        };
         let rows = vg.text_break_lines(text, width, &mut rows);
-        if rows.len() == 0 { break }
+        if rows.is_empty() { break }
 
         for row in rows {
             let hit = mx > x && mx < (x+width) && my >= y && my < (y+lineh);

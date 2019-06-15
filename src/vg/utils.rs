@@ -1,8 +1,4 @@
-use std::{
-    f32::consts::PI,
-    str::from_utf8_unchecked,
-    slice::from_raw_parts,
-};
+use std::f32::consts::PI;
 
 use euclid::approxeq::ApproxEq;
 
@@ -18,19 +14,6 @@ pub fn slice_start_end(b: &[u8]) -> (*const u8, *const u8) {
 
 pub fn str_start_end(s: &str) -> (*const u8, *const u8) {
     slice_start_end(s.as_bytes())
-}
-
-pub unsafe fn raw_str<'a>(start: *const u8, end: *const u8) -> &'a str {
-    from_utf8_unchecked(raw_slice(start, end))
-}
-
-pub unsafe fn raw_slice<'a>(start: *const u8, end: *const u8) -> &'a [u8] {
-    let len = if end.is_null() {
-        libc::strlen(start as *const i8)
-    } else {
-        end.offset_from(start) as usize
-    };
-    from_raw_parts(start, len)
 }
 
 pub fn vec_mul(lhs: Vector, rhs: Vector) -> Vector {
