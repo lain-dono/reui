@@ -17,6 +17,8 @@ mod images;
 
 mod picture;
 
+pub mod canvas;
+
 //mod wgpu;
 
 pub use crate::{

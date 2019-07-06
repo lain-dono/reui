@@ -2,6 +2,7 @@ use core::f32::consts::PI;
 use crate::{
     context::Context,
     cache::{Winding, LineJoin},
+    vg::{Color, State},
     vg::utils::{
         clamp,
         min,
@@ -28,21 +29,36 @@ pub const CLOSE: i32 = 3;
 pub const WINDING: i32 = 4;
 
 impl Context {
+    pub fn fill_rect(&mut self, r: Rect, c: Color) {
+        self.begin_path();
+        self.rect(r);
+        self.fill_color(c);
+        self.fill();
+    }
+}
+
+impl Context {
     pub fn begin_path(&mut self) {
         self.picture.commands.clear();
         self.cache.clear();
     }
 
+    fn append_commands(&mut self, vals: &mut [f32]) {
+        self.picture.xform = self.states.last().xform;
+        self.picture.append_commands(vals)
+    }
+
     pub fn close_path(&mut self) {
-        self.append_commands(&mut [ CLOSE as f32 ]);
+        self.picture.close_path();
     }
 
     pub fn path_winding(&mut self, dir: Winding) {
-        self.append_commands(&mut [ WINDING as f32, dir as i32 as f32 ]);
+        self.picture.path_winding(dir);
     }
 
     pub fn move_to(&mut self, x: f32, y: f32) {
-        self.append_commands(&mut [ MOVETO as f32, x, y ]);
+        self.picture.xform = self.states.last().xform;
+        self.picture.move_to(x, y);
     }
 
     pub fn line_to(&mut self, x: f32, y: f32) {
@@ -184,8 +200,8 @@ impl Context {
         self.append_commands(&mut vals[..nvals]);
     }
 
-    pub fn rect(&mut self, r: Rect) {
-        let (x, y, w, h) = (r.origin.x, r.origin.y, r.size.width, r.size.height);
+    pub fn rect(&mut self, rr: Rect) {
+        let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
         self.append_commands(&mut [
             MOVETO as f32, x,y,
             LINETO as f32, x,y+h,
@@ -195,16 +211,16 @@ impl Context {
         ]);
     }
 
-    pub fn rrect(&mut self, x: f32, y: f32, width: f32, height: f32, r: f32) {
-        self.rrect_varying(x, y, width, height, r, r, r, r);
+    pub fn rrect(&mut self, rr: Rect, radius: f32) {
+        self.rrect_varying(rr, radius, radius, radius, radius);
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn rrect_varying(
         &mut self,
-        x: f32, y: f32, w: f32, h: f32,
+        rr: Rect,
         top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32,
     ) {
+        let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
         if top_left < 0.1 && top_right < 0.1 && bottom_right < 0.1 && bottom_left < 0.1 {
             self.rect(rect(x, y, w, h));
         } else {
@@ -255,16 +271,14 @@ impl Context {
     }
 
     pub fn fill(&mut self) {
-        let state = self.states.last_mut();
+        let state = self.states.last();
 
-        let w = if self.params.edge_aa() && state.shape_aa {
+        self.cache.flatten_paths(&self.picture.commands);
+        self.cache.expand_fill(if state.shape_aa {
             self.cache.fringe_width
         } else {
             0.0
-        };
-
-        self.cache.flatten_paths(&self.picture.commands);
-        self.cache.expand_fill(w, LineJoin::Miter, 2.4);
+        }, LineJoin::Miter, 2.4);
 
         // Apply global alpha
         let mut paint = state.fill;
@@ -273,7 +287,7 @@ impl Context {
 
         self.params.draw_fill(
             &paint,
-            state.composite,
+            state.composite(),
             &state.scissor,
             self.cache.fringe_width,
             &self.cache.bounds,
@@ -282,52 +296,87 @@ impl Context {
 
         // Count triangles
         for path in &self.cache.paths {
-            self.counters.fill_call(path.nfill-2);
-            self.counters.fill_call(path.nstroke-2);
+            self.counters.fill_call(path.fill.as_ref().unwrap().len()-2);
+            self.counters.fill_call(path.stroke.as_ref().unwrap().len()-2);
         }
     }
 
     pub fn stroke(&mut self) {
-        let state = self.states.last_mut();
+        let state = self.states.last();
 
-        let scale = average_scale(&state.xform);
-        let mut stroke_width = clampf(state.stroke_width * scale, 0.0, 200.0);
-        let mut paint = state.stroke;
+        self.run_stroke(
+            state.xform,
+            state.alpha,
+            &Stroke {
+                paint: state.stroke,
+                scissor: state.scissor,
+                width: state.stroke_width,
+                line_cap: state.line_cap,
+                line_join: state.line_join,
+                miter_limit: state.miter_limit,
+            },
+        );
+
+        // Count triangles
+        for path in &self.cache.paths {
+            self.counters.stroke_call(path.stroke.as_ref().unwrap().len()-2);
+        }
+    }
+
+    pub fn run_stroke(
+        &mut self,
+        xform: crate::Transform,
+        alpha: f32,
+        stroke: &Stroke,
+    ) {
+        let scale = average_scale(&xform);
+        let mut stroke_width = clampf(stroke.width * scale, 0.0, 200.0);
+        let fringe_width = self.cache.fringe_width;
+        let mut paint = stroke.paint;
 
         if stroke_width < self.cache.fringe_width {
             // If the stroke width is less than pixel size, use alpha to emulate coverage.
             // Since coverage is area, scale by alpha*alpha.
-            let alpha = clampf(stroke_width / self.cache.fringe_width, 0.0, 1.0);
+            let alpha = clampf(stroke_width / fringe_width, 0.0, 1.0);
             paint.inner_color.a *= alpha*alpha;
             paint.outer_color.a *= alpha*alpha;
             stroke_width = self.cache.fringe_width;
         }
 
         // Apply global alpha
-        paint.inner_color.a *= state.alpha;
-        paint.outer_color.a *= state.alpha;
-
-        let w = if self.params.edge_aa() && state.shape_aa {
-            self.cache.fringe_width
-        } else {
-            0.0
-        };
+        paint.inner_color.a *= alpha;
+        paint.outer_color.a *= alpha;
 
         self.cache.flatten_paths(&self.picture.commands);
-        self.cache.expand_stroke(stroke_width*0.5, w, state.line_cap, state.line_join, state.miter_limit);
+        self.cache.expand_stroke(
+            stroke_width*0.5,
+            fringe_width,
+            stroke.line_cap,
+            stroke.line_join,
+            stroke.miter_limit,
+        );
 
         self.params.draw_stroke(
             &paint,
-            state.composite,
-            &state.scissor,
-            self.cache.fringe_width,
+            crate::vg::CompositeOp::SrcOver.into(),
+            &stroke.scissor,
+            fringe_width,
             stroke_width,
             &self.cache.paths,
         );
 
         // Count triangles
         for path in &self.cache.paths {
-            self.counters.stroke_call(path.nstroke-2);
+            self.counters.stroke_call(path.stroke.as_ref().unwrap().len()-2);
         }
     }
+}
+
+pub struct Stroke {
+    pub paint: crate::vg::Paint,
+    pub scissor: crate::vg::Scissor,
+    pub width: f32,
+    pub line_cap: crate::cache::LineCap,
+    pub line_join: crate::cache::LineJoin,
+    pub miter_limit: f32,
 }

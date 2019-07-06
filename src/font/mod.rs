@@ -108,9 +108,7 @@ impl Context {
     }
 
     fn flush_text_texture(&mut self) {
-        let mut dirty = [0i32; 4];
-
-        if self.fs.validate_texture(&mut dirty) {
+        if let Some(dirty) = self.fs.validate_texture() {
             let image = self.font_images[self.font_image_idx as usize];
             // Update texture
             if !image.is_null() {
@@ -167,7 +165,7 @@ impl Context {
 
         self.params.draw_triangles(
             &paint,
-            state.composite,
+            state.composite(),
             &state.scissor,
             &verts,
         );

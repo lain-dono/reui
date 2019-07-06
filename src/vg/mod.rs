@@ -15,7 +15,7 @@ pub use self::{
 use crate::{context::Context, Rect, Transform};
 
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Scissor {
     pub xform: Transform,
     pub extent: [f32; 2],
@@ -36,9 +36,10 @@ impl Context {
     }
 }
 
+/*
 impl Context {
     pub fn global_composite(&mut self, op: CompositeOp) {
-        self.states.last_mut().composite = op.into();
+        self.global_composite_state(op.into());
     }
 
     pub fn global_blend(&mut self, sfactor: BlendFactor, dfactor: BlendFactor) {
@@ -52,11 +53,16 @@ impl Context {
         src_alpha: BlendFactor,
         dst_alpha: BlendFactor,
     ) {
-        self.states.last_mut().composite = CompositeState {
+        self.global_composite_state(CompositeState {
             src_color,
             dst_color,
             src_alpha,
             dst_alpha,
-        };
+        });
+    }
+
+    pub fn global_composite_state(&mut self, composite: CompositeState) {
+        self.states.last_mut().set_composite(composite);
     }
 }
+*/

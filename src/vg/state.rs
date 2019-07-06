@@ -8,7 +8,7 @@ use crate::{
 
 #[derive(Clone)]
 pub struct State {
-    pub composite: CompositeState,
+    composite: CompositeState,
     pub shape_aa: bool,
 
     pub fill: Paint,
@@ -58,9 +58,10 @@ impl State {
             font_id: 0,
         }
     }
-}
 
-impl State {
+    pub fn composite(&self) -> CompositeState { self.composite }
+    pub fn set_composite(&mut self, composite: CompositeState) { self.composite = composite }
+
     pub fn set_scissor(&mut self, rect: Rect) {
         let (x, y) = rect.origin.into();
         let w = maxf(0.0, rect.size.width);

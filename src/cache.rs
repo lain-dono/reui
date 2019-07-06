@@ -2,8 +2,7 @@
 
 use std::{
     f32::consts::PI,
-    ptr::null_mut,
-    slice::from_raw_parts,
+    slice::from_raw_parts_mut,
 };
 
 use euclid::vec2;
@@ -117,7 +116,7 @@ bitflags::bitflags!(
 );
 
 #[derive(Clone, Default)]
-pub struct Point {
+struct Point {
     pub x: f32,
     pub y: f32,
 
@@ -146,11 +145,8 @@ pub struct Path {
     pub closed: bool,
     pub nbevel: usize,
 
-    pub fill: *mut Vertex,
-    pub nfill: usize,
-
-    pub stroke: *mut Vertex,
-    pub nstroke: usize,
+    pub fill: Option<&'static mut [Vertex]>,
+    pub stroke: Option<&'static mut [Vertex]>,
 
     pub winding: Winding,
     pub convex: bool,
@@ -163,10 +159,8 @@ impl Default for Path {
             count: 0,
             closed: false,
             nbevel: 0,
-            fill: null_mut(),
-            nfill: 0,
-            stroke: null_mut(),
-            nstroke: 0,
+            fill: None,
+            stroke: None,
             winding: Winding::CCW,
             convex: false,
         }
@@ -174,12 +168,12 @@ impl Default for Path {
 }
 
 impl Path {
-    pub fn points<'a>(&self, pts: &'a [Point]) -> &'a [Point] {
+    fn points<'a>(&self, pts: &'a [Point]) -> &'a [Point] {
         let start = self.first as usize;
         let len = self.count as usize;
         &pts[start..start+len]
     }
-    pub fn points_mut<'a>(&self, pts: &'a mut [Point]) -> &'a mut [Point] {
+    fn points_mut<'a>(&self, pts: &'a mut [Point]) -> &'a mut [Point] {
         let start = self.first as usize;
         let len = self.count as usize;
         &mut pts[start..start+len]
@@ -188,19 +182,15 @@ impl Path {
     fn pts<'a>(&self, pts: &'a [Point], p0: usize, p1: usize) -> PairIter<'a> {
         PairIter::new(self.points(pts), p0, p1)
     }
+    fn pts_fan<'a>(&self, pts: &'a [Point], p0: usize, p1: usize) -> PairIterFan<'a> {
+        PairIterFan::new(self.points(pts), p0, p1)
+    }
 
     /*
     fn pts_mut<'a>(&self, pts: &'a mut [Point], p0: usize, p1: usize) -> PairIterMut<'a> {
         PairIterMut::new(self.points_mut(pts), p0, p1)
     }
     */
-
-    pub fn fill(&self) -> &[Vertex] {
-        unsafe { from_raw_parts(self.fill, self.nfill) }
-    }
-    pub fn stroke(&self) -> &[Vertex] {
-        unsafe { from_raw_parts(self.stroke, self.nstroke) }
-    }
 }
 
 struct PairIter<'a> {
@@ -219,15 +209,56 @@ impl<'a> PairIter<'a> {
 impl<'a> Iterator for PairIter<'a> {
     type Item = (&'a Point, &'a Point);
     fn next(&mut self) -> Option<Self::Item> {
-        if self.idx == self.pts.len() {
+        if self.idx >= self.pts.len() {
             None
         } else {
-            let item = (&self.pts[self.p0], &self.pts[self.p1]);
+            let p0 = self.p0;
+            let p1 = self.p1;
+            let item = (&self.pts[p0], &self.pts[p1]);
             self.idx += 1;
             self.p0 = self.p1;
             self.p1 += 1;
             Some(item)
         }
+    }
+}
+
+struct PairIterFan<'a> {
+    pts: &'a [Point],
+    idx: usize,
+    p0: usize,
+    p1: usize,
+}
+
+impl<'a> PairIterFan<'a> {
+    fn new(pts: &'a [Point], p0: usize, p1: usize) -> Self {
+        Self { pts, p0, p1, idx: 0 }
+    }
+}
+
+impl<'a> Iterator for PairIterFan<'a> {
+    type Item = (&'a Point, &'a Point);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx >= self.pts.len() {
+            None
+        } else {
+            let p0 = fan2strip(self.p0, self.pts.len());
+            let p1 = fan2strip(self.p1, self.pts.len());
+            let item = (&self.pts[p0], &self.pts[p1]);
+            self.idx += 1;
+            self.p0 = self.p1;
+            self.p1 += 1;
+            Some(item)
+        }
+    }
+}
+
+#[inline(always)]
+fn fan2strip(i: usize, len: usize) -> usize {
+    if i % 2 != 0 {
+        i / 2
+    } else {
+        len - 1 - i / 2
     }
 }
 
@@ -335,12 +366,8 @@ impl PathCache {
         path.count += 1;
     }
 
-    pub(crate) fn resize_verts(&mut self, count: usize) {
-        self.verts.resize_with(count, Default::default);
-    }
-
     pub(crate) fn temp_verts(&mut self, count: usize) -> &mut [Vertex] {
-        self.resize_verts(count);
+        self.verts.resize_with(count, Default::default);
         &mut self.verts[..count]
     }
 
@@ -477,7 +504,8 @@ impl PathCache {
 
         // Calculate the direction and length of line segments.
         for path in &mut self.paths {
-            let pts = &mut self.points[path.first as usize..];
+            let pts = &mut self.points[path.first..path.first + path.count];
+            assert!(pts.len() >= 2);
 
             // If the first and last points are the same, remove the last, mark as closed path.
             let mut p0: *mut Point = &mut pts[(path.count-1) as usize];
@@ -608,13 +636,11 @@ impl PathCache {
         let mut verts = self.temp_verts(cverts as usize).as_mut_ptr();
 
         for path in &mut self.paths {
-            path.fill = null_mut();
-            path.nfill = 0;
+            path.fill = None;
 
             // Calculate fringe or stroke
             let looped = path.closed;
 
-            path.stroke = verts;
             let mut dst = Verts::new(verts);
 
             let pts = path.points(&self.points);
@@ -656,8 +682,8 @@ impl PathCache {
                         dst.bevel_join(p0, p1, w, w, u0, u1, aa);
                     }
                 } else {
-                    dst.push([p1.x + (p1.dmx * w), p1.y + (p1.dmy * w)], u0,1.0);
-                    dst.push([p1.x - (p1.dmx * w), p1.y - (p1.dmy * w)], u1,1.0);
+                    dst.push([p1.x + (p1.dmx * w), p1.y + (p1.dmy * w)], [u0,1.0]);
+                    dst.push([p1.x - (p1.dmx * w), p1.y - (p1.dmy * w)], [u1,1.0]);
                 }
 
                 p0_idx = p1_idx;
@@ -667,8 +693,8 @@ impl PathCache {
             if looped {
                 // Loop it
                 let (v0, v1) = unsafe { (&*(verts.add(0)), &*(verts.add(1))) };
-                dst.push(v0.pos, u0,1.0);
-                dst.push(v1.pos, u1,1.0);
+                dst.push(v0.pos, [u0,1.0]);
+                dst.push(v1.pos, [u1,1.0]);
             } else {
                 // Add cap
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx % pts.len()]); // XXX
@@ -680,7 +706,7 @@ impl PathCache {
                 };
             }
 
-            path.nstroke = dst.count;
+            path.stroke = Some(unsafe { from_raw_parts_mut(verts, dst.count) });
             verts = dst.dst;
         }
     }
@@ -713,12 +739,11 @@ impl PathCache {
             // Calculate shape vertices.
             let woff = 0.5*aa;
 
-            path.fill = verts;
             let mut dst = Verts::new(verts);
 
             if fringe {
                 // Looping
-                for (p0, p1) in path.pts(&self.points, last_idx, 0) {
+                for (p0, p1) in path.pts_fan(&self.points, last_idx, 0) {
                     if p1.is_bevel() {
                         let dlx0 =  p0.dy;
                         let dly0 = -p0.dx;
@@ -727,26 +752,26 @@ impl PathCache {
                         if p1.is_left() {
                             let lx = p1.x + p1.dmx * woff;
                             let ly = p1.y + p1.dmy * woff;
-                            dst.push([lx, ly], 0.5,1.0);
+                            dst.push([lx, ly], [0.5,1.0]);
                         } else {
                             let lx0 = p1.x + dlx0 * woff;
                             let ly0 = p1.y + dly0 * woff;
                             let lx1 = p1.x + dlx1 * woff;
                             let ly1 = p1.y + dly1 * woff;
-                            dst.push([lx0, ly0], 0.5,1.0);
-                            dst.push([lx1, ly1], 0.5,1.0);
+                            dst.push([lx0, ly0], [0.5,1.0]);
+                            dst.push([lx1, ly1], [0.5,1.0]);
                         }
                     } else {
-                        dst.push([p1.x + (p1.dmx * woff), p1.y + (p1.dmy * woff)], 0.5,1.0);
+                        dst.push([p1.x + (p1.dmx * woff), p1.y + (p1.dmy * woff)], [0.5,1.0]);
                     }
                 }
             } else {
                 for p in pts {
-                    dst.push([p.x, p.y], 0.5,1.0);
+                    dst.push([p.x, p.y], [0.5,1.0]);
                 }
             }
 
-            path.nfill = dst.count;
+            path.fill = Some(unsafe { from_raw_parts_mut(verts, dst.count) });
             verts = dst.dst;
 
             // Calculate fringe
@@ -756,7 +781,6 @@ impl PathCache {
                 let mut lu = 0.0;
                 let     ru = 1.0;
 
-                path.stroke = verts;
                 let mut dst = Verts::new(verts);
 
                 // Create only half a fringe for convex shapes so that
@@ -771,21 +795,20 @@ impl PathCache {
                     if p1.flags.intersects(PointFlags::BEVEL | PointFlags::INNERBEVEL) {
                         dst.bevel_join(p0, p1, lw, rw, lu, ru, self.fringe_width);
                     } else {
-                        dst.push([p1.x + (p1.dmx * lw), p1.y + (p1.dmy * lw)], lu,1.0);
-                        dst.push([p1.x - (p1.dmx * rw), p1.y - (p1.dmy * rw)], ru,1.0);
+                        dst.push([p1.x + (p1.dmx * lw), p1.y + (p1.dmy * lw)], [lu,1.0]);
+                        dst.push([p1.x - (p1.dmx * rw), p1.y - (p1.dmy * rw)], [ru,1.0]);
                     }
                 }
 
                 // Loop it
                 let (v0, v1) = unsafe { (&*(verts.add(0)), &*(verts.add(1))) };
-                dst.push(v0.pos, lu,1.0);
-                dst.push(v1.pos, ru,1.0);
+                dst.push(v0.pos, [lu,1.0]);
+                dst.push(v1.pos, [ru,1.0]);
 
-                path.nstroke = dst.count;
+                path.stroke = Some(unsafe { from_raw_parts_mut(verts, dst.count) });
                 verts = dst.dst;
             } else {
-                path.stroke = null_mut();
-                path.nstroke = 0;
+                path.stroke = None;
             }
         }
     }
@@ -801,9 +824,9 @@ impl Verts {
         Self { dst, count: 0 }
     }
 
-    fn push(&mut self, pos: [f32; 2], u: f32, v: f32) {
+    fn push(&mut self, pos: [f32; 2], uv: [f32; 2]) {
         unsafe {
-            *self.dst = Vertex::new(pos, [u, v]);
+            *self.dst = Vertex::new(pos, uv);
             self.dst = self.dst.add(1);
             self.count += 1;
         }
@@ -824,8 +847,8 @@ impl Verts {
             let mut a1 = (-dly1).atan2(-dlx1);
             if a1 > a0 { a1 -= PI*2.0; }
 
-            self.push([lx0, ly0], lu,1.0);
-            self.push([p1.x - dlx0*rw, p1.y - dly0*rw], ru,1.0);
+            self.push([lx0, ly0], [lu,1.0]);
+            self.push([p1.x - dlx0*rw, p1.y - dly0*rw], [ru,1.0]);
 
             let n = clampi((((a0 - a1) / PI) * ncap as f32).ceil() as i32, 2, ncap);
             for i in 0..n {
@@ -833,20 +856,20 @@ impl Verts {
                 let a = a0 + u*(a1-a0);
                 let rx = p1.x + a.cos() * rw;
                 let ry = p1.y + a.sin() * rw;
-                self.push([p1.x, p1.y], 0.5,1.0);
-                self.push([rx, ry], ru,1.0);
+                self.push([p1.x, p1.y], [0.5,1.0]);
+                self.push([rx, ry], [ru,1.0]);
             }
 
-            self.push([lx1, ly1], lu,1.0);
-            self.push([p1.x - dlx1*rw, p1.y - dly1*rw], ru,1.0);
+            self.push([lx1, ly1], [lu,1.0]);
+            self.push([p1.x - dlx1*rw, p1.y - dly1*rw], [ru,1.0]);
         } else {
             let [rx0,ry0,rx1,ry1] = choose_bevel(p1.is_innerbevel(), p0, p1, -rw);
             let     a0 = (dly0).atan2(dlx0);
             let mut a1 = (dly1).atan2(dlx1);
             if a1 < a0 { a1 += PI*2.0; }
 
-            self.push([p1.x + dlx0*rw, p1.y + dly0*rw], lu,1.0);
-            self.push([rx0, ry0], ru,1.0);
+            self.push([p1.x + dlx0*rw, p1.y + dly0*rw], [lu,1.0]);
+            self.push([rx0, ry0], [ru,1.0]);
 
             let n = clampi((((a1 - a0) / PI) * ncap as f32).ceil() as i32, 2, ncap);
             for i in 0..n {
@@ -854,12 +877,12 @@ impl Verts {
                 let a = a0 + u*(a1-a0);
                 let lx = p1.x + a.cos() * lw;
                 let ly = p1.y + a.sin() * lw;
-                self.push([lx, ly], lu,1.0);
-                self.push([p1.x, p1.y], 0.5,1.0);
+                self.push([lx, ly], [lu,1.0]);
+                self.push([p1.x, p1.y], [0.5,1.0]);
             }
 
-            self.push([p1.x + dlx1*rw, p1.y + dly1*rw], lu,1.0);
-            self.push([rx1, ry1], ru,1.0);
+            self.push([p1.x + dlx1*rw, p1.y + dly1*rw], [lu,1.0]);
+            self.push([rx1, ry1], [ru,1.0]);
         }
     }
 
@@ -875,59 +898,59 @@ impl Verts {
         if p1.is_left() {
             let [lx0, ly0,  lx1, ly1] = choose_bevel(p1.is_innerbevel(), p0, p1, lw);
 
-            self.push([lx0, ly0], lu,1.0);
-            self.push([p1.x - dlx0*rw, p1.y - dly0*rw], ru,1.0);
+            self.push([lx0, ly0], [lu,1.0]);
+            self.push([p1.x - dlx0*rw, p1.y - dly0*rw], [ru,1.0]);
 
             if p1.is_bevel() {
-                self.push([lx0, ly0], lu,1.0);
-                self.push([p1.x - dlx0*rw, p1.y - dly0*rw], ru,1.0);
+                self.push([lx0, ly0], [lu,1.0]);
+                self.push([p1.x - dlx0*rw, p1.y - dly0*rw], [ru,1.0]);
 
-                self.push([lx1, ly1], lu,1.0);
-                self.push([p1.x - dlx1*rw, p1.y - dly1*rw], ru,1.0);
+                self.push([lx1, ly1], [lu,1.0]);
+                self.push([p1.x - dlx1*rw, p1.y - dly1*rw], [ru,1.0]);
             } else {
                 let rx0 = p1.x - p1.dmx * rw;
                 let ry0 = p1.y - p1.dmy * rw;
 
-                self.push([p1.x, p1.y], 0.5,1.0);
-                self.push([p1.x - dlx0*rw, p1.y - dly0*rw], ru,1.0);
+                self.push([p1.x, p1.y], [0.5,1.0]);
+                self.push([p1.x - dlx0*rw, p1.y - dly0*rw], [ru,1.0]);
 
-                self.push([rx0, ry0], ru,1.0);
-                self.push([rx0, ry0], ru,1.0);
+                self.push([rx0, ry0], [ru,1.0]);
+                self.push([rx0, ry0], [ru,1.0]);
 
-                self.push([p1.x, p1.y], 0.5,1.0);
-                self.push([p1.x - dlx1*rw, p1.y - dly1*rw], ru,1.0);
+                self.push([p1.x, p1.y], [0.5,1.0]);
+                self.push([p1.x - dlx1*rw, p1.y - dly1*rw], [ru,1.0]);
             }
 
-            self.push([lx1, ly1], lu,1.0);
-            self.push([p1.x - dlx1*rw, p1.y - dly1*rw], ru,1.0);
+            self.push([lx1, ly1], [lu,1.0]);
+            self.push([p1.x - dlx1*rw, p1.y - dly1*rw], [ru,1.0]);
         } else {
             let [rx0, ry0, rx1, ry1] = choose_bevel(p1.is_innerbevel(), p0, p1, -rw);
 
-            self.push([p1.x + dlx0*lw, p1.y + dly0*lw], lu,1.0);
-            self.push([rx0, ry0], ru,1.0);
+            self.push([p1.x + dlx0*lw, p1.y + dly0*lw], [lu,1.0]);
+            self.push([rx0, ry0], [ru,1.0]);
 
             if p1.is_bevel() {
-                self.push([p1.x + dlx0*lw, p1.y + dly0*lw], lu,1.0);
-                self.push([rx0, ry0], ru,1.0);
+                self.push([p1.x + dlx0*lw, p1.y + dly0*lw], [lu,1.0]);
+                self.push([rx0, ry0], [ru,1.0]);
 
-                self.push([p1.x + dlx1*lw, p1.y + dly1*lw], lu,1.0);
-                self.push([rx1, ry1], ru,1.0);
+                self.push([p1.x + dlx1*lw, p1.y + dly1*lw], [lu,1.0]);
+                self.push([rx1, ry1], [ru,1.0]);
             } else {
                 let lx0 = p1.x + p1.dmx * lw;
                 let ly0 = p1.y + p1.dmy * lw;
 
-                self.push([p1.x + dlx0*lw, p1.y + dly0*lw], lu,1.0);
-                self.push([p1.x, p1.y], 0.5,1.0);
+                self.push([p1.x + dlx0*lw, p1.y + dly0*lw], [lu,1.0]);
+                self.push([p1.x, p1.y], [0.5,1.0]);
 
-                self.push([lx0, ly0], lu,1.0);
-                self.push([lx0, ly0], lu,1.0);
+                self.push([lx0, ly0], [lu,1.0]);
+                self.push([lx0, ly0], [lu,1.0]);
 
-                self.push([p1.x + dlx1*lw, p1.y + dly1*lw], lu,1.0);
-                self.push([p1.x, p1.y], 0.5,1.0);
+                self.push([p1.x + dlx1*lw, p1.y + dly1*lw], [lu,1.0]);
+                self.push([p1.x, p1.y], [0.5,1.0]);
             }
 
-            self.push([p1.x + dlx1*lw, p1.y + dly1*lw], lu,1.0);
-            self.push([rx1, ry1], ru,1.0);
+            self.push([p1.x + dlx1*lw, p1.y + dly1*lw], [lu,1.0]);
+            self.push([rx1, ry1], [ru,1.0]);
         }
     }
 
@@ -940,10 +963,10 @@ impl Verts {
         let py = p.y - dy*d;
         let dlx = dy;
         let dly = -dx;
-        self.push([px + dlx*w - dx*aa, py + dly*w - dy*aa], u0,0.0);
-        self.push([px - dlx*w - dx*aa, py - dly*w - dy*aa], u1,0.0);
-        self.push([px + dlx*w, py + dly*w], u0,1.0);
-        self.push([px - dlx*w, py - dly*w], u1,1.0);
+        self.push([px + dlx*w - dx*aa, py + dly*w - dy*aa], [u0,0.0]);
+        self.push([px - dlx*w - dx*aa, py - dly*w - dy*aa], [u1,0.0]);
+        self.push([px + dlx*w, py + dly*w], [u0,1.0]);
+        self.push([px - dlx*w, py - dly*w], [u1,1.0]);
     }
 
     fn butt_cap_end(
@@ -951,14 +974,13 @@ impl Verts {
         dx: f32, dy: f32, w: f32, d: f32,
         aa: f32, u0: f32, u1: f32,
     ) {
-        let px = p.x + dx*d;
-        let py = p.y + dy*d;
+        let p = crate::Point::new(p.x, p.y) + crate::Vector::new(dx, dy) * d;
         let dlx = dy;
         let dly = -dx;
-        self.push([px + dlx*w, py + dly*w], u0,1.0);
-        self.push([px - dlx*w, py - dly*w], u1,1.0);
-        self.push([px + dlx*w + dx*aa, py + dly*w + dy*aa], u0,0.0);
-        self.push([px - dlx*w + dx*aa, py - dly*w + dy*aa], u1,0.0);
+        self.push([p.x + dlx*w, p.y + dly*w], [u0,1.0]);
+        self.push([p.x - dlx*w, p.y - dly*w], [u1,1.0]);
+        self.push([p.x + dlx*w + dx*aa, p.y + dly*w + dy*aa], [u0,0.0]);
+        self.push([p.x - dlx*w + dx*aa, p.y - dly*w + dy*aa], [u1,0.0]);
     }
 
     fn round_cap_start(
@@ -966,19 +988,17 @@ impl Verts {
         dx: f32, dy: f32, w: f32, ncap: i32,
         _aa: f32, u0: f32, u1: f32,
     ) {
-        let px = p.x;
-        let py = p.y;
         let dlx = dy;
         let dly = -dx;
         for i in 0..ncap {
             let a = (i as f32) / ((ncap-1) as f32) * PI;
             let ax = a.cos() * w;
             let ay = a.sin() * w;
-            self.push([px - dlx*ax - dx*ay, py - dly*ax - dy*ay], u0,1.0);
-            self.push([px, py], 0.5,1.0);
+            self.push([p.x - dlx*ax - dx*ay, p.y - dly*ax - dy*ay], [u0,1.0]);
+            self.push([p.x, p.y], [0.5,1.0]);
         }
-        self.push([px + dlx*w, py + dly*w], u0,1.0);
-        self.push([px - dlx*w, py - dly*w], u1,1.0);
+        self.push([p.x + dlx*w, p.y + dly*w], [u0,1.0]);
+        self.push([p.x - dlx*w, p.y - dly*w], [u1,1.0]);
     }
 
     fn round_cap_end(
@@ -986,18 +1006,16 @@ impl Verts {
         dx: f32, dy: f32, w: f32, ncap: i32,
         _aa: f32, u0: f32, u1: f32,
     ) {
-        let px = p.x;
-        let py = p.y;
         let dlx = dy;
         let dly = -dx;
-        self.push([px + dlx*w, py + dly*w], u0,1.0);
-        self.push([px - dlx*w, py - dly*w], u1,1.0);
+        self.push([p.x + dlx*w, p.y + dly*w], [u0,1.0]);
+        self.push([p.x - dlx*w, p.y - dly*w], [u1,1.0]);
         for i in 0..ncap {
             let a = (i as f32) / ((ncap-1) as f32) * PI;
             let ax = a.cos() * w;
             let ay = a.sin() * w;
-            self.push([px, py], 0.5,1.0);
-            self.push([px - dlx*ax + dx*ay, py - dly*ax + dy*ay], u0,1.0);
+            self.push([p.x, p.y], [0.5,1.0]);
+            self.push([p.x - dlx*ax + dx*ay, p.y - dly*ax + dy*ay], [u0,1.0]);
         }
     }
 }

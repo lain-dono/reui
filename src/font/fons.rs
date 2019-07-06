@@ -29,11 +29,9 @@ impl Stash {
         (self.width, self.height, self.tex_data)
     }
 
-    pub fn validate_texture(&mut self, dirty: &mut [i32; 4]) -> bool {
+    pub fn validate_texture(&mut self) -> Option<[i32; 4]> {
         let dr = self.dirty_rect;
-        let ok = dr[0] < dr[2] && dr[1] < dr[3];
-	if ok {
-            *dirty = dr;
+        if dr[0] < dr[2] && dr[1] < dr[3] {
             // Reset dirty rect
             self.dirty_rect = [
                 self.width,
@@ -41,8 +39,10 @@ impl Stash {
                 0,
                 0,
             ];
+            Some(dr)
+        } else {
+            None
         }
-        ok
     }
 
     pub fn sync_state(&mut self, state: &State, scale: f32) {

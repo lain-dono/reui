@@ -59,9 +59,7 @@ impl States {
         };
         *state = State::new();
     }
-
 }
-
 
 pub struct Context {
     pub picture: Picture,
@@ -273,10 +271,5 @@ impl Context {
 
             font_image_idx: 0,
         }
-    }
-
-    pub(crate) fn append_commands(&mut self, vals: &mut [f32]) {
-        self.picture.xform = self.states.last().xform;
-        self.picture.append_commands(vals)
     }
 }

@@ -823,8 +823,7 @@ pub unsafe fn fons__getGlyph(
         gw - pad * 2,
         gh - pad * 2,
         (*stash).width,
-        scale,
-        scale,
+        [scale, scale],
         g,
     );
 

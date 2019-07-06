@@ -1,4 +1,5 @@
 use std::{
+    ptr::null,
     slice::from_raw_parts_mut,
     mem,
 };
@@ -37,26 +38,12 @@ fn copy_verts(dst: &mut [Vertex], offset: usize, count: usize, src: &[Vertex]) {
     (&mut dst[offset..offset+count]).copy_from_slice(src);
 }
 
-fn copy_verts_fan(dst: &mut [Vertex], offset: usize, count: usize, src: &[Vertex]) {
-    let dst = &mut dst[offset..offset+count];
-    for i in 0..dst.len() {
-        dst[i] = src[fan2strip(i, src.len())];
-    }
-}
-
-#[inline(always)]
-fn fan2strip(i: usize, len: usize) -> usize {
-    // if you need to change winding order
-    // - just reverse the test in that "if" (== to !=).
-    if i % 2 != 0 {
-        i / 2
-    } else {
-        len - 1 - i / 2
-    }
-}
-
 fn max_vert_count(paths: &[Path]) -> usize {
-    paths.iter().fold(0, |acc, path| acc + path.nfill + path.nstroke)
+    paths.iter().fold(0, |acc, path| {
+        let fill = path.fill.as_ref().map(|v| v.len()).unwrap_or_default();
+        let stroke = path.stroke.as_ref().map(|v| v.len()).unwrap_or_default();
+        acc + fill + stroke
+    })
 }
 
 bitflags::bitflags!(
@@ -197,38 +184,6 @@ impl Default for DrawCallData {
     }
 }
 
-enum DrawCall {
-    Fill {
-        data: DrawCallData,
-        blend_func: Blend,
-
-        path_offset: usize,
-        path_count: usize,
-
-        triangle_offset: usize,
-    },
-    ConvexFill {
-        data: DrawCallData,
-        blend_func: Blend,
-
-        path_offset: usize,
-    },
-    Stroke {
-        data: DrawCallData,
-        blend_func: Blend,
-
-        path_offset: usize,
-        path_count: usize,
-    },
-    Triangles {
-        data: DrawCallData,
-        blend_func: Blend,
-
-        triangle_offset: usize,
-        triangle_count: usize,
-    },
-}
-
 struct Call {
     kind: CallKind,
 
@@ -301,8 +256,6 @@ impl BackendGL {
             uniforms: Vec::new(),
         }
     }
-
-    pub fn edge_aa(&self) -> bool { true }
 
     pub fn reset(&mut self) {
         self.verts.clear();
@@ -618,17 +571,17 @@ impl BackendGL {
         for (i, path) in paths.iter().enumerate() {
             let copy = &mut self.paths[i + path_offset];
             *copy = Default::default();
-            if path.nfill > 0 {
+            if let Some(fill) = path.fill.as_ref() {
                 copy.fill_offset = offset;
-                copy.fill_count = path.nfill;
-                copy_verts_fan(&mut self.verts, offset, path.nfill, path.fill());
-                offset += path.nfill;
+                copy.fill_count = fill.len();
+                copy_verts(&mut self.verts, offset, fill.len(), fill);
+                offset += fill.len();
             }
-            if path.nstroke > 0 {
+            if let Some(stroke) = path.stroke.as_ref() {
                 copy.stroke_offset = offset;
-                copy.stroke_count = path.nstroke;
-                copy_verts(&mut self.verts, offset, path.nstroke, path.stroke());
-                offset += path.nstroke;
+                copy.stroke_count = stroke.len();
+                copy_verts(&mut self.verts, offset, stroke.len(), stroke);
+                offset += stroke.len();
             }
         }
 
@@ -693,12 +646,12 @@ impl BackendGL {
             let copy = &mut self.paths[i + path_offset];
             *copy = Default::default();
 
-            if path.nstroke != 0 {
+            if let Some(stroke) = path.stroke.as_ref() {
                 copy.stroke_offset = offset;
-                copy.stroke_count = path.nstroke;
+                copy.stroke_count = stroke.len();
 
-                copy_verts(&mut self.verts, offset, path.nstroke, path.stroke());
-                offset += path.nstroke;
+                copy_verts(&mut self.verts, offset, stroke.len(), stroke);
+                offset += stroke.len();
             }
         }
 
@@ -769,7 +722,7 @@ impl BackendGL {
             gl::EnableVertexAttribArray(0);
             gl::EnableVertexAttribArray(1);
 
-            gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, size as i32, 0 as *const libc::c_void);
+            gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, size as i32, null());
             gl::VertexAttribPointer(1, 2, gl::UNSIGNED_SHORT, gl::TRUE, size as i32, (2 * mem::size_of::<f32>()) as *const libc::c_void);
         }
 
@@ -864,12 +817,11 @@ impl BackendGL {
 
     pub fn create_texture(&mut self, kind: i32, w: u32, h: u32, flags: ImageFlags, data: *const u8) -> Image {
         // GL 1.4 and later has support for generating mipmaps using a tex parameter.
-        let mipmaps = if flags.contains(ImageFlags::GENERATE_MIPMAPS) {
+        let mipmaps = i32::from(if flags.contains(ImageFlags::GENERATE_MIPMAPS) {
             gl::TRUE
         } else {
             gl::FALSE
-        };
-        let mipmaps = i32::from(mipmaps);
+        });
 
         let kind_tex = if kind == TEXTURE_RGBA {
             gl::RGBA

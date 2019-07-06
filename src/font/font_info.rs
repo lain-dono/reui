@@ -13,6 +13,7 @@ use super::stash::*;
 #[repr(C)]
 pub struct FontInfo {
     pub userdata: *mut Stash,
+
     pub data: *mut u8,
     pub fontstart: i32,
     pub num_glyphs: i32,
@@ -83,30 +84,6 @@ impl FontInfo {
         if g1 == g2 { None } else { Some(g1) }
     }
 
-    pub unsafe fn glyph_bitmap_box_subpixel(
-        &self,
-        glyph: i32,
-        scale_x: f32,
-        scale_y: f32,
-        shift_x: f32,
-        shift_y: f32,
-    ) -> [i32; 4] {
-        self.glyf_offset(glyph).map(|g| {
-            let g = g as isize;
-            let x0 = read_i16(self.data.offset(g + 2));
-            let y0 = read_i16(self.data.offset(g + 4));
-            let x1 = read_i16(self.data.offset(g + 6));
-            let y1 = read_i16(self.data.offset(g + 8));
-
-            [
-                ( x0 as f32 * scale_x + shift_x).floor() as i32,
-                (-y1 as f32 * scale_y + shift_y).floor() as i32,
-                ( x1 as f32 * scale_x + shift_x).ceil() as i32,
-                (-y0 as f32 * scale_y + shift_y).ceil() as i32,
-            ]
-        }).unwrap_or_default()
-    }
-
     pub unsafe fn build_glyph_bitmap(
         &self,
         glyph: i32,
@@ -119,6 +96,30 @@ impl FontInfo {
         self.glyph_bitmap_box_subpixel(glyph, scale, scale, 0.0, 0.0)
     }
 
+    pub unsafe fn glyph_bitmap_box_subpixel(
+        &self,
+        glyph: i32,
+        scale_x: f32,
+        scale_y: f32,
+        shift_x: f32,
+        shift_y: f32,
+    ) -> [i32; 4] {
+        self.glyf_offset(glyph).map(|g| {
+            let g = g as isize;
+            let x0 = read_i16(self.data.offset(g + 2)) as f32;
+            let y0 = read_i16(self.data.offset(g + 4)) as f32;
+            let x1 = read_i16(self.data.offset(g + 6)) as f32;
+            let y1 = read_i16(self.data.offset(g + 8)) as f32;
+
+            [
+                ( x0 * scale_x + shift_x).floor() as i32,
+                (-y1 * scale_y + shift_y).floor() as i32,
+                ( x1 * scale_x + shift_x).ceil() as i32,
+                (-y0 * scale_y + shift_y).ceil() as i32,
+            ]
+        }).unwrap_or_default()
+    }
+
     // Gets the bounding box of the visible part of the glyph, in unscaled coordinates
     pub unsafe fn glyph_h_metrics(
         &self,
@@ -126,32 +127,20 @@ impl FontInfo {
         advance_width: &mut i32,
         left_side_bearing: &mut i32,
     ) {
-        let num_of_long_hor_metrics = read_u16(self.data.offset(self.hhea as isize).offset(34));
+        let num_of_long_hor_metrics = read_u16(self.data.offset(self.hhea as isize + 34));
+        let (a, b);
         if glyph_index < num_of_long_hor_metrics as i32 {
-            *advance_width = read_i16(
-                self.data
-                    .offset(self.hmtx as isize)
-                    .offset((4 * glyph_index) as isize),
-            ) as i32;
-            *left_side_bearing = read_i16(
-                self.data
-                    .offset(self.hmtx as isize)
-                    .offset((4 * glyph_index) as isize)
-                    .offset(2),
-            ) as i32;
+            a = self.hmtx as isize + (4 * glyph_index) as isize;
+            b = self.hmtx as isize + (4 * glyph_index) as isize + 2;
         } else {
-            *advance_width = read_i16(
-                self.data
-                    .offset(self.hmtx as isize)
-                    .offset((4 * (num_of_long_hor_metrics as i32 - 1)) as isize),
-            ) as i32;
-            *left_side_bearing = read_i16(
-                self.data
-                    .offset(self.hmtx as isize)
-                    .offset((4 * num_of_long_hor_metrics as i32) as isize)
-                    .offset((2 * (glyph_index - num_of_long_hor_metrics as i32)) as isize),
-            ) as i32;
+            a = self.hmtx as isize + (4 * (num_of_long_hor_metrics as i32 - 1)) as isize;
+            b = self.hmtx as isize
+                        + (4 * num_of_long_hor_metrics as i32) as isize
+                        + (2 * (glyph_index - num_of_long_hor_metrics as i32)) as isize;
         }
+
+        *advance_width = read_i16(self.data.offset(a)) as i32;
+        *left_side_bearing = read_i16(self.data.offset(b)) as i32;
     }
 
     pub unsafe fn glyph_index(&self, unicode_codepoint: i32) -> i32 {
@@ -167,31 +156,29 @@ impl FontInfo {
         }
 
         if format == 6 {
-            let first: u32 = read_u16(data.offset(index_map as isize).offset(6)) as u32;
-            let count: u32 = read_u16(data.offset(index_map as isize).offset(8)) as u32;
-            if unicode_codepoint as u32 >= first && (unicode_codepoint as u32) < first.wrapping_add(count) {
-                return read_u16(
-                    data.offset(index_map as isize).offset(10).offset(
+            let first: u32 = read_u16(data.offset(index_map as isize + 6)) as u32;
+            let count: u32 = read_u16(data.offset(index_map as isize + 8)) as u32;
+            return if unicode_codepoint as u32 >= first && (unicode_codepoint as u32) < first.wrapping_add(count) {
+                read_u16(
+                    data.offset(index_map as isize + 10 +
                         (unicode_codepoint as u32)
                             .wrapping_sub(first)
                             .wrapping_mul(2 as u32) as isize,
                     ),
-                ) as i32;
-            }
-            return 0;
+                ) as i32
+            } else {
+                0
+            };
         }
 
         assert!(format != 2);
 
         if format == 4 {
-            let segcount: u16 =
-                (read_u16(data.offset(index_map as isize).offset(6)) as i32 >> 1) as u16;
-            let mut search_range: u16 =
-                (read_u16(data.offset(index_map as isize).offset(8)) as i32 >> 1) as u16;
-            let mut entry_selector: u16 =
-                read_u16(data.offset(index_map as isize).offset(10));
-            let range_shift: u16 =
-                (read_u16(data.offset(index_map as isize).offset(12)) as i32 >> 1) as u16;
+            let segcount: u16 = (read_u16(data.offset(index_map as isize + 6)) as i32 >> 1) as u16;
+            let mut search_range: u16 = (read_u16(data.offset(index_map as isize + 8)) as i32 >> 1) as u16;
+            let mut entry_selector: u16 = read_u16(data.offset(index_map as isize + 10));
+            let range_shift: u16 = (read_u16(data.offset(index_map as isize + 12)) as i32 >> 1) as u16;
+
             let end_count: u32 = index_map.wrapping_add(14);
             let mut search: u32 = end_count;
             if unicode_codepoint > 0xffff {
@@ -210,12 +197,10 @@ impl FontInfo {
             while 0 != entry_selector {
                 search_range = (search_range as i32 >> 1) as u16;
                 let end = read_u16(
-                    data.offset(search as isize)
-                        .offset((search_range as i32 * 2) as isize),
+                    data.offset(search as isize + (search_range as i32 * 2) as isize),
                 );
                 if unicode_codepoint > end as i32 {
-                    search = (search as u32).wrapping_add((search_range as i32 * 2) as u32)
-                        as u32 as u32
+                    search = (search as u32).wrapping_add((search_range as i32 * 2) as u32) as u32 as u32
                 }
                 entry_selector = entry_selector.wrapping_sub(1)
             }
@@ -233,30 +218,24 @@ impl FontInfo {
             );
 
             start = read_u16(
-                data.offset(index_map as isize)
-                    .offset(14)
+                data.offset(index_map as isize + 14)
                     .offset((segcount as i32 * 2) as isize)
-                    .offset(2)
-                    .offset((2 * item as i32) as isize),
+                    .offset(2 + (2 * item as i32) as isize),
             );
             if unicode_codepoint < start as i32 {
                 return 0;
             }
             offset = read_u16(
-                data.offset(index_map as isize)
-                    .offset(14)
+                data.offset(index_map as isize + 14)
                     .offset((segcount as i32 * 6) as isize)
-                    .offset(2)
-                    .offset((2 * item as i32) as isize),
+                    .offset(2 + (2 * item as i32) as isize),
             );
             if offset as i32 == 0 {
                 return (unicode_codepoint
                     + read_i16(
-                        data.offset(index_map as isize)
-                            .offset(14)
+                        data.offset(index_map as isize + 14)
                             .offset((segcount as i32 * 4) as isize)
-                            .offset(2)
-                            .offset((2 * item as i32) as isize),
+                            .offset(2 + (2 * item as i32) as isize),
                     ) as i32) as u16 as i32;
             }
             return read_u16(
@@ -275,13 +254,11 @@ impl FontInfo {
             while low < high {
                 let mid: i32 = low + ((high - low) >> 1);
                 let start_char: u32 = read_u32(
-                    data.offset(index_map as isize)
-                        .offset(16)
+                    data.offset(index_map as isize + 16)
                         .offset((mid * 12) as isize),
                 );
                 let end_char: u32 = read_u32(
-                    data.offset(index_map as isize)
-                        .offset(16)
+                    data.offset(index_map as isize + 16)
                         .offset((mid * 12) as isize)
                         .offset(4),
                 );
@@ -314,19 +291,19 @@ impl FontInfo {
 
     pub unsafe fn render_glyph_bitmap(
         &self,
-        output: *mut u8,
+        pixels: *mut u8,
         out_w: i32,
         out_h: i32,
-        out_stride: i32,
-        scale_x: f32,
-        scale_y: f32,
+        stride: i32,
+        scale: [f32; 2],
         glyph: i32,
     ) {
         let shift_x = 0.0;
         let shift_y = 0.0;
+        let [scale_x, scale_y] = scale;
 
         let mut vertices: *mut Vertex = 0 as *mut Vertex;
-        let num_verts: i32 = stbtt_GetGlyphShape(self, glyph, &mut vertices);
+        let num_verts = stbtt_GetGlyphShape(self, glyph, &mut vertices);
         let [ix0, iy0, _, _] = self.glyph_bitmap_box_subpixel(
             glyph,
             scale_x,
@@ -336,10 +313,10 @@ impl FontInfo {
         );
 
         let mut gbm = Bitmap {
-            pixels: output,
+            pixels,
             w: out_w,
             h: out_h,
-            stride: out_stride,
+            stride,
         };
 
         if 0 != gbm.w && 0 != gbm.h {
