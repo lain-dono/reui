@@ -1,11 +1,40 @@
+use std::f32::consts::PI;
+
+use smallvec::{SmallVec, Array};
+
 use crate::{
+    vg::utils::{clamp, min},
     cache::Winding,
     draw_api::{MOVETO, LINETO, BEZIERTO, CLOSE, WINDING},
 };
 
-pub struct Path {
-    pub commands: Vec<f32>,
+use super::{Rect, RRect, Offset};
+
+// Length proportional to radius of a cubic bezier handle for 90deg arcs.
+const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
+
+pub enum PathFillType {
+    NonZero = 0,
+    EvenOdd = 1,
+}
+
+#[derive(Default)]
+pub struct Path<A: Array<Item = f32>> {
     pub current: [f32; 2],
+    pub commands: SmallVec<A>,
+}
+
+impl<A: Array<Item = f32>> std::ops::Deref for Path<A> {
+    type Target = [f32];
+    fn deref(&self) -> &[f32] {
+        &self.commands[..]
+    }
+}
+
+impl<A: Array<Item = f32>> std::ops::DerefMut for Path<A> {
+    fn deref_mut(&mut self) -> &mut [f32] {
+        &mut self.commands[..]
+    }
 }
 
 /*
@@ -23,19 +52,33 @@ pub struct Path {
     pub fn line_to(&mut self, x: f32, y: f32) {
         self.append_commands(&mut [ LINETO as f32, x, y ]);
     }
-
-    pub fn bezier_to(&mut self, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) {
-        self.append_commands(&mut [ BEZIERTO as f32, c1x, c1y, c2x, c2y, x, y ]);
-    }
 */
 
 
-impl Path {
+impl<A: Array<Item = f32>> Path<A> {
     pub fn new() -> Self {
         Self {
-            commands: Vec::new(),
+            commands: SmallVec::new(),
             current: [0.0, 0.0],
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.commands.clear();
+        self.current = [0.0, 0.0];
+    }
+
+    pub fn _path_winding(&mut self, dir: Winding) {
+        self.commands.extend_from_slice(&[ WINDING as f32, dir as i32 as f32 ]);
+    }
+
+    pub fn set_fill_type(&mut self, _fill_type: PathFillType) {
+        //self.fill_type = fill_type;
+        unimplemented!()
+    }
+
+    pub fn bezier_to(&mut self, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) {
+        self.commands.extend_from_slice(&[ BEZIERTO as f32, c1x, c1y, c2x, c2y, x, y ]);
     }
 
     /// Closes the last sub-path,
@@ -45,19 +88,86 @@ impl Path {
     }
 
     /*
-    /// Adds a new sub-path with one arc segment that consists of the arc that follows the edge of the oval bounded by the given rectangle, from startAngle radians around the oval up to startAngle + sweepAngle radians around the oval, with zero radians being the point on the right hand side of the oval that crosses the horizontal line that intersects the center of the rectangle and with positive angles going clockwise around the oval. 
+    /// Adds a new sub-path with one arc segment that consists of the arc that follows the edge of the oval
+    /// bounded by the given rectangle,
+    /// from startAngle radians around the oval up to startAngle + sweepAngle radians around the oval,
+    /// with zero radians being the point on the right hand side of the oval that crosses the horizontal line
+    /// that intersects the center of the rectangle and with positive angles going clockwise around the oval. 
     pub fn add_arc(Rect oval, double startAngle, double sweepAngle) -> void
+    */
     /// Adds a new sub-path that consists of a curve that forms the ellipse that fills the given rectangle. [...] 
-    pub fn add_oval(Rect oval) -> void
+    pub fn add_oval(&mut self, oval: Rect) {
+        let [cx, cy] = [oval.left, oval.top];
+        let [rx, ry] = [oval.width(), oval.height()];
+        self.commands.extend_from_slice(&[
+            MOVETO as f32, cx-rx, cy,
+            BEZIERTO as f32, cx-rx, cy+ry*KAPPA90, cx-rx*KAPPA90, cy+ry, cx, cy+ry,
+            BEZIERTO as f32, cx+rx*KAPPA90, cy+ry, cx+rx, cy+ry*KAPPA90, cx+rx, cy,
+            BEZIERTO as f32, cx+rx, cy-ry*KAPPA90, cx+rx*KAPPA90, cy-ry, cx, cy-ry,
+            BEZIERTO as f32, cx-rx*KAPPA90, cy-ry, cx-rx, cy-ry*KAPPA90, cx-rx, cy,
+            CLOSE as f32,
+        ]);
+    }
+
+    pub fn add_circle(&mut self, c: Offset, r: f32) {
+        self.add_oval(Rect::new(c, [r, r]));
+    }
+
+    /*
     /// Adds a new sub-path that consists of the given path offset by the given offset. [...] 
     pub fn add_path(Path path, Offset offset, { Float64List matrix4 }) -> void
     /// Adds a new sub-path with a sequence of line segments that connect the given points. [...] 
     pub fn add_polygon(List<Offset> points, bool close) -> void
-    /// Adds a new sub-path that consists of four lines that outline the given rectangle. 
-    pub fn add_rect(Rect rect) -> void
-    /// Adds a new sub-path that consists of the straight lines and curves needed to form the rounded rectangle described by the argument. 
-    pub fn add_rrect(RRect rrect) -> void
+    */
 
+    /// Adds a new sub-path that consists of four lines that outline the given rectangle. 
+    pub fn add_rect(&mut self, rect: Rect) {
+        self.commands.extend_from_slice(&[
+            MOVETO as f32, rect.left,rect.top,
+            LINETO as f32, rect.left,rect.bottom,
+            LINETO as f32, rect.right,rect.bottom,
+            LINETO as f32, rect.right,rect.top,
+            CLOSE as f32
+        ]);
+    }
+    /// Adds a new sub-path that consists of the straight lines and curves needed to form the rounded rectangle described by the argument. 
+    pub fn add_rrect(&mut self, rr: RRect) {
+        let (x, y, w, h) = (rr.left, rr.top, rr.width(), rr.height());
+        if rr.top_left < 0.1 && rr.top_right < 0.1 && rr.bottom_right < 0.1 && rr.bottom_left < 0.1 {
+            self.add_rect(Rect::new([x, y], [w, h]));
+        } else {
+            let halfw = w.abs()*0.5;
+            let halfh = h.abs()*0.5;
+            let sign = if w < 0.0 { -1.0 } else { 1.0 };
+            let rx_bl = sign * min(halfw, rr.bottom_left );
+            let ry_bl = sign * min(halfh, rr.bottom_left );
+            let rx_br = sign * min(halfw, rr.bottom_right);
+            let ry_br = sign * min(halfh, rr.bottom_right);
+            let rx_tr = sign * min(halfw, rr.top_right   );
+            let ry_tr = sign * min(halfh, rr.top_right   );
+            let rx_tl = sign * min(halfw, rr.top_left    );
+            let ry_tl = sign * min(halfh, rr.top_left    );
+            let kappa = 1.0 - KAPPA90;
+            self.commands.extend_from_slice(&[
+                MOVETO as f32, x, y + ry_tl,
+                LINETO as f32, x, y + h - ry_bl,
+                BEZIERTO as f32,
+                x, y + h - ry_bl*kappa, x + rx_bl*kappa, y + h, x + rx_bl, y + h,
+                LINETO as f32, x + w - rx_br, y + h,
+                BEZIERTO as f32,
+                x + w - rx_br*kappa, y + h, x + w, y + h - ry_br*kappa, x + w, y + h - ry_br,
+                LINETO as f32, x + w, y + ry_tr,
+                BEZIERTO as f32,
+                x + w, y + ry_tr*kappa, x + w - rx_tr*kappa, y, x + w - rx_tr, y,
+                LINETO as f32, x + rx_tl, y,
+                BEZIERTO as f32,
+                x + rx_tl*kappa, y, x, y + ry_tl*kappa, x, y + ry_tl,
+                CLOSE as f32,
+            ]);
+        }
+    }
+
+/*
     /// If the forceMoveTo argument is false, adds a straight line segment and an arc segment. [...] 
     pub fn arc_to(Rect rect, double startAngle, double sweepAngle, bool forceMoveTo) -> void
     /// Appends up to four conic curves weighted to describe an oval of radius and rotated by rotation. [...] 
@@ -119,4 +229,69 @@ impl Path {
     /// Returns a copy of the path with all the segments of every sub-path transformed by the given matrix. 
     pub fn transform(Float64List matrix4) -> Path
     */
+}
+
+impl<A: Array<Item = f32>> Path<A> {
+    pub fn arc(&mut self, cx: f32, cy: f32, r: f32, a0: f32, a1: f32, dir: Winding) {
+        let mov = if !self.commands.is_empty() { LINETO } else { MOVETO };
+
+        // Clamp angles
+        let mut da = a1 - a0;
+        if dir == Winding::CW {
+            if da.abs() >= PI*2.0 {
+                da = PI*2.0;
+            } else {
+                while da < 0.0 {
+                    da += PI*2.0;
+                }
+            }
+        } else if da.abs() >= PI*2.0 {
+            da = -PI*2.0;
+        } else {
+            while da > 0.0 {
+                da -= PI*2.0;
+            }
+        }
+
+        // Split arc into max 90 degree segments.
+        let ndivs = clamp((da.abs() / (PI*0.5) + 0.5) as i32, 1, 5);
+        let hda = (da / ndivs as f32) / 2.0;
+        let kappa = (4.0 / 3.0 * (1.0 - hda.cos()) / hda.sin()).abs();
+        let kappa = if dir == Winding::CCW { -kappa } else { kappa };
+
+        let mut vals = [0f32; 3 + 5*7];
+        let mut nvals = 0;
+        let (mut px, mut py, mut ptanx, mut ptany) = (0.0, 0.0, 0.0, 0.0);
+        for i in 0..=ndivs {
+            let a = a0 + da * (i as f32 / ndivs as f32);
+            let dx = a.cos();
+            let dy = a.sin();
+            let x = cx + dx*r;
+            let y = cy + dy*r;
+            let tanx = -dy*r*kappa;
+            let tany = dx*r*kappa;
+
+            if i == 0 {
+                vals[nvals    ] = mov as f32;
+                vals[nvals + 1] = x;
+                vals[nvals + 2] = y;
+                nvals += 3;
+            } else {
+                vals[nvals    ] = BEZIERTO as f32;
+                vals[nvals + 1] = px+ptanx;
+                vals[nvals + 2] = py+ptany;
+                vals[nvals + 3] = x-tanx;
+                vals[nvals + 4] = y-tany;
+                vals[nvals + 5] = x;
+                vals[nvals + 6] = y;
+                nvals += 7;
+            }
+            px = x;
+            py = y;
+            ptanx = tanx;
+            ptany = tany;
+        }
+
+        self.commands.extend_from_slice(&vals[..nvals]);
+    }
 }

@@ -3,11 +3,43 @@ pub use crate::cache::{
     LineJoin as StrokeJoin,
 };
 pub use crate::vg::Color;
+pub use crate::backend::Image;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PaintingStyle {
     Fill = 0,
     Stroke = 1,
+}
+
+#[derive(Clone, Copy)]
+pub enum Gradient {
+    Linear {
+        from: [f32; 2],
+        to: [f32; 2],
+        inner_color: Color,
+        outer_color: Color,
+    },
+    Box {
+        rect: super::Rect,
+        radius: f32,
+        feather: f32,
+        inner_color: Color,
+        outer_color: Color,
+    },
+    Radial {
+        center: [f32; 2],
+        inr: f32,
+        outr: f32,
+        inner_color: Color,
+        outer_color: Color,
+    },
+    ImagePattern {
+        center: [f32; 2],
+        size: [f32; 2],
+        angle: f32,
+        image: Image,
+        alpha: f32,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -24,6 +56,7 @@ pub struct Paint {
     //pub color_filter: ColorFilter,
     //pub mask_filter: MaskFilter,
     //pub shader: Shader,
+    pub gradient: Option<Gradient>,
 }
 
 impl Default for Paint {
@@ -36,6 +69,7 @@ impl Default for Paint {
             stroke_join: StrokeJoin::Miter,
             stroke_miter_limit: 10.0,
             stroke_width: 1.0,
+            gradient: None,
         }
     }
 }
@@ -48,10 +82,18 @@ impl Paint {
             .. Self::default()
         }
     }
+
     pub fn stroke(color: u32) -> Self {
         Self {
             style: PaintingStyle::Stroke,
             color: Color::new(color),
+            .. Self::default()
+        }
+    }
+
+    pub fn gradient(gradient: Gradient) -> Self {
+        Self {
+            gradient: Some(gradient),
             .. Self::default()
         }
     }
@@ -67,5 +109,9 @@ impl Paint {
     }
     pub fn with_stroke_width(self, stroke_width: f32) -> Self {
         Self { stroke_width, .. self }
+    }
+
+    pub fn with_gradient(self, gradient: Gradient) -> Self {
+        Self { gradient: Some(gradient), .. self }
     }
 }

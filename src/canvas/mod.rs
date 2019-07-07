@@ -1,23 +1,31 @@
 mod path;
 mod paint;
 
-use crate::{
-    Context,
+pub use crate::{
+    Context, Transform,
+    backend::Image,
+    font::Align,
 };
 
 pub use self::path::Path;
 pub use self::paint::{
     Paint, PaintingStyle, StrokeCap, StrokeJoin,
+    Gradient,
     Color,
 };
 
-pub use crate::{
-    Transform,
-};
+#[derive(Clone, Copy)]
+pub struct TextStyle<'a> {
+    pub font_size: f32,
+    pub font_face: &'a [u8],
+    pub font_blur: f32,
+    pub color: Color,
+    pub text_align: Align,
+}
 
 pub type Offset = [f32; 2];
+pub type Size = [f32; 2];
 pub type Radius = f32; // TODO: [f32; 2]
-
 
 #[derive(Clone, Copy, Default)]
 pub struct Rect {
@@ -28,6 +36,14 @@ pub struct Rect {
 }
 
 impl Rect {
+    pub fn new(o: Offset, s: Size) -> Self {
+        Self {
+            left: o[0],
+            top: o[1],
+            right: o[0] + s[0],
+            bottom: o[1] + s[1],
+        }
+    }
     pub fn width(&self) -> f32 { self.right - self.left }
     pub fn height(&self) -> f32 { self.bottom - self.top }
 }
@@ -46,10 +62,22 @@ pub struct RRect {
 }
 
 impl RRect {
+    pub fn new(o: Offset, s: Size, radius: f32) -> Self {
+        Self {
+            left: o[0],
+            top: o[1],
+            right: o[0] + s[0],
+            bottom: o[1] + s[1],
+
+            top_right: radius,
+            top_left: radius,
+            bottom_right: radius,
+            bottom_left: radius,
+        }
+    }
     pub fn width(&self) -> f32 { self.right - self.left }
     pub fn height(&self) -> f32 { self.bottom - self.top }
 }
-
 
 pub struct Canvas<'a> {
     ctx: &'a mut Context,
@@ -59,6 +87,39 @@ pub struct Canvas<'a> {
 impl<'a> Drop for Canvas<'a> {
     fn drop(&mut self) {
         self.ctx.restore();
+    }
+}
+
+fn gradient_to_paint(gradient: Gradient) -> crate::vg::Paint {
+    match gradient {
+        Gradient::Linear { from, to, inner_color, outer_color } =>
+            crate::vg::Paint::linear_gradient(
+                from[0], from[1],
+                to[0], to[1],
+                inner_color,
+                outer_color,
+            ),
+        Gradient::Box { rect, radius, feather, inner_color, outer_color } =>
+            crate::vg::Paint::box_gradient(
+                euclid::rect(rect.left, rect.top, rect.width(), rect.height()),
+                radius,
+                feather,
+                inner_color,
+                outer_color,
+            ),
+        Gradient::Radial { center, inr, outr, inner_color, outer_color } =>
+            crate::vg::Paint::radial_gradient(
+                center[0], center[1],
+                inr, outr,
+                inner_color,
+                outer_color,
+            ),
+        Gradient::ImagePattern { center, size, angle, image, alpha } =>
+            crate::vg::Paint::image_pattern(
+                center[0], center[1],
+                size[0], size[1],
+                angle, image, alpha,
+            ),
     }
 }
 
@@ -73,11 +134,17 @@ impl<'a> Canvas<'a> {
     }
 
     fn sync_fill(&mut self, paint: &Paint) {
-        self.ctx.fill_color(paint.color);
+        match paint.gradient {
+            Some(gradient) => self.ctx.fill_paint(gradient_to_paint(gradient)),
+            None => self.ctx.fill_color(paint.color),
+        }
     }
 
     fn sync_stroke(&mut self, paint: &Paint) {
-        self.ctx.stroke_color(paint.color);
+        match paint.gradient {
+            Some(gradient) => self.ctx.stroke_paint(gradient_to_paint(gradient)),
+            None => self.ctx.stroke_color(paint.color),
+        }
         self.ctx.line_cap(paint.stroke_cap);
         self.ctx.line_join(paint.stroke_join);
         self.ctx.miter_limit(paint.stroke_miter_limit);
@@ -97,6 +164,31 @@ impl<'a> Canvas<'a> {
         }
     }
 
+    pub fn text(&mut self, o: Offset, text: &str, style: TextStyle) {
+        self.ctx.font_size(style.font_size);
+        self.ctx.font_face(style.font_face);
+        self.ctx.font_blur(style.font_blur);
+        self.ctx.text_align(style.text_align);
+        self.ctx.fill_color(style.color);
+        self.ctx.text(o[0], o[1], text);
+    }
+
+    pub fn scissor(&mut self, r: Rect) {
+        self.ctx.scissor(euclid::rect(r.left, r.top, r.width(), r.height()));
+    }
+
+    pub fn intersect_scissor(&mut self, r: Rect) {
+        self.ctx.intersect_scissor(euclid::rect(r.left, r.top, r.width(), r.height()));
+    }
+
+    pub fn reset_scissor(&mut self) {
+        self.ctx.reset_scissor();
+    }
+
+    pub fn image_size(&mut self, image: Image) -> Option<(u32, u32)> {
+        self.ctx.image_size(image)
+    }
+
     /// Returns the number of items on the save stack, including the initial state.
     /// This means it returns 1 for a clean canvas, and that each call to save and saveLayer increments it,
     /// and that each matching call to restore decrements it. [...] 
@@ -112,7 +204,7 @@ impl<'a> Canvas<'a> {
     /// and then creates a new group which subsequent calls will become a part of.
     /// When the save stack is later popped, the group will be flattened into a layer
     /// and have the given paint's Paint.colorFilter and Paint.blendMode applied. [...] 
-    pub fn save_layer(&mut self, bounds: Rect, paint: Paint) { unimplemented!() }
+    pub fn save_layer(&mut self, _bounds: Rect, _paint: Paint) { unimplemented!() }
 
     /// Pops the current save stack, if there is anything to pop. Otherwise, does nothing. [...] 
     pub fn restore(&mut self) {
@@ -136,7 +228,7 @@ impl<'a> Canvas<'a> {
     /// Add an axis-aligned skew to the current transform,
     /// with the first argument being the horizontal skew in radians clockwise around the origin,
     /// and the second argument being the vertical skew in radians clockwise around the origin. 
-    pub fn skew(&mut self, sx: f32, sy: f32) { unimplemented!() }
+    pub fn skew(&mut self, _sx: f32, _sy: f32) { unimplemented!() }
 
     /// Add a translation to the current transform,
     /// shifting the coordinate space horizontally by the first argument and vertically by the second argument. 
@@ -168,12 +260,18 @@ impl<'a> Canvas<'a> {
     pub fn draw_arc(&mut self, rect: Rect, start_angle: f32, sweep_angle: f32, use_center: bool, paint: Paint) {
         unimplemented!()
     }
+    */
 
     //drawAtlas(Image atlas, List<RSTransform> transforms, List<Rect> rects, List<Color> colors, BlendMode blendMode, Rect cullRect, Paint paint) -> void
 
     /// Draws a circle centered at the point given by the first argument and that has the radius given by the second argument, with the Paint given in the third argument. Whether the circle is filled or stroked (or both) is controlled by Paint.style. 
-    pub fn draw_circle(&mut self, c: Offset, radius: f32, paint: Paint) -> { unimplemented!() }
+    pub fn draw_circle(&mut self, c: Offset, radius: f32, paint: Paint) {
+        self.ctx.begin_path();
+        self.ctx.circle(c[0], c[1], radius);
+        self.fill_or_stroke(&paint);
+    }
 
+/*
     /// Paints the given Color onto the canvas, applying the given BlendMode,
     /// with the given color being the source and the background being the destination. 
     pub fn draw_color(&mut self, color: Color, blend: BlendMode) -> void
@@ -202,9 +300,14 @@ impl<'a> Canvas<'a> {
         self.ctx.stroke();
     }
 
+    /// Draws an axis-aligned oval that fills the given axis-aligned rectangle with the given Paint.
+    /// Whether the oval is filled or stroked (or both) is controlled by Paint.style. 
+    pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
+        self.ctx.begin_path();
+        self.ctx.ellipse(rect.left, rect.top, rect.width(), rect.height());
+        self.fill_or_stroke(&paint);
+    }
 /*
-    /// Draws an axis-aligned oval that fills the given axis-aligned rectangle with the given Paint. Whether the oval is filled or stroked (or both) is controlled by Paint.style. 
-    pub fn draw_oval(&mut self, Rect rect, Paint paint) -> void
     /// Fills the canvas with the given Paint. [...] 
     pub fn draw_paint(&mut self, Paint paint) -> void
 
@@ -215,11 +318,11 @@ impl<'a> Canvas<'a> {
     /// Draws the given Path with the given Paint.
     /// Whether this shape is filled or stroked (or both) is controlled by Paint.style.
     /// If the path is filled, then sub-paths within it are implicitly closed (see Path.close). 
-    pub fn draw_path(&mut self, path: &mut Path, paint: Paint) {
+    pub fn draw_path(&mut self, path: &mut [f32], paint: Paint) {
         self.ctx.picture.xform = self.ctx.states.last().xform;
 
         self.ctx.begin_path();
-        self.ctx.picture.append_commands(&mut path.commands[..]);
+        self.ctx.picture.append_commands(path);
         self.fill_or_stroke(&paint);
     }
 

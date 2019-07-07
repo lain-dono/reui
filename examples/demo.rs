@@ -1,6 +1,7 @@
 extern crate oni2d;
 
 mod sup;
+use self::sup::*;
 
 //#[link(name = "nvg")]
 //extern "C" {}
@@ -95,7 +96,7 @@ fn main() {
                 save_screenshot(fbWidth, fbHeight, premult, "dump.png");
             }
             */
-            
+
             glfwSwapBuffers(window);
             glfwPollEvents();
         }
@@ -185,7 +186,7 @@ use std::ptr::null;
 use std::f32::consts::PI;
 
 use oni2d::{
-    Winding, LineJoin, LineCap,
+    Winding,
     Image, ImageFlags,
     Paint, Color,
     Context, Align,
@@ -193,7 +194,6 @@ use oni2d::{
     utils::{
         deg2rad,
         clampf,
-        minf,
         maxf,
         slice_start_end,
     },
@@ -322,204 +322,16 @@ pub fn render_demo(
         vg.restore();
     }
 
-    {
+    if false {
         // Canvas test
         use oni2d::canvas::*;
         let mut ctx = Canvas::new(vg);
 
-        ctx.draw_rect(Rect {
-            top: 50.0,
-            left: 50.0,
-            bottom: 150.0,
-            right: 150.0,
-        }, Paint::fill(0xFF_000000));
-        ctx.draw_rrect(RRect {
-            top: 50.0,
-            left: 50.0,
-            bottom: 150.0,
-            right: 150.0,
-
-            top_right: 15.0,
-            top_left: 15.0,
-            bottom_right: 15.0,
-            bottom_left: 15.0,
-        }, Paint::fill(0xFF_CC0000));
+        ctx.draw_rect(Rect::new([50.0, 50.0], [100.0, 100.0]), Paint::fill(0xFF_000000));
+        ctx.draw_rrect(RRect::new([50.0, 50.0], [100.0, 100.0], 15.0), Paint::fill(0xFF_CC0000));
 
         ctx.draw_line([60.0, 60.0], [140.0, 140.0], Paint::stroke(0xFF_00CCCC));
     }
-}
-
-fn draw_window(vg: &mut Context, title: &str, rr: Rect) {
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
-
-    let corner_radius = 3.0;
-
-    vg.save();
-    {
-        // vg.ClearState();
-
-        // Window
-        vg.begin_path();
-        vg.rrect(rr, corner_radius);
-        vg.fill_color(Color::new(0xC0_1C1E22));
-        //vg.fill_color(Color::rgba(0,0,0,128));
-        vg.fill();
-
-        // Drop shadow
-        let shadow_paint = Paint::box_gradient(
-            rect(x,y+2.0, w,h),
-            corner_radius*2.0, 10.0,
-            Color::new(0x80_000000),
-            Color::new(0x00_000000),
-        );
-        vg.begin_path();
-        vg.rect(rect(x-10.0,y-10.0, w+20.0,h+20.0));
-        vg.rrect(rr, corner_radius);
-        vg.path_winding(Winding::CW);
-        vg.fill_paint(shadow_paint);
-        vg.fill();
-
-        // Header
-        let header_paint = Paint::linear_gradient(
-            x,y,x,y+15.0,
-            Color::new(0x08_FFFFFF),
-            Color::new(0x10_000000),
-        );
-        vg.begin_path();
-        vg.rrect(rect(x+1.0,y+1.0, w-2.0,30.0), corner_radius-1.0);
-        vg.fill_paint(header_paint);
-        vg.fill();
-        vg.begin_path();
-        vg.move_to(x+0.5, y+0.5+30.0);
-        vg.line_to(x+0.5+w-1.0, y+0.5+30.0);
-        vg.stroke_color(Color::new(0x20_000000));
-        vg.stroke();
-
-        vg.font_size(18.0);
-        vg.font_face(b"sans-bold\0");
-        vg.text_align(Align::CENTER|Align::MIDDLE);
-
-        vg.font_blur(2.0);
-        vg.fill_color(Color::rgba(0,0,0,128));
-        vg.text(x+w/2.0,y+16.0+1.0, title);
-
-        vg.font_blur(0.0);
-        vg.fill_color(Color::rgba(220,220,220,160));
-        vg.text(x+w/2.0,y+16.0, title);
-
-        vg.restore();
-    }
-}
-
-fn draw_search_box(vg: &mut Context, text: &str, rr: Rect) {
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
-
-    let mut icon = [0u8; 8];
-    let corner_radius = h/2.0-1.0;
-
-    // Edit
-    let bg = Paint::box_gradient(
-        rect(x,y+1.5, w,h), h/2.0,5.0,
-        Color::rgba(0,0,0,16),
-        Color::rgba(0,0,0,92),
-    );
-    vg.begin_path();
-    vg.rrect(rr, corner_radius);
-    vg.fill_paint(bg);
-    vg.fill();
-
-    if false {
-        vg.begin_path();
-        vg.rrect(rect(x+0.5,y+0.5, w-1.0,h-1.0), corner_radius-0.5);
-        vg.stroke_color(Color::rgba(0,0,0,48));
-        vg.stroke();
-    }
-
-    vg.font_size(h*1.3);
-    vg.font_face(b"icons\0");
-    vg.fill_color(Color::rgba(255,255,255,64));
-    vg.text_align(Align::CENTER|Align::MIDDLE);
-    vg.text(x+h*0.55, y+h*0.55, cp2utf8(ICON_SEARCH, &mut icon));
-
-    vg.font_size(20.0);
-    vg.font_face(b"sans\0");
-    vg.fill_color(Color::rgba(255,255,255,32));
-
-    vg.text_align(Align::LEFT|Align::MIDDLE);
-    vg.text(x+h*1.05,y+h*0.5,text);
-
-    vg.font_size(h*1.3);
-    vg.font_face(b"icons\0");
-    vg.fill_color(Color::rgba(255,255,255,32));
-    vg.text_align(Align::CENTER|Align::MIDDLE);
-    vg.text(x+w-h*0.55, y+h*0.55, cp2utf8(ICON_CIRCLED_CROSS, &mut icon));
-}
-
-fn draw_drop_down(vg: &mut Context, text: &str, bounds: Rect) {
-    let (x, y, w, h) = (
-        bounds.origin.x, bounds.origin.y,
-        bounds.size.width, bounds.size.height,
-    );
-
-    let mut icon = [0u8; 8];
-    let corner_radius = 4.0;
-
-    let bg = Paint::linear_gradient(
-        x,y,x,y+h,
-        Color::rgba(255,255,255,16), Color::rgba(0,0,0,16),
-    );
-    vg.begin_path();
-    vg.rrect(rect(x+1.0,y+1.0, w-2.0,h-2.0), corner_radius-1.0);
-    vg.fill_paint(bg);
-    vg.fill();
-
-    vg.begin_path();
-    vg.rrect(rect(x+0.5,y+0.5, w-1.0,h-1.0), corner_radius-0.5);
-    vg.stroke_color(Color::rgba(0,0,0,48));
-    vg.stroke();
-
-    vg.font_size(20.0);
-    vg.font_face(b"sans\0");
-    vg.fill_color(Color::rgba(255,255,255,160));
-    vg.text_align(Align::LEFT|Align::MIDDLE);
-    vg.text(x+h*0.3,y+h*0.5,text);
-
-    vg.font_size(h*1.3);
-    vg.font_face(b"icons\0");
-    vg.fill_color(Color::rgba(255,255,255,64));
-    vg.text_align(Align::CENTER|Align::MIDDLE);
-    vg.text(x+w-h*0.5, y+h*0.5, cp2utf8(ICON_CHEVRON_RIGHT, &mut icon));
-}
-
-fn draw_label(vg: &mut Context, text: &str, rr: Rect) {
-    let (x, y, _, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
-
-    vg.font_size(18.0);
-    vg.font_face(b"sans\0");
-
-    vg.fill_color(Color::rgba(255, 255, 255, 128));
-
-    vg.text_align(Align::LEFT|Align::MIDDLE);
-    vg.text(x, y + h*0.5, text);
-}
-
-fn draw_edit_box_base(vg: &mut Context, rr: Rect) {
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
-
-    let bg = Paint::box_gradient(
-        rect(x+1.0,y+1.0+1.5, w-2.0,h-2.0), 3.0,4.0,
-        Color::rgba(255,255,255,32),
-        Color::rgba(32,32,32,32),
-    );
-    vg.begin_path();
-    vg.rrect(rect(x+1.0,y+1.0, w-2.0,h-2.0), 4.0-1.0);
-    vg.fill_paint(bg);
-    vg.fill();
-
-    vg.begin_path();
-    vg.rrect(rect(x+0.5,y+0.5, w-1.0,h-1.0), 4.0-0.5);
-    vg.stroke_color(Color::rgba(0,0,0,48));
-    vg.stroke();
 }
 
 fn draw_edit_box(vg: &mut Context, text: &str, rr: Rect) {
@@ -556,15 +368,6 @@ fn draw_edit_box_num(vg: &mut Context, text: &str, units: &str, rr: Rect) {
 fn draw_checkbox(vg: &mut Context, text: &str, rr: Rect) {
     let (x, y, _, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
 
-    let mut icon = [0u8; 8];
-
-    vg.font_size(18.0);
-    vg.font_face(b"sans\0");
-    vg.fill_color(Color::rgba(255,255,255,160));
-
-    vg.text_align(Align::LEFT|Align::MIDDLE);
-    vg.text(x+28.0,y+h*0.5,text);
-
     let bg = Paint::box_gradient(
         rect(x+1.0, y+(h*0.5).floor()-9.0+1.0, 18.0, 18.0),
         3.0,3.0,
@@ -575,11 +378,18 @@ fn draw_checkbox(vg: &mut Context, text: &str, rr: Rect) {
     vg.fill_paint(bg);
     vg.fill();
 
+    let mut icon = [0u8; 8];
     vg.font_size(40.0);
     vg.font_face(b"icons\0");
     vg.fill_color(Color::rgba(255,255,255,128));
     vg.text_align(Align::CENTER|Align::MIDDLE);
     vg.text(x+9.0+2.0, y+h*0.5, cp2utf8(ICON_CHECK, &mut icon));
+
+    vg.font_size(18.0);
+    vg.font_face(b"sans\0");
+    vg.fill_color(Color::rgba(255,255,255,160));
+    vg.text_align(Align::LEFT|Align::MIDDLE);
+    vg.text(x+28.0,y+h*0.5,text);
 }
 
 fn draw_button(
@@ -639,385 +449,6 @@ fn draw_button(
     vg.text(x+w*0.5-tw*0.5+iw*0.25,y+h*0.5,text);
 }
 
-fn draw_slider(vg: &mut Context, pos: f32, x: f32, y: f32, w: f32, h: f32) {
-    let cy = y+(h*0.5).floor();
-    let kr = (h*0.25).floor();
-
-    vg.save();
-    {
-        // vg.clear_state();
-
-        // Slot
-        let bg = Paint::box_gradient(
-            rect(x,cy-2.0+1.0, w,4.0),
-            2.0,2.0,
-            Color::rgba(0,0,0,32), Color::rgba(0,0,0,128),
-        );
-        vg.begin_path();
-        vg.rrect(rect(x,cy-2.0, w,4.0), 2.0);
-        vg.fill_paint(bg);
-        vg.fill();
-
-        // Knob Shadow
-        let bg = Paint::radial_gradient(
-            x+(pos*w).floor(),cy+1.0,
-            kr-3.0,kr+3.0,
-            Color::rgba(0,0,0,64), Color::rgba(0,0,0,0),
-        );
-        vg.begin_path();
-        vg.rect(rect(x+(pos*w).floor()-kr-5.0,cy-kr-5.0,kr*2.0+5.0+5.0,kr*2.0+5.0+5.0+3.0));
-        vg.circle(x+(pos*w).floor(),cy, kr);
-        vg.path_winding(Winding::CW);
-        vg.fill_paint(bg);
-        vg.fill();
-
-        // Knob
-        let knob = Paint::linear_gradient(
-            x,cy-kr,x,cy+kr,
-            Color::rgba(255,255,255,16), Color::rgba(0,0,0,16),
-        );
-        vg.begin_path();
-        vg.circle(x+(pos*w).floor(),cy, kr-1.0);
-        vg.fill_color(Color::rgba(40,43,48,255));
-        vg.fill();
-        vg.fill_paint(knob);
-        vg.fill();
-
-        vg.begin_path();
-        vg.circle(x+(pos*w).floor(),cy, kr-0.5);
-        vg.stroke_color(Color::rgba(0,0,0,92));
-        vg.stroke();
-
-        vg.restore();
-    }
-}
-
-fn draw_eyes(vg: &mut Context, rr: Rect, mouse: Point, time: f32) {
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
-
-    let (mx, my) = mouse.into();
-
-    let ex = w *0.23;
-    let ey = h * 0.5;
-    let lx = x + ex;
-    let ly = y + ey;
-    let rx = x + w - ex;
-    let ry = y + ey;
-    let br = minf(ex, ey) * 0.5;
-    let blink = 1.0 - (time*0.5).sin().powf(200.0)*0.8;
-
-    let bg = Paint::linear_gradient(
-        x,y+h*0.5,
-        x+w*0.1,y+h,
-        Color::rgba(0,0,0,32), Color::rgba(0,0,0,16),
-    );
-    vg.begin_path();
-    vg.ellipse(lx+3.0,ly+16.0, ex,ey);
-    vg.ellipse(rx+3.0,ry+16.0, ex,ey);
-    vg.fill_paint(bg);
-    vg.fill();
-
-    let bg = Paint::linear_gradient(
-        x,y+h*0.25,x+w*0.1,y+h,
-        Color::rgba(220,220,220,255), Color::rgba(128,128,128,255),
-    );
-    vg.begin_path();
-    vg.ellipse(lx,ly, ex,ey);
-    vg.ellipse(rx,ry, ex,ey);
-    vg.fill_paint(bg);
-    vg.fill();
-
-    let mut dx = (mx - rx) / (ex * 10.0);
-    let mut dy = (my - ry) / (ey * 10.0);
-    let dd = (dx*dx+dy*dy).sqrt();
-    if dd > 1.0 {
-        dx /= dd; dy /= dd;
-    }
-    dx *= ex*0.4;
-    dy *= ey*0.5;
-    vg.begin_path();
-    vg.ellipse(lx+dx,ly+dy+ey*0.25*(1.0-blink), br,br*blink);
-    vg.fill_color(Color::rgba(32,32,32,255));
-    vg.fill();
-
-    let mut dx = (mx - rx) / (ex * 10.0);
-    let mut dy = (my - ry) / (ey * 10.0);
-    let dd = (dx*dx+dy*dy).sqrt();
-    if dd > 1.0 {
-        dx /= dd; dy /= dd;
-    }
-    dx *= ex*0.4;
-    dy *= ey*0.5;
-    vg.begin_path();
-    vg.ellipse(rx+dx,ry+dy+ey*0.25*(1.0-blink), br,br*blink);
-    vg.fill_color(Color::rgba(32,32,32,255));
-    vg.fill();
-
-    let gloss = Paint::radial_gradient(
-        lx-ex*0.25,ly-ey*0.5, ex*0.1,ex*0.75,
-        Color::rgba(255,255,255,128), Color::rgba(255,255,255,0),
-    );
-    vg.begin_path();
-    vg.ellipse(lx,ly, ex,ey);
-    vg.fill_paint(gloss);
-    vg.fill();
-
-    let gloss = Paint::radial_gradient(
-        rx-ex*0.25,ry-ey*0.5, ex*0.1,ex*0.75,
-        Color::rgba(255,255,255,128), Color::rgba(255,255,255,0),
-    );
-    vg.begin_path();
-    vg.ellipse(rx,ry, ex,ey);
-    vg.fill_paint(gloss);
-    vg.fill();
-}
-
-fn draw_graph(vg: &mut Context, x: f32, y: f32, w: f32, h: f32, time: f32) {
-    let samples = [
-        (1.0+(time*1.2345  +(time*0.33457).cos()*0.44).sin())*0.5,
-        (1.0+(time*0.68363 +(time*1.3).cos()*1.55).sin())*0.5,
-        (1.0+(time*1.1642  +(time*0.33457).cos()*1.24).sin())*0.5,
-        (1.0+(time*0.56345 +(time*1.63).cos()*0.14).sin())*0.5,
-        (1.0+(time*1.6245  +(time*0.254).cos()*0.3).sin())*0.5,
-        (1.0+(time*0.345   +(time*0.03).cos()*0.6).sin())*0.5,
-    ];
-
-    let dx = w/5.0;
-
-    let mut sx = [0f32; 6];
-    let mut sy = [0f32; 6];
-    for i in 0..6 {
-        sx[i] = x+(i as f32) *dx;
-        sy[i] = y+h*samples[i]*0.8;
-    }
-
-    // Graph background
-    let bg = Paint::linear_gradient(
-        x,y,x,y+h,
-        Color::rgba(0,160,192,0), Color::rgba(0,160,192,64),
-    );
-    vg.begin_path();
-    vg.move_to(sx[0], sy[0]);
-    for i in 1..6 {
-        vg.bezier_to(sx[i-1]+dx*0.5,sy[i-1], sx[i]-dx*0.5,sy[i], sx[i],sy[i]);
-    }
-    vg.line_to(x+w, y+h);
-    vg.line_to(x, y+h);
-    vg.fill_paint(bg);
-    vg.fill();
-
-    // Graph line
-    vg.begin_path();
-    vg.move_to(sx[0], sy[0]+2.0);
-    for i in 1..6 {
-        vg.bezier_to(sx[i-1]+dx*0.5,sy[i-1]+2.0, sx[i]-dx*0.5,sy[i]+2.0, sx[i],sy[i]+2.0);
-    }
-    vg.stroke_color(Color::rgba(0,0,0,32));
-    vg.stroke_width(3.0);
-    vg.stroke();
-
-    vg.begin_path();
-    vg.move_to(sx[0], sy[0]);
-    for i in 1..6 {
-        vg.bezier_to(sx[i-1]+dx*0.5,sy[i-1], sx[i]-dx*0.5,sy[i], sx[i],sy[i]);
-    }
-    vg.stroke_color(Color::rgba(0,160,192,255));
-    vg.stroke_width(3.0);
-    vg.stroke();
-
-    // Graph sample pos
-    for i in 0..6 {
-        let bg = Paint::radial_gradient(
-            sx[i],sy[i]+2.0, 3.0,8.0,
-            Color::rgba(0,0,0,32), Color::rgba(0,0,0,0),
-        );
-
-        vg.begin_path();
-        vg.rect(rect(sx[i]-10.0, sy[i]-10.0+2.0, 20.0,20.0));
-        vg.fill_paint(bg);
-        vg.fill();
-    }
-
-    vg.begin_path();
-    for i in 0..6 {
-        vg.circle(sx[i], sy[i], 4.0);
-    }
-    vg.fill_color(Color::rgba(0,160,192,255));
-    vg.fill();
-    vg.begin_path();
-    for i in 0..6 {
-        vg.circle(sx[i], sy[i], 2.0);
-    }
-    vg.fill_color(Color::rgba(220,220,220,255));
-    vg.fill();
-
-    vg.stroke_width(1.0);
-}
-
-fn draw_spinner(vg: &mut Context, cx: f32, cy: f32, r: f32, time: f32) {
-    let a0 = 0.0 + time*6.0;
-    let a1 = PI + time*6.0;
-    let r0 = r;
-    let r1 = r * 0.75;
-
-    vg.save();
-    {
-        vg.begin_path();
-        vg.arc(cx,cy, r0, a0, a1, Winding::CW);
-        vg.arc(cx,cy, r1, a1, a0, Winding::CCW);
-        vg.close_path();
-
-        let rr = (r0+r1)*0.5;
-        let ax = cx + a0.cos() * rr;
-        let ay = cy + a0.sin() * rr;
-        let bx = cx + a1.cos() * rr;
-        let by = cy + a1.sin() * rr;
-        let paint = Paint::linear_gradient(
-            ax,ay, bx,by,
-            Color::rgba(0,0,0,0), Color::rgba(0,0,0,128),
-        );
-
-        vg.fill_paint(paint);
-        vg.fill();
-
-        vg.restore();
-    }
-}
-
-fn draw_thumbnails(vg: &mut Context, rr: Rect, images: &[Image], time: f32) {
-    let (x, y, width, height) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
-
-    let corner_radius = 3.0;
-    let thumb = 60.0;
-    let arry = 30.5;
-    let stackh = ((images.len() / 2) as f32) * (thumb+10.0) + 10.0;
-    let u1 = (1.0+(time*0.5).cos()) * 0.5;
-    let u2 = (1.0-(time*0.2).cos()) * 0.5;
-
-    vg.save();
-    {
-        // vg.clear_state();
-
-        // Drop shadow
-        let shadow = Paint::box_gradient(
-            rect(x,y+4.0, width,height), corner_radius*2.0, 20.0,
-            Color::rgba(0,0,0,128), Color::rgba(0,0,0,0),
-        );
-        vg.begin_path();
-        vg.rect(rect(x-10.0,y-10.0, width+20.0,height+20.0));
-        vg.rrect(rr, corner_radius);
-        vg.path_winding(Winding::CW);
-        vg.fill_paint(shadow);
-        vg.fill();
-
-        // Window
-        vg.begin_path();
-        vg.rrect(rr, corner_radius);
-        vg.move_to(x-10.0,y+arry);
-        vg.line_to(x+1.0,y+arry-11.0);
-        vg.line_to(x+1.0,y+arry+11.0);
-        vg.fill_color(Color::rgba(200,200,200,255));
-        vg.fill();
-
-        vg.save();
-        {
-            vg.scissor(rr);
-            vg.translate(0.0, -(stackh - height)*u1);
-
-            let dv = 1.0 / (images.len()-1) as f32;
-
-            for (i, &image) in images.iter().enumerate() {
-                let mut tx = x+10.0;
-                let mut ty = y+10.0;
-                tx += (thumb+10.0) * (i%2) as f32;
-                ty += (thumb+10.0) * (i/2) as f32;
-
-                let (imgw, imgh) = vg.image_size(image).expect("image_size");
-                let (iw, ih, ix, iy);
-                if imgw < imgh {
-                    iw = thumb;
-                    ih = iw * (imgh as f32)/(imgw as f32);
-                    ix = 0.0;
-                    iy = -(ih-thumb)*0.5;
-                } else {
-                    ih = thumb;
-                    iw = ih * (imgw as f32)/(imgh as f32);
-                    ix = -(iw-thumb)*0.5;
-                    iy = 0.0;
-                }
-
-                let v = (i as f32) * dv;
-                let a = clampf((u2-v) / dv, 0.0, 1.0);
-
-                if a < 1.0 {
-                    draw_spinner(vg, tx+thumb/2.0,ty+thumb/2.0, thumb*0.25, time);
-                }
-
-                let img = Paint::image_pattern(tx+ix, ty+iy, iw,ih, 0.0/180.0*PI, image, a);
-                vg.begin_path();
-                vg.rrect(rect(tx,ty, thumb,thumb), 5.0);
-                vg.fill_paint(img);
-                vg.fill();
-
-                let shadow = Paint::box_gradient(
-                    rect(tx-1.0,ty, thumb+2.0,thumb+2.0), 5.0, 3.0,
-                    Color::rgba(0,0,0,128), Color::rgba(0,0,0,0));
-                vg.begin_path();
-                vg.rect(rect(tx-5.0,ty-5.0, thumb+10.0,thumb+10.0));
-                vg.rrect(rect(tx,ty, thumb,thumb), 6.0);
-                vg.path_winding(Winding::CW);
-                vg.fill_paint(shadow);
-                vg.fill();
-
-                vg.begin_path();
-                vg.rrect(rect(tx+0.5,ty+0.5, thumb-1.0,thumb-1.0), 4.0-0.5);
-                vg.stroke_width(1.0);
-                vg.stroke_color(Color::rgba(255,255,255,192));
-                vg.stroke();
-            }
-            vg.restore();
-        }
-
-        // Hide fades
-        let fade = Paint::linear_gradient(
-            x,y,x,y+6.0,
-            Color::rgba(200,200,200,255), Color::rgba(200,200,200,0));
-        vg.begin_path();
-        vg.rect(rect(x+4.0,y,width-8.0,6.0));
-        vg.fill_paint(fade);
-        vg.fill();
-
-        let fade = Paint::linear_gradient(
-            x,y+height,x,y+height-6.0,
-            Color::rgba(200,200,200,255), Color::rgba(200,200,200,0));
-        vg.begin_path();
-        vg.rect(rect(x+4.0,y+height-6.0,width-8.0,6.0));
-        vg.fill_paint(fade);
-        vg.fill();
-
-        // Scroll bar
-        let shadow = Paint::box_gradient(
-            rect(x+width-12.0+1.0,y+4.0+1.0, 8.0,height-8.0), 3.0,4.0,
-            Color::rgba(0,0,0,32), Color::rgba(0,0,0,92));
-        vg.begin_path();
-        vg.rrect(rect(x+width-12.0,y+4.0, 8.0,height-8.0), 3.0);
-        vg.fill_paint(shadow);
-        // vg.fill_color(Color::rgba(255,0,0,128));
-        vg.fill();
-
-        let scrollh = (height/stackh) * (height-8.0);
-        let shadow = Paint::box_gradient(
-            rect(x+width-12.0-1.0,y+4.0+(height-8.0-scrollh)*u1-1.0, 8.0,scrollh), 3.0,4.0,
-            Color::rgba(220,220,220,255), Color::rgba(128,128,128,255));
-        vg.begin_path();
-        vg.rrect(rect(x+width-12.0+1.0,y+4.0+1.0 + (height-8.0-scrollh)*u1, 8.0-2.0,scrollh-2.0), 2.0);
-        vg.fill_paint(shadow);
-        // vg.fill_color(Color::rgba(0,0,0,128));
-        vg.fill();
-
-        vg.restore();
-    }
-}
 
 fn draw_colorwheel(vg: &mut Context, rr: Rect, time: f32) {
     let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
@@ -1134,52 +565,6 @@ fn draw_colorwheel(vg: &mut Context, rr: Rect, time: f32) {
     vg.restore();
 
     vg.restore();
-}
-
-fn draw_lines(vg: &mut Context, x: f32, y: f32, w: f32, _h: f32, t: f32) {
-    use oni2d::canvas::*;
-    let mut ctx = Canvas::new(vg);
-
-    let pad = 5.0;
-    let size = w/9.0 - pad*2.0;
-
-    let joins = [ LineJoin::Miter, LineJoin::Round, LineJoin::Bevel ];
-    let caps = [ LineCap::Butt, LineCap::Round, LineCap::Square ];
-
-    let pts = [
-        -size*0.25 + (t*0.3).cos() * size*0.5,
-        (t*0.3).sin() * size*0.5,
-        -size*0.25,
-        0.0,
-        size*0.25,
-        0.0,
-        size*0.25 + (-t*0.3).cos() * size*0.5,
-        (-t*0.3).sin() * size*0.5,
-    ];
-
-    for (i, &cap) in caps.iter().enumerate() {
-        for (j, &join) in joins.iter().enumerate() {
-            let fx = x + size*0.5 + ((i*3+j) as f32)/9.0*w + pad;
-            let fy = y - size*0.5 + pad;
-
-            let mut path = Path::new();
-            path.move_to(fx+pts[0], fy+pts[1]);
-            path.line_to(fx+pts[2], fy+pts[3]);
-            path.line_to(fx+pts[4], fy+pts[5]);
-            path.line_to(fx+pts[6], fy+pts[7]);
-
-            ctx.draw_path(&mut path, Paint::stroke(0xA0_000000)
-                .with_stroke_width(size*0.3)
-                .with_stroke_cap(cap)
-                .with_stroke_join(join));
-
-            ctx.draw_path(&mut path, Paint::stroke(0xFF_00C0FF)
-                .with_stroke_width(1.0)
-                .with_stroke_cap(LineCap::Butt)
-                .with_stroke_join(LineJoin::Bevel));
-        }
-    }
-
 }
 
 
@@ -1327,83 +712,6 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
     vg.restore();
 }
 
-fn draw_widths(vg: &mut Context, x: f32, y: f32, width: f32) {
-    vg.save();
-    vg.stroke_color(Color::rgba(0,0,0,255));
-
-    let mut y = y;
-    for i in 0..20 {
-        let w = ((i as f32)+0.5)*0.1;
-        vg.stroke_width(w);
-        vg.begin_path();
-        vg.move_to(x,y);
-        vg.line_to(x+width,y+width*0.3);
-        vg.stroke();
-        y += 10.0;
-    }
-
-    vg.restore();
-}
-
-fn draw_caps(vg: &mut Context, x: f32, y: f32, width: f32) {
-    let caps = [ LineCap::Butt, LineCap::Round, LineCap::Square ];
-    let line_width = 8.0;
-
-    use oni2d::canvas::*;
-
-    let mut ctx = Canvas::new(vg);
-
-    ctx.draw_rect(Rect {
-        left: x-line_width/2.0,
-        top: y,
-        right: x + width+line_width/2.0,
-        bottom: y + 40.0,
-    }, Paint::fill(0x20_FFFFFF));
-    ctx.draw_rect(Rect {
-        left: x,
-        top: y,
-        right: x + width,
-        bottom: y + 40.0,
-    }, Paint::fill(0x20_FFFFFF));
-
-    let paint = Paint::stroke(0xFF_000000)
-        .with_stroke_width(line_width);
-
-    for (i, &cap) in caps.iter().enumerate() {
-        let y = y + ((i*10) as f32) + 5.0;
-        ctx.draw_line([x, y], [x+width, y], paint.with_stroke_cap(cap))
-    }
-}
-
-fn draw_scissor(vg: &mut Context, x: f32, y: f32, t: f32) {
-    vg.save();
-
-    // Draw first rect and set scissor to it's area.
-    vg.translate(x, y);
-    vg.rotate(deg2rad(5.0));
-
-    let area = rect(-20.0,-20.0,60.0,40.0);
-    vg.fill_rect(area, Color::rgba(255,0,0,255));
-    vg.scissor(area);
-
-    // Draw second rectangle with offset and rotation.
-    vg.translate(40.0,0.0);
-    vg.rotate(t);
-
-    // Draw the intended second rectangle without any scissoring.
-    {
-        vg.save();
-        vg.reset_scissor();
-        vg.fill_rect(rect(-20.0,-10.0,60.0,30.0), Color::rgba(255,128,0,64));
-        vg.restore();
-    }
-
-    // Draw second rectangle with combined scissoring.
-    vg.intersect_scissor(rect(-20.0,-10.0,60.0,30.0));
-    vg.fill_rect(rect(-20.0,-10.0,60.0,30.0), Color::rgba(255,128,0,255));
-
-    vg.restore();
-}
 
 /*
 fn free_demo_data(vg: &mut Context, data: &mut DemoData) {
