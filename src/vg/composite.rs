@@ -36,6 +36,12 @@ pub struct CompositeState {
     pub dst_alpha: BlendFactor,
 }
 
+impl Default for CompositeState {
+    fn default() -> Self {
+        Self::from(CompositeOp::SrcOver)
+    }
+}
+
 impl From<CompositeOp> for CompositeState {
     fn from(op: CompositeOp) -> Self {
         use BlendFactor::*;

@@ -47,11 +47,13 @@ fn poly_area(pts: &[Point]) -> f32 {
     area * 0.5
 }
 
+#[inline]
 fn curve_divs(r: f32, arc: f32, tol: f32) -> usize {
     let da = (r / (r + tol)).acos() * 2.0;
     max(2, (arc / da).ceil() as usize)
 }
 
+#[inline]
 fn choose_bevel(bevel: bool, p0: &Point, p1: &Point, w: f32) -> [f32; 4] {
     if bevel {[
         p1.x + p0.dy * w,
@@ -510,6 +512,7 @@ impl PathCache {
             // If the first and last points are the same, remove the last, mark as closed path.
             let mut p0: *mut Point = &mut pts[(path.count-1) as usize];
             let mut p1: *mut Point = &mut pts[0];
+
             if unsafe { pt_eq((*p0).x,(*p0).y, (*p1).x,(*p1).y, self.dist_tol) } {
                 path.count -= 1;
                 p0 = &mut pts[(path.count-1) as usize];
@@ -692,7 +695,7 @@ impl PathCache {
 
             if looped {
                 // Loop it
-                let (v0, v1) = unsafe { (&*(verts.add(0)), &*(verts.add(1))) };
+                let (v0, v1) = (dst[0], dst[1]);
                 dst.push(v0.pos, [u0,1.0]);
                 dst.push(v1.pos, [u1,1.0]);
             } else {
@@ -706,8 +709,8 @@ impl PathCache {
                 };
             }
 
-            path.stroke = Some(unsafe { from_raw_parts_mut(verts, dst.count) });
-            verts = dst.dst;
+            path.stroke = Some(dst.raw_parts_mut());
+            verts = dst.end_ptr();
         }
     }
 
@@ -771,8 +774,8 @@ impl PathCache {
                 }
             }
 
-            path.fill = Some(unsafe { from_raw_parts_mut(verts, dst.count) });
-            verts = dst.dst;
+            path.fill = Some(dst.raw_parts_mut());
+            verts = dst.end_ptr();
 
             // Calculate fringe
             if fringe {
@@ -801,12 +804,12 @@ impl PathCache {
                 }
 
                 // Loop it
-                let (v0, v1) = unsafe { (&*(verts.add(0)), &*(verts.add(1))) };
+                let (v0, v1) = (dst[0], dst[1]);
                 dst.push(v0.pos, [lu,1.0]);
                 dst.push(v1.pos, [ru,1.0]);
 
-                path.stroke = Some(unsafe { from_raw_parts_mut(verts, dst.count) });
-                verts = dst.dst;
+                path.stroke = Some(dst.raw_parts_mut());
+                verts = dst.end_ptr();
             } else {
                 path.stroke = None;
             }
@@ -815,19 +818,36 @@ impl PathCache {
 }
 
 struct Verts {
-    dst: *mut Vertex,
+    start: *mut Vertex,
     count: usize,
 }
 
+impl std::ops::Index<usize> for Verts {
+    type Output = Vertex;
+    fn index(&self, idx: usize) -> &Self::Output {
+        assert!(idx < self.count);
+        unsafe {
+            &*self.start.add(idx)
+        }
+    }
+}
+
 impl Verts {
-    fn new(dst: *mut Vertex) -> Self {
-        Self { dst, count: 0 }
+    fn new(start: *mut Vertex) -> Self {
+        Self { start, count: 0 }
+    }
+
+    fn end_ptr(self) -> *mut Vertex {
+        unsafe { self.start.add(self.count) }
+    }
+
+    fn raw_parts_mut<'a>(&mut self) -> &'a mut [Vertex] {
+        unsafe { from_raw_parts_mut(self.start, self.count) }
     }
 
     fn push(&mut self, pos: [f32; 2], uv: [f32; 2]) {
         unsafe {
-            *self.dst = Vertex::new(pos, uv);
-            self.dst = self.dst.add(1);
+            *self.start.add(self.count) = Vertex::new(pos, uv);
             self.count += 1;
         }
     }
@@ -843,9 +863,9 @@ impl Verts {
 
         if p1.is_left() {
             let [lx0,ly0,lx1,ly1] = choose_bevel(p1.is_innerbevel(), p0, p1, lw);
-            let     a0 = (-dly0).atan2(-dlx0);
-            let mut a1 = (-dly1).atan2(-dlx1);
-            if a1 > a0 { a1 -= PI*2.0; }
+            let a0 = (-dly0).atan2(-dlx0);
+            let a1 = (-dly1).atan2(-dlx1);
+            let a1 = if a1 > a0 { a1 - PI*2.0 } else { a1 };
 
             self.push([lx0, ly0], [lu,1.0]);
             self.push([p1.x - dlx0*rw, p1.y - dly0*rw], [ru,1.0]);

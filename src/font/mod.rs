@@ -165,12 +165,9 @@ impl Context {
 
         self.params.draw_triangles(
             &paint,
-            state.composite(),
             &state.scissor,
             &verts,
         );
-
-        self.counters.text_call(verts.len() / 3);
     }
 
     pub unsafe fn text_raw(&mut self, x: f32, y: f32, start: *const u8, end: *const u8) -> f32 {

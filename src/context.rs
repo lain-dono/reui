@@ -3,7 +3,6 @@ use arrayvec::ArrayVec;
 use crate::{
     backend::{BackendGL, Image, TEXTURE_ALPHA},
     cache::{PathCache, LineCap, LineJoin},
-    counters::Counters,
     vg::*,
     font::*,
     picture::Picture,
@@ -27,7 +26,7 @@ pub struct States {
 impl States {
     pub(crate) fn new() -> Self {
         let mut states = ArrayVec::<_>::new();
-        states.push(State::new());
+        states.push(State::default());
         Self { states }
     }
     pub(crate) fn last(&self) -> &State {
@@ -57,7 +56,7 @@ impl States {
             self.states.push(unsafe { std::mem::zeroed() });
             self.states.last_mut().expect("last mut state (reset)")
         };
-        *state = State::new();
+        *state = State::default();
     }
 }
 
@@ -71,8 +70,6 @@ pub struct Context {
     pub fs: Box<Stash>,
     pub font_images: [Image; 4],
     pub font_image_idx: i32,
-
-    pub counters: Counters,
 
     pub params: BackendGL,
 }
@@ -164,25 +161,12 @@ impl Context {
 
 impl Context {
     pub fn begin_frame(&mut self, width: f32, height: f32, dpi: f32) {
-        log::trace!("draws:{}  fill:{}  stroke:{}  text:{}  TOTAL:{}",
-            self.counters.draw_call_count,
-            self.counters.fill_tri_count,
-            self.counters.stroke_tri_count,
-            self.counters.text_tri_count,
-
-            self.counters.fill_tri_count +
-            self.counters.stroke_tri_count +
-            self.counters.text_tri_count,
-        );
-
         self.states.clear();
         self.save();
         self.reset();
         self.set_dpi(dpi);
 
         self.params.set_viewport(width, height, dpi);
-
-        self.counters.clear();
     }
 
     pub fn cancel_frame(&mut self) {
@@ -258,7 +242,6 @@ impl Context {
                 Image::null(),
             ],
 
-            counters: Counters::default(),
             cache: PathCache::new(),
 
             picture: Picture {

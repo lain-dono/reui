@@ -31,7 +31,7 @@ fn main() {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
-        let window = glfwCreateWindow(2000, 1200, b"NanoVG\0".as_ptr(), null(), null());
+        let window = glfwCreateWindow(2000, 1200, b"ONI2D\0".as_ptr(), null(), null());
         //window = glfwCreateWindow(1000, 600, "NanoVG", glfwGetPrimaryMonitor(), NULL);
         if window.is_null() {
             glfwTerminate();
@@ -191,6 +191,9 @@ use oni2d::{
     Paint, Color,
     Context, Align,
     TextRow, GlyphPosition,
+
+    canvas::Canvas,
+
     utils::{
         deg2rad,
         clampf,
@@ -262,64 +265,62 @@ pub fn render_demo(
 ) {
     let (width, height) = wsize.into();
 
-    draw_eyes(vg, rect(width - 250.0, 50.0, 150.0, 100.0), mouse, time);
     draw_paragraph(vg, rect(width - 450.0, 50.0, 150.0, 100.0), mouse);
-    draw_graph(vg, 0.0, height/2.0, width, height/2.0, time);
     draw_colorwheel(vg, rect(width - 300.0, height - 300.0, 250.0, 250.0), time);
 
-    // Line joints
-    draw_lines(vg, 120.0, height-50.0, 600.0, 50.0, time);
-
-    // Line caps
-    draw_widths(vg, 10.0, 50.0, 30.0);
-
-    // Line caps
-    draw_caps(vg, 10.0, 300.0, 30.0);
-
-    draw_scissor(vg, 50.0, height-80.0, time);
-
-    vg.save();
     {
+        let mut ctx = Canvas::new(vg);
+        draw_eyes(&mut ctx, rect(width - 250.0, 50.0, 150.0, 100.0), mouse, time);
+        draw_graph(&mut ctx, 0.0, height/2.0, width, height/2.0, time);
+        // Line joints
+        draw_lines(&mut ctx, 120.0, height-50.0, 600.0, 50.0, time);
+        // Line caps
+        draw_widths(&mut ctx, 10.0, 50.0, 30.0);
+        // Line caps
+        draw_caps(&mut ctx, 10.0, 300.0, 30.0);
+        draw_scissor(&mut ctx, 50.0, height-80.0, time);
+    }
+
+    {
+        let mut ctx = Canvas::new(vg);
         if blowup {
-            vg.rotate((time*0.3).sin()*5.0/180.0*PI);
-            vg.scale(2.0, 2.0);
+            ctx.rotate((time*0.3).sin()*5.0/180.0*PI);
+            ctx.scale(2.0, 2.0);
         }
 
         // Widgets
-        draw_window(vg, "Widgets `n Stuff", rect(50.0, 50.0, 300.0, 400.0));
+        draw_window(&mut ctx, "Widgets `n Stuff", rect(50.0, 50.0, 300.0, 400.0));
+
         let (x, mut y) = (60.0, 95.0);
-        draw_search_box(vg, "Search", rect(x,y,280.0,25.0));
+        draw_search_box(&mut ctx, "Search", rect(x,y,280.0,25.0));
         y += 40.0;
-        draw_drop_down(vg, "Effects", rect(x,y,280.0,28.0));
+        draw_drop_down(&mut ctx, "Effects", rect(x,y,280.0,28.0));
         let popy = y + 14.0;
         y += 45.0;
 
         // Form
-        draw_label(vg, "Login", rect(x,y, 280.0,20.0));
+        draw_label(&mut ctx, "Login", rect(x,y, 280.0,20.0));
         y += 25.0;
-        draw_edit_box(vg, "Email",  rect(x,y, 280.0,28.0));
+        draw_edit_box(&mut ctx, "Email",  rect(x,y, 280.0,28.0));
         y += 35.0;
-        draw_edit_box(vg, "Password", rect(x,y, 280.0,28.0));
+        draw_edit_box(&mut ctx, "Password", rect(x,y, 280.0,28.0));
         y += 38.0;
-        draw_checkbox(vg, "Remember me", rect(x,y, 140.0,28.0));
-        draw_button(vg, ICON_LOGIN.into(), "Sign in", rect(x+138.0, y, 140.0, 28.0),
-            Color::new(0xFF_006080));
+        draw_checkbox(&mut ctx, "Remember me", rect(x,y, 140.0,28.0));
+        draw_button(&mut ctx, ICON_LOGIN, "Sign in", rect(x+138.0, y, 140.0, 28.0), 0xFF_006080);
         y += 45.0;
 
         // Slider
-        draw_label(vg, "Diameter", rect(x,y, 280.0,20.0));
+        draw_label(&mut ctx, "Diameter", rect(x,y, 280.0,20.0));
         y += 25.0;
-        draw_edit_box_num(vg, "123.00", "px", rect(x+180.0,y, 100.0,28.0));
-        draw_slider(vg, 0.4, x,y, 170.0,28.0);
+        draw_edit_box_num(&mut ctx, "123.00", "px", rect(x+180.0,y, 100.0,28.0));
+        draw_slider(&mut ctx, 0.4, x,y, 170.0,28.0);
         y += 55.0;
 
-        draw_button(vg, ICON_TRASH.into(), "Delete", rect(x, y, 160.0, 28.0), Color::new(0xFF_801008));
-        draw_button(vg, None, "Cancel", rect(x+170.0, y, 110.0, 28.0), Color::new(0x00_000000));
+        draw_button(&mut ctx, ICON_TRASH, "Delete", rect(x, y, 160.0, 28.0), 0xFF_801008);
+        draw_button(&mut ctx, None, "Cancel", rect(x+170.0, y, 110.0, 28.0), 0x00_000000);
 
         // Thumbnails box
-        draw_thumbnails(vg, rect(365.0, popy-30.0, 160.0, 300.0), &data.images[..], time);
-
-        vg.restore();
+        draw_thumbnails(&mut ctx, rect(365.0, popy-30.0, 160.0, 300.0), &data.images[..], time);
     }
 
     if false {
@@ -327,128 +328,12 @@ pub fn render_demo(
         use oni2d::canvas::*;
         let mut ctx = Canvas::new(vg);
 
-        ctx.draw_rect(Rect::new([50.0, 50.0], [100.0, 100.0]), Paint::fill(0xFF_000000));
+        ctx.draw_rect(rect(50.0, 50.0, 100.0, 100.0), Paint::fill(0xFF_000000));
         ctx.draw_rrect(RRect::new([50.0, 50.0], [100.0, 100.0], 15.0), Paint::fill(0xFF_CC0000));
 
         ctx.draw_line([60.0, 60.0], [140.0, 140.0], Paint::stroke(0xFF_00CCCC));
     }
 }
-
-fn draw_edit_box(vg: &mut Context, text: &str, rr: Rect) {
-    let (x, y, _, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
-
-    draw_edit_box_base(vg, rr);
-
-    vg.font_size(20.0);
-    vg.font_face(b"sans\0");
-    vg.fill_color(Color::rgba(255,255,255,64));
-    vg.text_align(Align::LEFT|Align::MIDDLE);
-    vg.text(x+h*0.3,y+h*0.5,text);
-}
-
-fn draw_edit_box_num(vg: &mut Context, text: &str, units: &str, rr: Rect) {
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
-    draw_edit_box_base(vg, rr);
-
-    let (uw, _) = vg.text_bounds(0.0,0.0, units);
-
-    vg.font_size(18.0);
-    vg.font_face(b"sans\0");
-    vg.fill_color(Color::rgba(255,255,255,64));
-    vg.text_align(Align::RIGHT|Align::MIDDLE);
-    vg.text(x+w-h*0.3,y+h*0.5,units);
-
-    vg.font_size(20.0);
-    vg.font_face(b"sans\0");
-    vg.fill_color(Color::rgba(255,255,255,128));
-    vg.text_align(Align::RIGHT|Align::MIDDLE);
-    vg.text(x+w-uw-h*0.5,y+h*0.5,text);
-}
-
-fn draw_checkbox(vg: &mut Context, text: &str, rr: Rect) {
-    let (x, y, _, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
-
-    let bg = Paint::box_gradient(
-        rect(x+1.0, y+(h*0.5).floor()-9.0+1.0, 18.0, 18.0),
-        3.0,3.0,
-        Color::rgba(0,0,0,32), Color::rgba(0,0,0,92),
-    );
-    vg.begin_path();
-    vg.rrect(rect(x+1.0,y+(h*0.5).floor()-9.0, 18.0,18.0), 3.0);
-    vg.fill_paint(bg);
-    vg.fill();
-
-    let mut icon = [0u8; 8];
-    vg.font_size(40.0);
-    vg.font_face(b"icons\0");
-    vg.fill_color(Color::rgba(255,255,255,128));
-    vg.text_align(Align::CENTER|Align::MIDDLE);
-    vg.text(x+9.0+2.0, y+h*0.5, cp2utf8(ICON_CHECK, &mut icon));
-
-    vg.font_size(18.0);
-    vg.font_face(b"sans\0");
-    vg.fill_color(Color::rgba(255,255,255,160));
-    vg.text_align(Align::LEFT|Align::MIDDLE);
-    vg.text(x+28.0,y+h*0.5,text);
-}
-
-fn draw_button(
-    vg: &mut Context,
-    preicon: Option<char>,
-    text: &str, rr: Rect, col: Color,
-) {
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
-
-    let mut icon = [0u8; 8];
-    let corner_radius = 4.0;
-
-    let alpha = if col.is_transparent_black() { 16 } else { 32 };
-    let bg = Paint::linear_gradient(
-        x,y,x,y+h,
-        Color::rgba(255,255,255, alpha),
-        Color::rgba(0,0,0, alpha),
-    );
-    vg.begin_path();
-    vg.rrect(rect(x+1.0,y+1.0, w-2.0,h-2.0), corner_radius-1.0);
-    if !col.is_transparent_black() {
-        vg.fill_color(col);
-        vg.fill();
-    }
-    vg.fill_paint(bg);
-    vg.fill();
-
-    vg.begin_path();
-    vg.rrect(rect(x+0.5,y+0.5, w-1.0,h-1.0), corner_radius-0.5);
-    vg.stroke_color(Color::rgba(0,0,0,48));
-    vg.stroke();
-
-    vg.font_size(20.0);
-    vg.font_face(b"sans-bold\0");
-    let (tw, _) = vg.text_bounds(0.0,0.0, text);
-    let mut iw = 0.0;
-
-    if let Some(preicon) = preicon {
-        vg.font_size(h*1.3);
-        vg.font_face(b"icons\0");
-        iw = vg.text_bounds(0.0,0.0, cp2utf8(preicon, &mut icon)).0;
-        iw += h*0.15;
-
-        vg.font_size(h*1.3);
-        vg.font_face(b"icons\0");
-        vg.fill_color(Color::rgba(255,255,255,96));
-        vg.text_align(Align::LEFT|Align::MIDDLE);
-        vg.text(x+w*0.5-tw*0.5-iw*0.75, y+h*0.5, cp2utf8(preicon, &mut icon));
-    }
-
-    vg.font_size(20.0);
-    vg.font_face(b"sans-bold\0");
-    vg.text_align(Align::LEFT|Align::MIDDLE);
-    vg.fill_color(Color::rgba(0,0,0,160));
-    vg.text(x+w*0.5-tw*0.5+iw*0.25, y+h*0.5-1.0,text);
-    vg.fill_color(Color::rgba(255,255,255,160));
-    vg.text(x+w*0.5-tw*0.5+iw*0.25,y+h*0.5,text);
-}
-
 
 fn draw_colorwheel(vg: &mut Context, rr: Rect, time: f32) {
     let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
@@ -608,10 +493,7 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
         for row in rows {
             let hit = mx > x && mx < (x+width) && my >= y && my < (y+lineh);
 
-            vg.begin_path();
-            vg.fill_color(Color::rgba(255,255,255, if hit { 64 } else { 16 }));
-            vg.rect(rect(x, y, row.width, lineh));
-            vg.fill();
+            vg.fill_rect(rect(x, y, row.width, lineh), Color::rgba(255,255,255, if hit { 64 } else { 16 }));
 
             vg.fill_color(Color::rgba(255,255,255,255));
             vg.text(x, y, row.text());
@@ -635,10 +517,7 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
                     px = gx;
                 }
 
-                vg.begin_path();
-                vg.fill_color(Color::rgba(255,192,0,255));
-                vg.rect(rect(caretx, y, 1.0, lineh));
-                vg.fill();
+                vg.fill_rect(rect(caretx, y, 1.0, lineh), Color::rgba(255,192,0,255));
 
                 gutter = lnum+1;
                 gx = x - 10.0;

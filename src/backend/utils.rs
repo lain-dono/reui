@@ -108,6 +108,14 @@ impl From<CompositeState> for Blend {
     }
 }
 
+/*
+impl Default for Blend {
+    fn default() -> Self {
+        Self::from(CompositeState::default())
+    }
+}
+*/
+
 impl Default for Blend {
     fn default() -> Self {
         Self {

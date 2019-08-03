@@ -15,6 +15,8 @@ fn hue(mut h: f32, m1: f32, m2: f32) -> f32 {
     }
 }
 
+pub struct Bgra(pub u32);
+
 #[derive(Clone, Copy)]
 pub struct Color {
     pub r: f32,
@@ -34,6 +36,14 @@ impl Color {
     pub const fn new(color: u32) -> Self {
         let [b, g, r, a] = color.to_le_bytes();
         Self::rgba(r, g, b, a)
+    }
+    pub fn to_bgra(self) -> u32 {
+        let Color { b, g, r, a } = self;
+        let r = (r * 255.0) as u8;
+        let g = (g * 255.0) as u8;
+        let b = (b * 255.0) as u8;
+        let a = (a * 255.0) as u8;
+        u32::from_le_bytes([b, g, r, a])
     }
 
     /// Returns a color value from red, green, blue values. Alpha will be set to 255 (1.0f).

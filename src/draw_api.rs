@@ -2,7 +2,7 @@ use core::f32::consts::PI;
 use crate::{
     context::Context,
     cache::{Winding, LineJoin},
-    vg::{Color, State},
+    vg::Color,
     vg::utils::{
         clamp,
         min,
@@ -287,18 +287,11 @@ impl Context {
 
         self.params.draw_fill(
             &paint,
-            state.composite(),
             &state.scissor,
             self.cache.fringe_width,
             &self.cache.bounds,
             &self.cache.paths,
         );
-
-        // Count triangles
-        for path in &self.cache.paths {
-            self.counters.fill_call(path.fill.as_ref().unwrap().len()-2);
-            self.counters.fill_call(path.stroke.as_ref().unwrap().len()-2);
-        }
     }
 
     pub fn stroke(&mut self) {
@@ -316,11 +309,6 @@ impl Context {
                 miter_limit: state.miter_limit,
             },
         );
-
-        // Count triangles
-        for path in &self.cache.paths {
-            self.counters.stroke_call(path.stroke.as_ref().unwrap().len()-2);
-        }
     }
 
     pub fn run_stroke(
@@ -364,11 +352,6 @@ impl Context {
             stroke_width,
             &self.cache.paths,
         );
-
-        // Count triangles
-        for path in &self.cache.paths {
-            self.counters.stroke_call(path.stroke.as_ref().unwrap().len()-2);
-        }
     }
 }
 

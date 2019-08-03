@@ -2,7 +2,6 @@ use std::f32::consts::PI;
 
 use oni2d::{
     Context, Point, Winding, Image,
-
     utils::{minf, clampf, deg2rad},
     canvas::*,
 };
@@ -16,9 +15,7 @@ const ICON_TRASH: char = '\u{E729}';
 
 use crate::cp2utf8;
 
-pub fn draw_window(vg: &mut Context, title: &str, rr: oni2d::Rect) {
-    let mut ctx = Canvas::new(vg);
-
+pub fn draw_window(ctx: &mut Canvas, title: &str, rr: Rect) {
     let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
 
     let corner_radius = 3.0;
@@ -30,11 +27,11 @@ pub fn draw_window(vg: &mut Context, title: &str, rr: oni2d::Rect) {
 
     // Drop shadow
     let mut path: Path<[_; 128]> = Path::new();
-    path.add_rect(Rect::new([x-10.0,y-10.0], [w+20.0,h+20.0]));
+    path.add_rect(rect(x-10.0,y-10.0, w+20.0,h+20.0));
     path.add_rrect(rrect);
     path._path_winding(Winding::CW);
     ctx.draw_path(&mut path, Paint::gradient(Gradient::Box {
-        rect: Rect::new([x, y+2.0], rr.size.into()),
+        rect: Rect::new([x, y+2.0].into(), rr.size),
         radius: corner_radius*2.0,
         feather: 10.0,
         inner_color: Color::new(0x80_000000),
@@ -70,9 +67,7 @@ pub fn draw_window(vg: &mut Context, title: &str, rr: oni2d::Rect) {
     });
 }
 
-pub fn draw_search_box(vg: &mut Context, text: &str, rr: oni2d::Rect) {
-    let mut ctx = Canvas::new(vg);
-
+pub fn draw_search_box(ctx: &mut Canvas, text: &str, rr: Rect) {
     let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
 
     let corner_radius = h/2.0-1.0;
@@ -80,7 +75,7 @@ pub fn draw_search_box(vg: &mut Context, text: &str, rr: oni2d::Rect) {
     // Edit
     let rrect = RRect::new(rr.origin.into(), rr.size.into(), corner_radius);
     ctx.draw_rrect(rrect, Paint::gradient(Gradient::Box {
-        rect: Rect::new([x,y+1.5], rr.size.into()),
+        rect: rect(x,y+1.5, rr.size.width, rr.size.height),
         radius: h/2.0, feather: 5.0,
         inner_color: Color::rgba(0,0,0,16),
         outer_color: Color::rgba(0,0,0,92),
@@ -108,10 +103,10 @@ pub fn draw_search_box(vg: &mut Context, text: &str, rr: oni2d::Rect) {
     ctx.text([x+w-h*0.55, y+h*0.55], cp2utf8(ICON_CIRCLED_CROSS, &mut icon), style);
 }
 
-pub fn draw_label(vg: &mut Context, text: &str, rr: oni2d::Rect) {
+pub fn draw_label(ctx: &mut Canvas, text: &str, rr: Rect) {
     let mut origin = rr.origin;
     origin.y += rr.size.height * 0.5;
-    Canvas::new(vg).text(origin.into(), text, TextStyle {
+    ctx.text(origin.into(), text, TextStyle {
         font_size: 18.0,
         font_face: b"sans\0",
         font_blur: 0.0,
@@ -120,15 +115,90 @@ pub fn draw_label(vg: &mut Context, text: &str, rr: oni2d::Rect) {
     });
 }
 
-pub fn draw_drop_down(vg: &mut Context, text: &str, bounds: oni2d::Rect) {
-    let mut ctx = Canvas::new(vg);
+pub fn draw_button<I: Into<Option<char>>>(ctx: &mut Canvas, preicon: I, text: &str, rr: Rect, col: u32) {
+    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
 
+    let corner_radius = 4.0;
+
+    let col = Color::new(col);
+    let alpha = if col.is_transparent_black() { 16 } else { 32 };
+
+    let rrect = RRect::new([x+1.0,y+1.0], [w-2.0,h-2.0], corner_radius-1.0);
+    if !col.is_transparent_black() {
+        ctx.draw_rrect(rrect, Paint::fill(col.to_bgra()));
+    }
+    ctx.draw_rrect(rrect, Paint::gradient(Gradient::Linear {
+        from: [x,y], to: [x,y+h],
+        inner_color: Color::rgba(255,255,255, alpha),
+        outer_color: Color::rgba(0,0,0, alpha),
+    }));
+
+    let rrect = RRect::new([x+0.5,y+0.5], [w-1.0,h-1.0], corner_radius-0.5);
+    ctx.draw_rrect(rrect, Paint::stroke(0x30_000000));
+
+    let (tw, _) = ctx.text_bounds(text, 20.0, b"sans-bold\0");
+    let mut iw = 0.0;
+    if let Some(preicon) = preicon.into() {
+        let mut icon = [0u8; 8];
+        let icon = cp2utf8(preicon, &mut icon);
+        iw = ctx.text_bounds(icon, h*1.3, b"icons\0").0;
+        iw += h*0.15;
+
+        ctx.text([x+w*0.5-tw*0.5-iw*0.75, y+h*0.5], icon, TextStyle {
+            font_size: h*1.3,
+            font_face: b"icons\0",
+            font_blur: 0.0,
+            color: Color::rgba(255,255,255,96),
+            text_align: Align::LEFT|Align::MIDDLE,
+        });
+    }
+
+    let mut style =  TextStyle {
+        font_size: 20.0,
+        font_face: b"sans-bold\0",
+        font_blur: 0.0,
+        color: Color::rgba(0,0,0,160),
+        text_align: Align::LEFT|Align::MIDDLE,
+    };
+    ctx.text([x+w*0.5-tw*0.5+iw*0.25, y+h*0.5-1.0], text, style);
+    style.color = Color::rgba(255,255,255,160);
+    ctx.text([x+w*0.5-tw*0.5+iw*0.25,y+h*0.5], text, style);
+}
+
+pub fn draw_checkbox(ctx: &mut Canvas, text: &str, rr: Rect) {
+    let (x, y, _, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+
+    let rrect = RRect::new([x+1.0,y+(h*0.5).floor()-9.0], [18.0,18.0], 3.0);
+    ctx.draw_rrect(rrect, Paint::gradient(Gradient::Box {
+        rect: rect(x+1.0, y+(h*0.5).floor()-9.0+1.0, 18.0, 18.0),
+        radius: 3.0, feather: 3.0,
+        inner_color: Color::rgba(0,0,0,32),
+        outer_color: Color::rgba(0,0,0,92),
+    }));
+
+    let mut icon = [0u8; 8];
+    ctx.text([x+9.0+2.0, y+h*0.5], cp2utf8(ICON_CHECK, &mut icon), TextStyle {
+        font_size: 40.0,
+        font_face: b"icons\0",
+        font_blur: 0.0,
+        color: Color::rgba(255,255,255,128),
+        text_align: Align::CENTER|Align::MIDDLE,
+    });
+    ctx.text([x+28.0,y+h*0.5], text, TextStyle {
+        font_size: 18.0,
+        font_face: b"sans\0",
+        font_blur: 0.0,
+        color: Color::rgba(255,255,255,160),
+        text_align: Align::LEFT|Align::MIDDLE,
+    });
+}
+
+pub fn draw_drop_down(ctx: &mut Canvas, text: &str, bounds: Rect) {
     let (x, y, w, h) = (
         bounds.origin.x, bounds.origin.y,
         bounds.size.width, bounds.size.height,
     );
 
-    let mut icon = [0u8; 8];
     let corner_radius = 4.0;
 
     let rrect = RRect::new([x+1.0,y+1.0], [w-2.0,h-2.0], corner_radius-1.0);
@@ -158,9 +228,7 @@ pub fn draw_drop_down(vg: &mut Context, text: &str, bounds: oni2d::Rect) {
     });
 }
 
-pub fn draw_eyes(vg: &mut Context, rr: oni2d::Rect, mouse: Point, time: f32) {
-    let mut ctx = Canvas::new(vg);
-
+pub fn draw_eyes(ctx: &mut Canvas, rr: Rect, mouse: Point, time: f32) {
     let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
 
     let (mx, my) = mouse.into();
@@ -180,16 +248,16 @@ pub fn draw_eyes(vg: &mut Context, rr: oni2d::Rect, mouse: Point, time: f32) {
         inner_color: Color::rgba(0,0,0,32),
         outer_color: Color::rgba(0,0,0,16),
     });
-    ctx.draw_oval(Rect::new([lx+3.0, ly+16.0], [ex, ey]), bg);
-    ctx.draw_oval(Rect::new([rx+3.0, ry+16.0], [ex, ey]), bg);
+    ctx.draw_oval(rect(lx+3.0, ly+16.0, ex, ey), bg);
+    ctx.draw_oval(rect(rx+3.0, ry+16.0, ex, ey), bg);
 
     let bg = Paint::gradient(Gradient::Linear {
         from: [x,y+h*0.25],
         to: [x+w*0.1,y+h],
         inner_color: Color::rgba(220,220,220,255), outer_color: Color::rgba(128,128,128,255),
     });
-    ctx.draw_oval(Rect::new([lx, ly], [ex, ey]), bg);
-    ctx.draw_oval(Rect::new([rx, ry], [ex, ey]), bg);
+    ctx.draw_oval(rect(lx, ly, ex, ey), bg);
+    ctx.draw_oval(rect(rx, ry, ex, ey), bg);
 
     let mut dx = (mx - rx) / (ex * 10.0);
     let mut dy = (my - ry) / (ey * 10.0);
@@ -199,7 +267,7 @@ pub fn draw_eyes(vg: &mut Context, rr: oni2d::Rect, mouse: Point, time: f32) {
     }
     dx *= ex*0.4;
     dy *= ey*0.5;
-    ctx.draw_oval(Rect::new([lx+dx,ly+dy+ey*0.25*(1.0-blink)], [br, br*blink]), Paint::fill(0xFF_202020));
+    ctx.draw_oval(rect(lx+dx,ly+dy+ey*0.25*(1.0-blink), br, br*blink), Paint::fill(0xFF_202020));
 
     let mut dx = (mx - rx) / (ex * 10.0);
     let mut dy = (my - ry) / (ey * 10.0);
@@ -209,16 +277,16 @@ pub fn draw_eyes(vg: &mut Context, rr: oni2d::Rect, mouse: Point, time: f32) {
     }
     dx *= ex*0.4;
     dy *= ey*0.5;
-    ctx.draw_oval(Rect::new([rx+dx,ry+dy+ey*0.25*(1.0-blink)], [br, br*blink]), Paint::fill(0xFF_202020));
+    ctx.draw_oval(rect(rx+dx,ry+dy+ey*0.25*(1.0-blink), br, br*blink), Paint::fill(0xFF_202020));
 
-    ctx.draw_oval(Rect::new([lx, ly], [ex, ey]), Paint::gradient(Gradient::Radial {
+    ctx.draw_oval(rect(lx, ly, ex, ey), Paint::gradient(Gradient::Radial {
         center: [lx-ex*0.25,ly-ey*0.5],
         inr: ex*0.1, outr: ex*0.75,
         inner_color: Color::rgba(255,255,255,128),
         outer_color: Color::rgba(255,255,255,0),
     }));
 
-    ctx.draw_oval(Rect::new([rx, ry], [ex, ey]), Paint::gradient(Gradient::Radial {
+    ctx.draw_oval(rect(rx, ry, ex, ey), Paint::gradient(Gradient::Radial {
         center: [rx-ex*0.25,ry-ey*0.5],
         inr: ex*0.1, outr: ex*0.75,
         inner_color: Color::rgba(255,255,255,128),
@@ -226,9 +294,7 @@ pub fn draw_eyes(vg: &mut Context, rr: oni2d::Rect, mouse: Point, time: f32) {
     }));
 }
 
-pub fn draw_graph(vg: &mut Context, x: f32, y: f32, w: f32, h: f32, time: f32) {
-    let mut ctx = Canvas::new(vg);
-
+pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
     let samples = [
         (1.0+(time*1.2345  +(time*0.33457).cos()*0.44).sin())*0.5,
         (1.0+(time*0.68363 +(time*1.3).cos()*1.55).sin())*0.5,
@@ -279,7 +345,7 @@ pub fn draw_graph(vg: &mut Context, x: f32, y: f32, w: f32, h: f32, time: f32) {
     // Graph sample pos
     for i in 0..6 {
         let [x, y] = [sx[i]-10.0, sy[i]-10.0+2.0];
-        ctx.draw_rect(Rect::new([x, y], [20.0, 20.0]), Paint::gradient(Gradient::Radial {
+        ctx.draw_rect(rect(x, y, 20.0, 20.0), Paint::gradient(Gradient::Radial {
             center: [sx[i],sy[i]+2.0],
             inr: 3.0,
             outr: 8.0,
@@ -319,8 +385,7 @@ pub fn draw_spinner(ctx: &mut Canvas, cx: f32, cy: f32, r: f32, time: f32) {
     }));
 }
 
-pub fn draw_widths(vg: &mut Context, x: f32, y: f32, width: f32) {
-    let mut ctx = Canvas::new(vg);
+pub fn draw_widths(ctx: &mut Canvas, x: f32, y: f32, width: f32) {
     let paint = Paint::stroke(0xFF_000000);
 
     let mut y = y;
@@ -331,14 +396,12 @@ pub fn draw_widths(vg: &mut Context, x: f32, y: f32, width: f32) {
     }
 }
 
-pub fn draw_caps(vg: &mut Context, x: f32, y: f32, width: f32) {
-    let mut ctx = Canvas::new(vg);
-
+pub fn draw_caps(ctx: &mut Canvas, x: f32, y: f32, width: f32) {
     let caps = [ StrokeCap::Butt, StrokeCap::Round, StrokeCap::Square ];
     let line_width = 8.0;
 
-    ctx.draw_rect(Rect::new([x-line_width/2.0, y], [width+line_width, 40.0]), Paint::fill(0x20_FFFFFF));
-    ctx.draw_rect(Rect::new([x, y], [width, 40.0]), Paint::fill(0x20_FFFFFF));
+    ctx.draw_rect(rect(x-line_width/2.0, y, width+line_width, 40.0), Paint::fill(0x20_FFFFFF));
+    ctx.draw_rect(rect(x, y, width, 40.0), Paint::fill(0x20_FFFFFF));
 
     let paint = Paint::stroke(0xFF_000000)
         .with_stroke_width(line_width);
@@ -349,9 +412,7 @@ pub fn draw_caps(vg: &mut Context, x: f32, y: f32, width: f32) {
     }
 }
 
-pub fn draw_lines(vg: &mut Context, x: f32, y: f32, w: f32, _h: f32, t: f32) {
-    let mut ctx = Canvas::new(vg);
-
+pub fn draw_lines(ctx: &mut Canvas, x: f32, y: f32, w: f32, _h: f32, t: f32) {
     let pad = 5.0;
     let size = w/9.0 - pad*2.0;
 
@@ -395,13 +456,11 @@ pub fn draw_lines(vg: &mut Context, x: f32, y: f32, w: f32, _h: f32, t: f32) {
 
 }
 
-pub fn draw_edit_box_base(vg: &mut Context, rr: oni2d::Rect) {
+fn draw_edit_box_base(ctx: &mut Canvas, rr: Rect) {
     let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
 
-    let mut ctx = Canvas::new(vg);
-
     let bg = Paint::gradient(Gradient::Box {
-        rect: Rect::new([x+1.0,y+1.0+1.5], [w-2.0,h-2.0]),
+        rect: rect(x+1.0,y+1.0+1.5, w-2.0,h-2.0),
         radius: 3.0,
         feather: 4.0,
         inner_color: Color::rgba(255,255,255,32),
@@ -412,8 +471,44 @@ pub fn draw_edit_box_base(vg: &mut Context, rr: oni2d::Rect) {
     ctx.draw_rrect(RRect::new([x+0.5,y+0.5], [w-1.0,h-1.0], 4.0-0.5), Paint::stroke(0x30_000000));
 }
 
-pub fn draw_slider(vg: &mut Context, pos: f32, x: f32, y: f32, w: f32, h: f32) {
-    let mut ctx = Canvas::new(vg);
+pub fn draw_edit_box(ctx: &mut Canvas, text: &str, rr: Rect) {
+    let (x, y, _, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+
+    draw_edit_box_base(ctx, rr);
+    ctx.text([x+h*0.3,y+h*0.5], text, TextStyle {
+        font_size: 20.0,
+        font_face: b"sans\0",
+        font_blur: 0.0,
+        color: Color::rgba(255,255,255,64),
+        text_align: Align::LEFT|Align::MIDDLE,
+    });
+}
+
+pub fn draw_edit_box_num(ctx: &mut Canvas, text: &str, units: &str, rr: Rect) {
+    draw_edit_box_base(ctx, rr);
+
+    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+    let (uw, _) = ctx.text_bounds(units, 18.0, b"sans\0");
+
+    ctx.text([x+w-h*0.3,y+h*0.5], units, TextStyle {
+        font_size: 18.0,
+        font_face: b"sans\0",
+        font_blur: 0.0,
+        color: Color::rgba(255,255,255,64),
+        text_align: Align::RIGHT|Align::MIDDLE,
+    });
+    ctx.text([x+w-uw-h*0.5,y+h*0.5], text, TextStyle {
+        font_size: 20.0,
+        font_face: b"sans\0",
+        font_blur: 0.0,
+        color: Color::rgba(255,255,255,128),
+        text_align: Align::RIGHT|Align::MIDDLE,
+    });
+}
+
+
+
+pub fn draw_slider(ctx: &mut Canvas, pos: f32, x: f32, y: f32, w: f32, h: f32) {
     let cy = y+(h*0.5).floor();
     let kr = (h*0.25).floor();
 
@@ -421,7 +516,7 @@ pub fn draw_slider(vg: &mut Context, pos: f32, x: f32, y: f32, w: f32, h: f32) {
 
     // Slot
     ctx.draw_rrect(RRect::new([x,cy-2.0], [w,4.0], 2.0), Paint::gradient(Gradient::Box {
-        rect: Rect::new([x,cy-2.0+1.0], [w,4.0]),
+        rect: rect(x,cy-2.0+1.0, w,4.0),
         radius: 2.0,feather: 2.0,
         inner_color: Color::rgba(0,0,0,32),
         outer_color: Color::rgba(0,0,0,128),
@@ -429,7 +524,7 @@ pub fn draw_slider(vg: &mut Context, pos: f32, x: f32, y: f32, w: f32, h: f32) {
 
     // Knob Shadow
     let mut path: Path<[_; 128]> = Path::new();
-    path.add_rect(Rect::new([x+(pos*w).floor()-kr-5.0,cy-kr-5.0], [kr*2.0+5.0+5.0,kr*2.0+5.0+5.0+3.0]));
+    path.add_rect(rect(x+(pos*w).floor()-kr-5.0,cy-kr-5.0, kr*2.0+5.0+5.0,kr*2.0+5.0+5.0+3.0));
     path.add_circle([x+(pos*w).floor(),cy], kr);
     path._path_winding(Winding::CW);
     ctx.draw_path(&mut path, Paint::gradient(Gradient::Radial {
@@ -452,9 +547,7 @@ pub fn draw_slider(vg: &mut Context, pos: f32, x: f32, y: f32, w: f32, h: f32) {
     ctx.draw_circle(center, kr-0.5, Paint::stroke(0x5C_000000));
 }
 
-pub fn draw_thumbnails(vg: &mut Context, rr: oni2d::Rect, images: &[Image], time: f32) {
-    let mut ctx = Canvas::new(vg);
-
+pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) {
     let (x, y, width, height) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
 
     let corner_radius = 3.0;
@@ -468,12 +561,12 @@ pub fn draw_thumbnails(vg: &mut Context, rr: oni2d::Rect, images: &[Image], time
 
     // Drop shadow
     let mut path: Path<[_; 128]> = Path::new();
-    path.add_rect(Rect::new([x-10.0,y-10.0], [width+20.0,height+20.0]));
+    path.add_rect(rect(x-10.0,y-10.0, width+20.0,height+20.0));
     path.add_rrect(RRect::new(rr.origin.into(), rr.size.into(), corner_radius));
     path._path_winding(Winding::CW);
     path.close();
     ctx.draw_path(&mut path, Paint::gradient(Gradient::Box {
-        rect: Rect::new([x,y+4.0], [width,height]),
+        rect: rect(x,y+4.0, width,height),
         radius: corner_radius*2.0, feather: 20.0,
         inner_color: Color::rgba(0,0,0,128),
         outer_color: Color::rgba(0,0,0,0),
@@ -517,7 +610,7 @@ pub fn draw_thumbnails(vg: &mut Context, rr: oni2d::Rect, images: &[Image], time
         let a = clampf((u2-v) / dv, 0.0, 1.0);
 
         if a < 1.0 {
-            draw_spinner(&mut ctx, tx+thumb/2.0,ty+thumb/2.0, thumb*0.25, time);
+            draw_spinner(ctx, tx+thumb/2.0,ty+thumb/2.0, thumb*0.25, time);
         }
 
         ctx.draw_rrect(RRect::new([tx,ty], [thumb,thumb], 5.0), Paint::gradient(Gradient::ImagePattern {
@@ -528,11 +621,11 @@ pub fn draw_thumbnails(vg: &mut Context, rr: oni2d::Rect, images: &[Image], time
         }));
 
         path.clear();
-        path.add_rect(Rect::new([tx-5.0,ty-5.0], [thumb+10.0,thumb+10.0]));
+        path.add_rect(rect(tx-5.0,ty-5.0, thumb+10.0,thumb+10.0));
         path.add_rrect(RRect::new([tx,ty], [thumb,thumb], 6.0));
         path._path_winding(Winding::CW);
         ctx.draw_path(&mut path, Paint::gradient(Gradient::Box {
-            rect: Rect::new([tx-1.0,ty], [thumb+2.0,thumb+2.0]),
+            rect: rect(tx-1.0,ty, thumb+2.0,thumb+2.0),
             radius: 5.0, feather: 3.0,
             inner_color: Color::rgba(0,0,0,128),
             outer_color: Color::rgba(0,0,0,0),
@@ -544,12 +637,12 @@ pub fn draw_thumbnails(vg: &mut Context, rr: oni2d::Rect, images: &[Image], time
     ctx.restore();
 
     // Hide fades
-    ctx.draw_rect(Rect::new([x+4.0,y], [width-8.0,6.0]), Paint::gradient(Gradient::Linear {
+    ctx.draw_rect(rect(x+4.0,y, width-8.0,6.0), Paint::gradient(Gradient::Linear {
         from: [x,y], to: [x,y+6.0],
         inner_color: Color::rgba(200,200,200,255),
         outer_color: Color::rgba(200,200,200,0),
     }));
-    ctx.draw_rect(Rect::new([x+4.0,y+height-6.0],[width-8.0,6.0]), Paint::gradient(Gradient::Linear {
+    ctx.draw_rect(rect(x+4.0,y+height-6.0, width-8.0,6.0), Paint::gradient(Gradient::Linear {
         from: [x,y+height],
         to: [x,y+height-6.0],
         inner_color: Color::rgba(200,200,200,255),
@@ -559,7 +652,7 @@ pub fn draw_thumbnails(vg: &mut Context, rr: oni2d::Rect, images: &[Image], time
     // Scroll bar
     let rrect = RRect::new([x+width-12.0,y+4.0], [8.0,height-8.0], 3.0);
     ctx.draw_rrect(rrect, Paint::gradient(Gradient::Box {
-        rect: Rect::new([x+width-12.0+1.0,y+4.0+1.0], [8.0,height-8.0]),
+        rect: rect(x+width-12.0+1.0,y+4.0+1.0, 8.0,height-8.0),
         radius: 3.0, feather: 4.0,
         inner_color: Color::rgba(0,0,0,32),
         outer_color: Color::rgba(0,0,0,92),
@@ -568,21 +661,21 @@ pub fn draw_thumbnails(vg: &mut Context, rr: oni2d::Rect, images: &[Image], time
     let scrollh = (height/stackh) * (height-8.0);
     let rrect = RRect::new([x+width-12.0+1.0,y+4.0+1.0 + (height-8.0-scrollh)*u1], [8.0-2.0,scrollh-2.0], 2.0);
     ctx.draw_rrect(rrect, Paint::gradient(Gradient::Box {
-        rect: Rect::new([x+width-12.0-1.0,y+4.0+(height-8.0-scrollh)*u1-1.0], [8.0,scrollh]),
+        rect: rect(x+width-12.0-1.0,y+4.0+(height-8.0-scrollh)*u1-1.0, 8.0,scrollh),
         radius: 3.0, feather: 4.0,
         inner_color: Color::rgba(220,220,220,255),
         outer_color: Color::rgba(128,128,128,255),
     }));
 }
 
-pub fn draw_scissor(vg: &mut Context, x: f32, y: f32, t: f32) {
-    let mut ctx = Canvas::new(vg);
+pub fn draw_scissor(ctx: &mut Canvas, x: f32, y: f32, t: f32) {
+    ctx.save();
 
     // Draw first rect and set scissor to it's area.
     ctx.translate(x, y);
     ctx.rotate(deg2rad(5.0));
 
-    let area = Rect::new([-20.0,-20.0], [60.0,40.0]);
+    let area = rect(-20.0,-20.0, 60.0,40.0);
     ctx.draw_rect(area, Paint::fill(0xFF_FF0000));
     ctx.scissor(area);
 
@@ -591,15 +684,15 @@ pub fn draw_scissor(vg: &mut Context, x: f32, y: f32, t: f32) {
     ctx.rotate(t);
 
     // Draw the intended second rectangle without any scissoring.
-    {
-        ctx.save();
-        ctx.reset_scissor();
-        ctx.draw_rect(Rect::new([-20.0,-10.0], [60.0,30.0]), Paint::fill(0x40_FF8000));
-        ctx.restore();
-    }
+    ctx.save();
+    ctx.reset_scissor();
+    ctx.draw_rect(rect(-20.0,-10.0, 60.0,30.0), Paint::fill(0x40_FF8000));
+    ctx.restore();
 
     // Draw second rectangle with combined scissoring.
-    let r = Rect::new([-20.0,-10.0], [60.0,30.0]);
+    let r = rect(-20.0,-10.0, 60.0,30.0);
     ctx.intersect_scissor(r);
     ctx.draw_rect(r, Paint::fill(0xFF_FF8000));
+
+    ctx.restore();
 }

@@ -2,6 +2,8 @@ mod path;
 mod paint;
 
 pub use crate::{
+    Rect,
+    rect,
     Context, Transform,
     backend::Image,
     font::Align,
@@ -26,27 +28,6 @@ pub struct TextStyle<'a> {
 pub type Offset = [f32; 2];
 pub type Size = [f32; 2];
 pub type Radius = f32; // TODO: [f32; 2]
-
-#[derive(Clone, Copy, Default)]
-pub struct Rect {
-    pub left: f32,
-    pub top: f32,
-    pub right: f32,
-    pub bottom: f32,
-}
-
-impl Rect {
-    pub fn new(o: Offset, s: Size) -> Self {
-        Self {
-            left: o[0],
-            top: o[1],
-            right: o[0] + s[0],
-            bottom: o[1] + s[1],
-        }
-    }
-    pub fn width(&self) -> f32 { self.right - self.left }
-    pub fn height(&self) -> f32 { self.bottom - self.top }
-}
 
 #[derive(Clone, Copy, Default)]
 pub struct RRect {
@@ -75,6 +56,9 @@ impl RRect {
             bottom_left: radius,
         }
     }
+    pub fn rect(&self) -> Rect {
+        Rect::new([self.left, self.top].into(), [self.right, self.bottom].into())
+    }
     pub fn width(&self) -> f32 { self.right - self.left }
     pub fn height(&self) -> f32 { self.bottom - self.top }
 }
@@ -101,7 +85,7 @@ fn gradient_to_paint(gradient: Gradient) -> crate::vg::Paint {
             ),
         Gradient::Box { rect, radius, feather, inner_color, outer_color } =>
             crate::vg::Paint::box_gradient(
-                euclid::rect(rect.left, rect.top, rect.width(), rect.height()),
+                rect,
                 radius,
                 feather,
                 inner_color,
@@ -164,6 +148,12 @@ impl<'a> Canvas<'a> {
         }
     }
 
+    pub fn text_bounds(&mut self, text: &str, font_size: f32, font_face: &[u8]) -> (f32, [f32; 4]) {
+        self.ctx.font_size(font_size);
+        self.ctx.font_face(font_face);
+        self.ctx.text_bounds(0.0, 0.0, text)
+    }
+
     pub fn text(&mut self, o: Offset, text: &str, style: TextStyle) {
         self.ctx.font_size(style.font_size);
         self.ctx.font_face(style.font_face);
@@ -174,11 +164,11 @@ impl<'a> Canvas<'a> {
     }
 
     pub fn scissor(&mut self, r: Rect) {
-        self.ctx.scissor(euclid::rect(r.left, r.top, r.width(), r.height()));
+        self.ctx.scissor(r)
     }
 
     pub fn intersect_scissor(&mut self, r: Rect) {
-        self.ctx.intersect_scissor(euclid::rect(r.left, r.top, r.width(), r.height()));
+        self.ctx.intersect_scissor(r)
     }
 
     pub fn reset_scissor(&mut self) {
@@ -304,7 +294,7 @@ impl<'a> Canvas<'a> {
     /// Whether the oval is filled or stroked (or both) is controlled by Paint.style. 
     pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
         self.ctx.begin_path();
-        self.ctx.ellipse(rect.left, rect.top, rect.width(), rect.height());
+        self.ctx.ellipse(rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
         self.fill_or_stroke(&paint);
     }
 /*
@@ -342,7 +332,7 @@ impl<'a> Canvas<'a> {
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style. 
     pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
         self.ctx.begin_path();
-        self.ctx.rect(euclid::rect(rect.left, rect.top, rect.width(), rect.height()));
+        self.ctx.rect(rect);
         self.fill_or_stroke(&paint);
     }
 

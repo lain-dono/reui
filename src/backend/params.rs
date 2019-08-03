@@ -194,14 +194,12 @@ struct Call {
     triangle_count: usize,
 
     data: DrawCallData,
-    blend_func: Blend,
 }
 
 impl Call {
     fn triangles(
         image: Image,
         uniform_offset: usize,
-        blend_func: Blend,
         triangle_offset: usize,
         triangle_count: usize,
     ) -> Self {
@@ -211,7 +209,6 @@ impl Call {
                 image,
                 uniform_offset,
             },
-            blend_func,
             triangle_offset,
             triangle_count,
             path_offset: 0,
@@ -528,7 +525,7 @@ impl BackendGL {
         }
     }
 
-    pub fn draw_triangles(&mut self, paint: &Paint, op: CompositeState, scissor: &Scissor, verts: &[Vertex]) {
+    pub fn draw_triangles(&mut self, paint: &Paint, scissor: &Scissor, verts: &[Vertex]) {
         // Allocate vertices for all the paths.
         let triangle_offset = self.alloc_verts(verts.len());
         let triangle_count = verts.len();
@@ -544,7 +541,6 @@ impl BackendGL {
         self.calls.push(Call::triangles(
             paint.image,
             uniform_offset,
-            op.into(),
             triangle_offset,
             triangle_count,
         ))
@@ -552,7 +548,7 @@ impl BackendGL {
 
     pub fn draw_fill(
         &mut self, paint: &Paint,
-        op: CompositeState , scissor: &Scissor, fringe: f32,
+        scissor: &Scissor, fringe: f32,
         bounds: &[f32; 4], paths: &[Path],
     ) {
         let path_offset = self.alloc_paths(paths.len());
@@ -622,7 +618,6 @@ impl BackendGL {
                 image: paint.image,
                 uniform_offset,
             },
-            blend_func: op.into(),
             triangle_offset,
             triangle_count,
             path_offset,
@@ -677,7 +672,6 @@ impl BackendGL {
                 image: paint.image,
                 uniform_offset,
             },
-            blend_func: op.into(),
             triangle_offset: 0,
             triangle_count: 0,
             path_offset,
@@ -729,9 +723,8 @@ impl BackendGL {
         // Set view and texture just once per frame.
         self.shader.bind_view(&self.view);
 
+        Blend::default().bind();
         for call in &self.calls {
-            call.blend_func.bind();
-
             match call.kind {
                 CallKind::FILL => self.fill(
                     call.data,

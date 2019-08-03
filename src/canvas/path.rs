@@ -97,8 +97,8 @@ impl<A: Array<Item = f32>> Path<A> {
     */
     /// Adds a new sub-path that consists of a curve that forms the ellipse that fills the given rectangle. [...] 
     pub fn add_oval(&mut self, oval: Rect) {
-        let [cx, cy] = [oval.left, oval.top];
-        let [rx, ry] = [oval.width(), oval.height()];
+        let [cx, cy] = [oval.origin.x, oval.origin.y];
+        let [rx, ry] = [oval.size.width, oval.size.height];
         self.commands.extend_from_slice(&[
             MOVETO as f32, cx-rx, cy,
             BEZIERTO as f32, cx-rx, cy+ry*KAPPA90, cx-rx*KAPPA90, cy+ry, cx, cy+ry,
@@ -110,7 +110,7 @@ impl<A: Array<Item = f32>> Path<A> {
     }
 
     pub fn add_circle(&mut self, c: Offset, r: f32) {
-        self.add_oval(Rect::new(c, [r, r]));
+        self.add_oval(Rect::new(c.into(), [r, r].into()));
     }
 
     /*
@@ -123,10 +123,10 @@ impl<A: Array<Item = f32>> Path<A> {
     /// Adds a new sub-path that consists of four lines that outline the given rectangle. 
     pub fn add_rect(&mut self, rect: Rect) {
         self.commands.extend_from_slice(&[
-            MOVETO as f32, rect.left,rect.top,
-            LINETO as f32, rect.left,rect.bottom,
-            LINETO as f32, rect.right,rect.bottom,
-            LINETO as f32, rect.right,rect.top,
+            MOVETO as f32, rect.min_x(), rect.min_y(),
+            LINETO as f32, rect.min_x(), rect.max_y(),
+            LINETO as f32, rect.max_x(), rect.max_y(),
+            LINETO as f32, rect.max_x(), rect.min_y(),
             CLOSE as f32
         ]);
     }
@@ -134,7 +134,7 @@ impl<A: Array<Item = f32>> Path<A> {
     pub fn add_rrect(&mut self, rr: RRect) {
         let (x, y, w, h) = (rr.left, rr.top, rr.width(), rr.height());
         if rr.top_left < 0.1 && rr.top_right < 0.1 && rr.bottom_right < 0.1 && rr.bottom_left < 0.1 {
-            self.add_rect(Rect::new([x, y], [w, h]));
+            self.add_rect(Rect::new([x, y].into(), [w, h].into()));
         } else {
             let halfw = w.abs()*0.5;
             let halfh = h.abs()*0.5;

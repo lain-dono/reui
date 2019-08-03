@@ -12,7 +12,6 @@ mod font;
 mod cache;
 mod draw_api;
 mod context;
-mod counters;
 mod images;
 
 mod picture;
