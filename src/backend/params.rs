@@ -350,7 +350,7 @@ impl BackendGL {
                 let t2 = Transform::create_translation(0.0, -paint.extent[1] * 0.5);
                 let scale = Transform::create_scale(1.0, -1.0);
 
-                t2.post_mul(&scale.post_mul(&t1.post_mul(&paint.xform)))
+                t2.post_transform(&scale.post_transform(&t1.post_transform(&paint.xform)))
                     .inverse().unwrap_or_else(Transform::identity)
             } else {
                 paint.xform.inverse().unwrap_or_else(Transform::identity)

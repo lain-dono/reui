@@ -1,6 +1,8 @@
 mod path;
 mod paint;
 
+pub use slotmap::Key;
+
 pub use crate::{
     Rect,
     rect,
@@ -23,6 +25,15 @@ pub struct TextStyle<'a> {
     pub font_blur: f32,
     pub color: Color,
     pub text_align: Align,
+}
+
+impl<'a> TextStyle<'a> {
+    pub fn text_align(self, align: Align) -> Self {
+        Self {
+            text_align: align,
+            .. self
+        }
+    }
 }
 
 pub type Offset = [f32; 2];
@@ -136,6 +147,7 @@ impl<'a> Canvas<'a> {
     }
 
     fn fill_or_stroke(&mut self, paint: &Paint) {
+        // TODO: self.ctx.shape_anti_alias(paint.aa);
         match paint.style {
             PaintingStyle::Fill => {
                 self.sync_fill(paint);
@@ -315,6 +327,16 @@ impl<'a> Canvas<'a> {
         self.ctx.picture.append_commands(path);
         self.fill_or_stroke(&paint);
     }
+
+    pub fn draw_path_cloned(&mut self, path: &[f32], paint: Paint) {
+        let mut path = path.to_owned();
+        self.ctx.picture.xform = self.ctx.states.last().xform;
+
+        self.ctx.begin_path();
+        self.ctx.picture.append_commands(&mut path);
+        self.fill_or_stroke(&paint);
+    }
+
 
 /*
     /// Draw the given picture onto the canvas. To create a picture, see PictureRecorder. 

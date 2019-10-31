@@ -3,7 +3,6 @@ use std::f32::consts::PI;
 use smallvec::{SmallVec, Array};
 
 use crate::{
-    vg::utils::{clamp, min},
     cache::Winding,
     draw_api::{MOVETO, LINETO, BEZIERTO, CLOSE, WINDING},
 };
@@ -95,6 +94,7 @@ impl<A: Array<Item = f32>> Path<A> {
     /// that intersects the center of the rectangle and with positive angles going clockwise around the oval. 
     pub fn add_arc(Rect oval, double startAngle, double sweepAngle) -> void
     */
+
     /// Adds a new sub-path that consists of a curve that forms the ellipse that fills the given rectangle. [...] 
     pub fn add_oval(&mut self, oval: Rect) {
         let [cx, cy] = [oval.origin.x, oval.origin.y];
@@ -139,14 +139,14 @@ impl<A: Array<Item = f32>> Path<A> {
             let halfw = w.abs()*0.5;
             let halfh = h.abs()*0.5;
             let sign = if w < 0.0 { -1.0 } else { 1.0 };
-            let rx_bl = sign * min(halfw, rr.bottom_left );
-            let ry_bl = sign * min(halfh, rr.bottom_left );
-            let rx_br = sign * min(halfw, rr.bottom_right);
-            let ry_br = sign * min(halfh, rr.bottom_right);
-            let rx_tr = sign * min(halfw, rr.top_right   );
-            let ry_tr = sign * min(halfh, rr.top_right   );
-            let rx_tl = sign * min(halfw, rr.top_left    );
-            let ry_tl = sign * min(halfh, rr.top_left    );
+            let rx_bl = sign * halfw.min(rr.bottom_left );
+            let ry_bl = sign * halfh.min(rr.bottom_left );
+            let rx_br = sign * halfw.min(rr.bottom_right);
+            let ry_br = sign * halfh.min(rr.bottom_right);
+            let rx_tr = sign * halfw.min(rr.top_right   );
+            let ry_tr = sign * halfh.min(rr.top_right   );
+            let rx_tl = sign * halfw.min(rr.top_left    );
+            let ry_tl = sign * halfh.min(rr.top_left    );
             let kappa = 1.0 - KAPPA90;
             self.commands.extend_from_slice(&[
                 MOVETO as f32, x, y + ry_tl,
@@ -171,7 +171,8 @@ impl<A: Array<Item = f32>> Path<A> {
     /// If the forceMoveTo argument is false, adds a straight line segment and an arc segment. [...] 
     pub fn arc_to(Rect rect, double startAngle, double sweepAngle, bool forceMoveTo) -> void
     /// Appends up to four conic curves weighted to describe an oval of radius and rotated by rotation. [...] 
-    pub fn arc_to_point(Offset arcEnd, { Radius radius: Radius.zero, double rotation: 0.0, bool largeArc: false, bool clockwise: true }) -> void
+    pub fn arc_to_point(Offset arcEnd, {
+        Radius radius: Radius.zero, double rotation: 0.0, bool largeArc: false, bool clockwise: true }) -> void
     /// Creates a PathMetrics object for this path. [...] 
     pub fn compute_metrics({bool forceClosed: false }) -> PathMetrics
     /// Adds a bezier segment that curves from the current point to the given point (x2,y2),
@@ -254,7 +255,7 @@ impl<A: Array<Item = f32>> Path<A> {
         }
 
         // Split arc into max 90 degree segments.
-        let ndivs = clamp((da.abs() / (PI*0.5) + 0.5) as i32, 1, 5);
+        let ndivs = ((da.abs() / (PI*0.5) + 0.5) as i32).clamp(1, 5);
         let hda = (da / ndivs as f32) / 2.0;
         let kappa = (4.0 / 3.0 * (1.0 - hda.cos()) / hda.sin()).abs();
         let kappa = if dir == Winding::CCW { -kappa } else { kappa };

@@ -1,5 +1,3 @@
-use super::utils::clampf;
-
 fn hue(mut h: f32, m1: f32, m2: f32) -> f32 {
     if h < 0.0 { h += 1.0; }
     if h > 1.0 { h -= 1.0; }
@@ -74,7 +72,7 @@ impl Color {
 
     /// Linearly interpolates from color c0 to c1, and returns resulting color value.
     pub fn lerp(a: Self, b: Self, t: f32) -> Self {
-        let t = clampf(t, 0.0, 1.0);
+        let t = t.clamp(0.0, 1.0);
         let oneminu = 1.0 - t;
         Self {
             r: a.r * oneminu + b.r * t,
@@ -107,15 +105,15 @@ impl Color {
     pub fn hsla(h: f32, s: f32, l: f32, a: u8) -> Self {
         let mut h = h % 1.0;
         if h < 0.0 { h += 1.0; }
-        let s = clampf(s, 0.0, 1.0);
-        let l = clampf(l, 0.0, 1.0);
+        let s = s.clamp(0.0, 1.0);
+        let l = l.clamp(0.0, 1.0);
 
         let m2 = if l <= 0.5 { l * (1.0 + s) } else { l + s - l * s };
         let m1 = 2.0 * l - m2;
         Self {
-            r: clampf(hue(h + 1.0/3.0, m1, m2), 0.0, 1.0),
-            g: clampf(hue(h, m1, m2), 0.0, 1.0),
-            b: clampf(hue(h - 1.0/3.0, m1, m2), 0.0, 1.0),
+            r: hue(h + 1.0/3.0, m1, m2).clamp(0.0, 1.0),
+            g: hue(h, m1, m2).clamp(0.0, 1.0),
+            b: hue(h - 1.0/3.0, m1, m2).clamp(0.0, 1.0),
             a: f32::from(a) / 255.0,
         }
     }

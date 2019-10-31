@@ -1,7 +1,6 @@
 use crate::{
     cache::{LineCap, LineJoin},
     vg::*,
-    vg::utils::{minf, maxf},
     font::Align,
     rect, Rect, Transform,
 };
@@ -63,11 +62,11 @@ impl State {
 
     pub fn set_scissor(&mut self, rect: Rect) {
         let (x, y) = rect.origin.into();
-        let w = maxf(0.0, rect.size.width);
-        let h = maxf(0.0, rect.size.height);
+        let w = rect.size.width.max(0.0);
+        let h = rect.size.height.max(0.0);
 
         self.scissor.xform = Transform::create_translation(x+w*0.5, y+h*0.5)
-            .post_mul(&self.xform);
+            .post_transform(&self.xform);
 
         self.scissor.extent[0] = w*0.5;
         self.scissor.extent[1] = h*0.5;
@@ -82,7 +81,7 @@ impl State {
         // Transform the current scissor rect into current transform space.
         // If there is difference in rotation, this will be approximation.
         let inv = self.xform.inverse().unwrap_or_else(Transform::identity);
-        let xform = self.scissor.xform.post_mul(&inv);
+        let xform = self.scissor.xform.post_transform(&inv);
 
         let ex = self.scissor.extent[0];
         let ey = self.scissor.extent[1];
@@ -99,14 +98,14 @@ impl State {
         //let r1 = rect(bx, by, bw, bh);
         //self.set_scissor(r1.intersection(&r).unwrap_or_else(Rect::zero));
 
-        let minx = maxf(ax, bx);
-        let miny = maxf(ay, by);
-        let maxx = minf(ax+aw, bx+bw);
-        let maxy = minf(ay+ah, by+bh);
+        let minx = f32::max(ax, bx);
+        let miny = f32::max(ay, by);
+        let maxx = f32::min(ax+aw, bx+bw);
+        let maxy = f32::min(ay+ah, by+bh);
         self.set_scissor(rect(
             minx, miny,
-            maxf(0.0, maxx - minx),
-            maxf(0.0, maxy - miny),
+            (maxx - minx).max(0.0),
+            (maxy - miny).max(0.0),
         ));
     }
 

@@ -1,5 +1,3 @@
-use std::f32::consts::PI;
-
 use euclid::approxeq::ApproxEq;
 
 use crate::{Transform, Vector, Point};
@@ -81,29 +79,6 @@ pub const fn pack_uv(u: f32, v: f32) -> [u16; 2] {
     [u, v]
 }
 
-pub fn deg2rad(deg: f32) -> f32 { deg / 180.0 * PI }
-pub fn rad2deg(rad: f32) -> f32 { rad / PI * 180.0 }
-
 pub fn _xfloor(f: f32) -> f32 {
     f - (f % 1.0)
-}
-
-pub fn minf(a: f32, b: f32) -> f32 { min(a, b) }
-pub fn maxf(a: f32, b: f32) -> f32 { max(a, b) }
-pub fn clampf(a: f32, mn: f32, mx: f32) -> f32 { clamp(a, mn, mx) }
-
-pub fn mini(a: i32, b: i32) -> i32 { min(a, b) }
-pub fn maxi(a: i32, b: i32) -> i32 { max(a, b) }
-pub fn clampi(a: i32, mn: i32, mx: i32) -> i32 { clamp(a, mn, mx) }
-
-pub fn min<I: PartialOrd>(a: I, b: I) -> I {
-    if a < b { a } else { b }
-}
-
-pub fn max<I: PartialOrd>(a: I, b: I) -> I {
-    if a > b { a } else { b }
-}
-
-pub fn clamp<I: PartialOrd>(a: I, mn: I, mx: I) -> I {
-    if a < mn { mn } else if a > mx { mx } else { a }
 }

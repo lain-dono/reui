@@ -113,9 +113,9 @@ impl Atlas {
             if self.nodes[i].y == self.nodes[i + 1].y {
                 self.nodes[i].width += self.nodes[i + 1].width;
                 self.nodes.remove(i + 1);
-                i -= 1
+            } else {
+                i += 1
             }
-            i += 1
         }
     }
 }

@@ -3,7 +3,6 @@ use std::fmt::Write;
 use arrayvec::ArrayString;
 
 use crate::vg::*;
-use crate::vg::utils::min;
 use crate::{context::Context, font::Align, rect};
 
 pub enum GraphStyle {
@@ -90,19 +89,19 @@ impl PerfGraph {
 
         match self.style {
             GraphStyle::Fps => for i in 0..self.values.len() {
-                let v = min(1.0 / (0.00001 + self.get(i)), 80.0);
+                let v = (1.0 / (0.00001 + self.get(i))).min(80.0);
                 let vx = x + (i as f32 / (GRAPH_HISTORY_COUNT-1) as f32) * width;
                 let vy = y + height - ((v / 80.0) * height);
                 vg.line_to(vx, vy);
             },
             GraphStyle::Percent => for i in 0..self.values.len() {
-                let v = min(self.get(i) * 1.0, 100.0);
+                let v = (self.get(i) * 1.0).min(100.0);
                 let vx = x + (i as f32 / (GRAPH_HISTORY_COUNT-1) as f32) * width;
                 let vy = y + height - ((v / 100.0) * height);
                 vg.line_to(vx, vy);
             },
             GraphStyle::Ms => for i in 0..self.values.len() {
-                let v = min(self.get(i) * 1000.0, 20.0);
+                let v = (self.get(i) * 1000.0).min(20.0);
                 let vx = x + (i as f32 / (GRAPH_HISTORY_COUNT-1) as f32) * width;
                 let vy = y + height - ((v / 20.0) * height);
                 vg.line_to(vx, vy);

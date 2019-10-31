@@ -4,12 +4,9 @@ use crate::{
     cache::{Winding, LineJoin},
     vg::Color,
     vg::utils::{
-        clamp,
-        min,
         normalize,
         pt_eq,
         dist_pt_seg,
-        clampf,
         average_scale,
     },
     Vector,
@@ -159,7 +156,7 @@ impl Context {
         }
 
         // Split arc into max 90 degree segments.
-        let ndivs = clamp((da.abs() / (PI*0.5) + 0.5) as i32, 1, 5);
+        let ndivs = ((da.abs() / (PI*0.5) + 0.5) as i32).clamp(1, 5);
         let hda = (da / ndivs as f32) / 2.0;
         let kappa = (4.0 / 3.0 * (1.0 - hda.cos()) / hda.sin()).abs();
         let kappa = if dir == Winding::CCW { -kappa } else { kappa };
@@ -227,14 +224,14 @@ impl Context {
             let halfw = w.abs()*0.5;
             let halfh = h.abs()*0.5;
             let sign = if w < 0.0 { -1.0 } else { 1.0 };
-            let rx_bl = sign * min(halfw, bottom_left );
-            let ry_bl = sign * min(halfh, bottom_left );
-            let rx_br = sign * min(halfw, bottom_right);
-            let ry_br = sign * min(halfh, bottom_right);
-            let rx_tr = sign * min(halfw, top_right   );
-            let ry_tr = sign * min(halfh, top_right   );
-            let rx_tl = sign * min(halfw, top_left    );
-            let ry_tl = sign * min(halfh, top_left    );
+            let rx_bl = sign * halfw.min(bottom_left );
+            let ry_bl = sign * halfh.min(bottom_left );
+            let rx_br = sign * halfw.min(bottom_right);
+            let ry_br = sign * halfh.min(bottom_right);
+            let rx_tr = sign * halfw.min(top_right   );
+            let ry_tr = sign * halfh.min(top_right   );
+            let rx_tl = sign * halfw.min(top_left    );
+            let ry_tl = sign * halfh.min(top_left    );
             let kappa = 1.0 - KAPPA90;
             self.append_commands(&mut [
                 MOVETO as f32, x, y + ry_tl,
@@ -318,14 +315,14 @@ impl Context {
         stroke: &Stroke,
     ) {
         let scale = average_scale(&xform);
-        let mut stroke_width = clampf(stroke.width * scale, 0.0, 200.0);
+        let mut stroke_width = (stroke.width * scale).clamp(0.0, 200.0);
         let fringe_width = self.cache.fringe_width;
         let mut paint = stroke.paint;
 
         if stroke_width < self.cache.fringe_width {
             // If the stroke width is less than pixel size, use alpha to emulate coverage.
             // Since coverage is area, scale by alpha*alpha.
-            let alpha = clampf(stroke_width / fringe_width, 0.0, 1.0);
+            let alpha = (stroke_width / fringe_width).clamp(0.0, 1.0);
             paint.inner_color.a *= alpha*alpha;
             paint.outer_color.a *= alpha*alpha;
             stroke_width = self.cache.fringe_width;

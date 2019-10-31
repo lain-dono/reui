@@ -1,4 +1,4 @@
-use super::{Color, utils::maxf};
+use super::Color;
 use crate::{backend::Image, Transform, Rect};
 use slotmap::Key;
 use euclid::Angle;
@@ -51,7 +51,7 @@ impl Paint {
             ),
             extent: [large, large + d * 0.5],
             radius: 0.0,
-            feather: maxf(1.0, d),
+            feather: d.max(1.0),
             inner_color,
             outer_color,
             image: Image::null(),
@@ -74,7 +74,7 @@ impl Paint {
             xform: Transform::create_translation(cx, cy),
             extent: [r, r],
             radius: r,
-            feather: maxf(1.0, f),
+            feather: f.max(1.0),
             inner_color,
             outer_color,
             image: Image::null(),
@@ -102,7 +102,7 @@ impl Paint {
             ),
             extent: [rect.size.width*0.5, rect.size.height*0.5],
             radius,
-            feather: maxf(1.0, feather),
+            feather: feather.max(1.0),
             inner_color,
             outer_color,
             image: Image::null(),

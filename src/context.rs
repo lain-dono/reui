@@ -68,11 +68,15 @@ pub struct Context {
     pub device_px_ratio: f32,
 
     pub fs: Box<Stash>,
-    pub font_images: [Image; 4],
+    pub font_images: [Image; MAX_FONTIMAGES],
     pub font_image_idx: i32,
 
     pub params: BackendGL,
 }
+
+// FIXME
+unsafe impl Sync for Context {}
+unsafe impl Send for Context {}
 
 impl Context {
     pub fn save(&mut self) {
@@ -85,22 +89,10 @@ impl Context {
         self.states.reset();
     }
 
-    pub fn add_fallback_font_id(&mut self, base: i32, fallback: i32) -> bool{
-        if base == -1 || fallback == -1 {
-            false
-        } else {
-            self.fs.add_fallback_font(base, fallback) != 0
-        }
-    }
-
-    pub fn font_face(&mut self, name: &[u8]) {
-        self.states.last_mut().font_id = self.fs.font_by_name(name.as_ptr());
-    }
-
     // State setting
 
     pub fn shape_anti_alias(&mut self, enabled: bool) {
-        self.states.last_mut().shape_aa = enabled;
+        //TODO: self.states.last_mut().shape_aa = enabled;
     }
     pub fn stroke_width(&mut self, width: f32) {
         self.states.last_mut().stroke_width = width;
@@ -126,12 +118,12 @@ impl Context {
     pub fn stroke_paint(&mut self, paint: Paint) {
         let state = self.states.last_mut();
         state.stroke = paint;
-        state.stroke.xform = state.stroke.xform.post_mul(&state.xform);
+        state.stroke.xform = state.stroke.xform.post_transform(&state.xform);
     }
     pub fn fill_paint(&mut self, paint: Paint) {
         let state = self.states.last_mut();
         state.fill = paint;
-        state.fill.xform = state.fill.xform.post_mul(&state.xform);
+        state.fill.xform = state.fill.xform.post_transform(&state.xform);
     }
 
     pub fn font_size(&mut self, size: f32) {

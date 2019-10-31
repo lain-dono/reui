@@ -3,7 +3,6 @@ use crate::vg::State;
 use super::stash::{
     Stash,
     TextIter,
-    fonsGetFontByName,
     fonsTextIterInit,
 };
 
@@ -21,7 +20,16 @@ pub const GLYPH_BITMAP_REQUIRED: i32 = 2;
 
 impl Stash {
     pub fn font_by_name(&mut self, name: *const u8) -> i32 {
-        unsafe { fonsGetFontByName(self, name as *const i8) }
+        unsafe {
+            let name = name as *const i8;
+            for i in 0..self.fonts.len() {
+                let font = &mut self.fonts[i];
+                if libc::strcmp(font.name.as_mut_ptr() as *const i8, name) == 0 {
+                    return i as i32;
+                }
+            }
+            -1
+        }
     }
 
     // Pull texture changes

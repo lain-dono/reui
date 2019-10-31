@@ -23,56 +23,7 @@ use std::mem::{size_of, uninitialized};
 use std::ptr::null_mut;
 
 extern crate libc;
-extern "C" {
-    pub type _IO_wide_data;
-    pub type _IO_codecvt;
-    pub type _IO_marker;
 
-    fn malloc(_: u64) -> *mut libc::c_void;
-    fn realloc(_: *mut libc::c_void, _: u64) -> *mut libc::c_void;
-
-    fn strcmp(_: *const i8, _: *const i8) -> i32;
-    fn strlen(_: *const i8) -> u64;
-}
-
-pub type size_t = u64;
-pub type __off_t = libc::c_long;
-pub type __off64_t = libc::c_long;
-
-#[derive(Clone)]
-#[repr(C)]
-pub struct _IO_FILE {
-    pub _flags: i32,
-    pub _IO_read_ptr: *mut i8,
-    pub _IO_read_end: *mut i8,
-    pub _IO_read_base: *mut i8,
-    pub _IO_write_base: *mut i8,
-    pub _IO_write_ptr: *mut i8,
-    pub _IO_write_end: *mut i8,
-    pub _IO_buf_base: *mut i8,
-    pub _IO_buf_end: *mut i8,
-    pub _IO_save_base: *mut i8,
-    pub _IO_backup_base: *mut i8,
-    pub _IO_save_end: *mut i8,
-    pub _markers: *mut _IO_marker,
-    pub _chain: *mut _IO_FILE,
-    pub _fileno: i32,
-    pub _flags2: i32,
-    pub _old_offset: __off_t,
-    pub _cur_column: u16,
-    pub _vtable_offset: libc::c_schar,
-    pub _shortbuf: [i8; 1],
-    pub _lock: *mut libc::c_void,
-    pub _offset: __off64_t,
-    pub _codecvt: *mut _IO_codecvt,
-    pub _wide_data: *mut _IO_wide_data,
-    pub _freeres_list: *mut _IO_FILE,
-    pub _freeres_buf: *mut libc::c_void,
-    pub __pad5: size_t,
-    pub _mode: i32,
-    pub _unused2: [i8; 20],
-}
-pub type _IO_lock_t = ();
 //
 // Copyright (c) 2009-2013 Mikko Mononen memon@inside.org
 //
@@ -336,7 +287,7 @@ impl Heap {
         self.first_free = p;
     }
 
-    pub unsafe fn alloc(&mut self, size: size_t, stash: &mut Stash) -> *mut libc::c_void {
+    pub unsafe fn alloc(&mut self, size: u64, stash: &mut Stash) -> *mut libc::c_void {
         if !self.first_free.is_null() {
             let p: *mut libc::c_void = self.first_free;
             self.first_free = *(p as *mut *mut libc::c_void);
@@ -388,7 +339,12 @@ pub struct ActiveEdge {
 
 impl Stash {
     pub fn new(width: i32, height: i32) -> Box<Stash> {
-        let tex_data = unsafe { malloc((width * height) as u64) as *mut u8 };
+        let tex_data = unsafe {
+            use std::alloc::{alloc, Layout};
+            let size = width * height;
+            let layout = Layout::from_size_align(size as usize, 1).unwrap();
+            alloc(layout)
+        };
         assert!(!tex_data.is_null());
 
         let mut stash = Box::new(Stash {
@@ -494,13 +450,17 @@ impl Stash {
 
     /// Resets the whole stash.
     pub fn reset_atlas(&mut self, width: u32, height: u32) -> bool {
+        let old_size = self.width * self.height;
         let (width, height) = (width as i32, height as i32);
 
         self.flush();
 
         self.atlas.reset(width, height);
         self.tex_data = unsafe {
-            realloc(self.tex_data as *mut libc::c_void, (width * height) as u64) as *mut u8
+            use std::alloc::{realloc, Layout};
+            let layout = Layout::from_size_align_unchecked(old_size as usize, 1);
+            let new_size = width * height;
+            realloc(self.tex_data, layout, new_size as usize)
         };
 
         if self.tex_data.is_null() {
@@ -659,15 +619,6 @@ unsafe fn find_table(data: *mut u8, fontstart: u32, tag: [u8; 4]) -> u32 {
     0
 }
 
-pub unsafe fn fonsGetFontByName(s: *mut Stash, name: *const i8) -> i32 {
-    for i in 0..(*s).fonts.len() {
-        let font = &mut (*s).fonts[i];
-        if strcmp(font.name.as_mut_ptr() as *const i8, name) == 0 {
-            return i as i32;
-        }
-    }
-    -1
-}
 // Draw text
 
 impl Stash {
@@ -1885,6 +1836,7 @@ impl Font {
 
 impl Stash {
     pub fn text_bounds(&mut self, mut x: f32, mut y: f32, mut str: *const u8, mut end: *const u8) -> (f32, [f32; 4]) {
+        assert!(!end.is_null());
         unsafe {
             let state: *mut State = self.state_mut();
             let mut codepoint = 0;
@@ -1910,9 +1862,6 @@ impl Stash {
             let mut maxy = y;
             let mut miny = maxy;
             let startx = x;
-            if end.is_null() {
-                end = str.offset(strlen(str as *const i8) as isize)
-            }
             while str != end {
                 if 0 == decutf8(&mut utf8state, &mut codepoint, *(str as *const u8) as u32) {
                     let glyph = fons__getGlyph(
@@ -2020,6 +1969,7 @@ pub unsafe fn fonsTextIterInit(
     mut end: *const u8,
     bitmapOption: i32,
 ) -> i32 {
+    assert!(!end.is_null());
     let state: *mut State = (*stash).state_mut();
 
     if stash.is_null() {
@@ -2047,9 +1997,6 @@ pub unsafe fn fonsTextIterInit(
     }
 
     y += (*iter.font).vert_align((*state).align, iter.isize_0);
-    if end.is_null() {
-        end = str.offset(strlen(str as *const i8) as isize)
-    }
 
     iter.nextx = x;
     iter.nexty = y;

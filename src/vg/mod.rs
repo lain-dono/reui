@@ -14,7 +14,6 @@ pub use self::{
 
 use crate::{context::Context, Rect, Transform};
 
-
 #[derive(Clone, Copy)]
 pub struct Scissor {
     pub xform: Transform,

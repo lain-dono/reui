@@ -57,6 +57,7 @@ pub struct Paint {
     //pub mask_filter: MaskFilter,
     //pub shader: Shader,
     pub gradient: Option<Gradient>,
+    pub aa: bool,
 }
 
 impl Default for Paint {
@@ -70,6 +71,7 @@ impl Default for Paint {
             stroke_miter_limit: 10.0,
             stroke_width: 1.0,
             gradient: None,
+            aa: true,
         }
     }
 }
@@ -113,5 +115,9 @@ impl Paint {
 
     pub fn with_gradient(self, gradient: Gradient) -> Self {
         Self { gradient: Some(gradient), .. self }
+    }
+
+    pub fn with_aa(self, aa: bool) -> Self {
+        Self { aa, .. self }
     }
 }

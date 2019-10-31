@@ -1,4 +1,5 @@
 #![allow(clippy::cast_lossless)]
+#![warn(dead_code)]
 
 use slotmap::Key;
 use std::ptr::null;
@@ -21,7 +22,6 @@ use crate::{
     backend::TEXTURE_ALPHA,
     cache::Vertex,
     vg::utils::{
-        min, max,
         average_scale,
         str_start_end,
     },
@@ -99,12 +99,28 @@ fn quantize(a: f32, d: f32) -> f32 {
 }
 
 fn font_scale(state: &State) -> f32 {
-    min(quantize(average_scale(&state.xform), 0.01), 4.0)
+    quantize(average_scale(&state.xform), 0.01).min(4.0)
 }
 
 impl Context {
     pub fn create_font(&mut self, name: &str, path: &str) -> i32 {
         self.fs.add_font(name, path).unwrap_or(-1)
+    }
+
+    pub fn load_font(&mut self, name: &str, path: &str) -> std::io::Result<i32> {
+        self.fs.add_font(name, path)
+    }
+
+    pub fn add_fallback_font_id(&mut self, base: i32, fallback: i32) -> bool {
+        if base == -1 || fallback == -1 {
+            false
+        } else {
+            self.fs.add_fallback_font(base, fallback) != 0
+        }
+    }
+
+    pub fn font_face(&mut self, name: &[u8]) {
+        self.states.last_mut().font_id = self.fs.font_by_name(name.as_ptr());
     }
 
     fn flush_text_texture(&mut self) {
@@ -170,11 +186,11 @@ impl Context {
         );
     }
 
-    pub unsafe fn text_raw(&mut self, x: f32, y: f32, start: *const u8, end: *const u8) -> f32 {
+    unsafe fn text_raw(&mut self, x: f32, y: f32, start: *const u8, end: *const u8) -> f32 {
         self.text_slice(x, y, raw_slice(start, end))
     }
 
-    pub fn text_slice(&mut self, x: f32, y: f32, text: &[u8]) -> f32 {
+    fn text_slice(&mut self, x: f32, y: f32, text: &[u8]) -> f32 {
         let text = unsafe { std::str::from_utf8_unchecked(text) };
         self.text(x, y, text)
     }
@@ -194,7 +210,7 @@ impl Context {
 
         let xform = state.xform;
 
-        let cverts = 6 * max(2, text.len()); // conservative estimate.
+        let cverts = 6 * text.len().max(2); // conservative estimate.
         let verts = self.cache.temp_verts(cverts);
         let verts = unsafe { std::slice::from_raw_parts_mut(verts.as_mut_ptr(), verts.len()) };
 
@@ -344,8 +360,8 @@ impl Context {
             prev_iter = iter;
             positions[npos].s = iter.str_0;
             positions[npos].x = iter.x * invscale;
-            positions[npos].minx = min(iter.x, q.x0) * invscale;
-            positions[npos].maxx = max(iter.nextx, q.x1) * invscale;
+            positions[npos].minx = q.x0.min(iter.x) * invscale;
+            positions[npos].maxx = q.x1.max(iter.nextx) * invscale;
             npos += 1;
             if npos >= positions.len() {
                 break;
@@ -407,11 +423,11 @@ impl Context {
                 let rminx = x + row.minx + dx;
                 let rmaxx = x + row.maxx + dx;
                 // Horizontal bounds.
-                minx = min(minx, rminx);
-                maxx = max(maxx, rmaxx);
+                minx = minx.min(rminx);
+                maxx = maxx.max(rmaxx);
                 // Vertical bounds.
-                miny = min(miny, y + rminy);
-                maxy = max(maxy, y + rmaxy);
+                miny = miny.min(y + rminy);
+                maxy = maxy.max(y + rmaxy);
 
                 y += lineh * self.states.last().line_height;
             }
