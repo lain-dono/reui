@@ -39,7 +39,7 @@ fn triarea2(a: Vector, b: Vector, c: Vector) -> f32 {
 */
 
 #[inline]
-fn poly_area(pts: &[Point]) -> f32 {
+fn poly_area(pts: &[PathPoint]) -> f32 {
     let mut area = 0.0;
     let a = &pts[0];
     for i in 2..pts.len() {
@@ -61,7 +61,7 @@ fn curve_divs(r: f32, arc: f32, tol: f32) -> usize {
 }
 
 #[inline]
-fn choose_bevel(bevel: bool, p0: &Point, p1: &Point, w: f32) -> [[f32; 2]; 2] {
+fn choose_bevel(bevel: bool, p0: &PathPoint, p1: &PathPoint, w: f32) -> [[f32; 2]; 2] {
     if bevel {[
         [p1.x + p0.dir.y * w, p1.y - p0.dir.x * w],
         [p1.x + p1.dir.y * w, p1.y - p1.dir.x * w],
@@ -121,7 +121,7 @@ bitflags::bitflags!(
 );
 
 #[derive(Clone, Default)]
-struct Point {
+struct PathPoint {
     // position
     pos: Vector,
 
@@ -139,7 +139,7 @@ struct Point {
     flags: PointFlags,
 }
 
-impl Point {
+impl PathPoint {
     pub fn is_left(&self) -> bool { self.flags.contains(PointFlags::LEFT) }
     pub fn is_corner(&self) -> bool { self.flags.contains(PointFlags::CORNER) }
     pub fn is_bevel(&self) -> bool { self.flags.contains(PointFlags::BEVEL) }
@@ -176,21 +176,21 @@ impl Default for Path {
 }
 
 impl Path {
-    fn points<'a>(&self, pts: &'a [Point]) -> &'a [Point] {
+    fn points<'a>(&self, pts: &'a [PathPoint]) -> &'a [PathPoint] {
         let start = self.first as usize;
         let len = self.count as usize;
         &pts[start..start+len]
     }
-    fn points_mut<'a>(&self, pts: &'a mut [Point]) -> &'a mut [Point] {
+    fn points_mut<'a>(&self, pts: &'a mut [PathPoint]) -> &'a mut [PathPoint] {
         let start = self.first as usize;
         let len = self.count as usize;
         &mut pts[start..start+len]
     }
 
-    fn pts<'a>(&self, pts: &'a [Point], p0: usize, p1: usize) -> PairIter<'a> {
+    fn pts<'a>(&self, pts: &'a [PathPoint], p0: usize, p1: usize) -> PairIter<'a> {
         PairIter::new(self.points(pts), p0, p1)
     }
-    fn pts_fan<'a>(&self, pts: &'a [Point], p0: usize, p1: usize) -> PairIterFan<'a> {
+    fn pts_fan<'a>(&self, pts: &'a [PathPoint], p0: usize, p1: usize) -> PairIterFan<'a> {
         PairIterFan::new(self.points(pts), p0, p1)
     }
 
@@ -202,20 +202,20 @@ impl Path {
 }
 
 struct PairIter<'a> {
-    pts: &'a [Point],
+    pts: &'a [PathPoint],
     idx: usize,
     p0: usize,
     p1: usize,
 }
 
 impl<'a> PairIter<'a> {
-    fn new(pts: &'a [Point], p0: usize, p1: usize) -> Self {
+    fn new(pts: &'a [PathPoint], p0: usize, p1: usize) -> Self {
         Self { pts, p0, p1, idx: 0 }
     }
 }
 
 impl<'a> Iterator for PairIter<'a> {
-    type Item = (&'a Point, &'a Point);
+    type Item = (&'a PathPoint, &'a PathPoint);
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx >= self.pts.len() {
             None
@@ -232,20 +232,20 @@ impl<'a> Iterator for PairIter<'a> {
 }
 
 struct PairIterFan<'a> {
-    pts: &'a [Point],
+    pts: &'a [PathPoint],
     idx: usize,
     p0: usize,
     p1: usize,
 }
 
 impl<'a> PairIterFan<'a> {
-    fn new(pts: &'a [Point], p0: usize, p1: usize) -> Self {
+    fn new(pts: &'a [PathPoint], p0: usize, p1: usize) -> Self {
         Self { pts, p0, p1, idx: 0 }
     }
 }
 
 impl<'a> Iterator for PairIterFan<'a> {
-    type Item = (&'a Point, &'a Point);
+    type Item = (&'a PathPoint, &'a PathPoint);
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx >= self.pts.len() {
             None
@@ -306,7 +306,7 @@ impl<'a> Iterator for PairIterMut<'a> {
 */
 
 pub struct PathCache {
-    points: Vec<Point>,
+    points: Vec<PathPoint>,
     pub paths: Vec<Path>,
     verts: Vec<Vertex>,
     pub bounds: [f32; 4],
@@ -369,7 +369,7 @@ impl PathCache {
             }
         }
 
-        self.points.push(Point { x, y, flags, .. Default::default() });
+        self.points.push(PathPoint { x, y, flags, .. Default::default() });
 
         path.count += 1;
     }
@@ -516,8 +516,8 @@ impl PathCache {
             assert!(pts.len() >= 2);
 
             // If the first and last points are the same, remove the last, mark as closed path.
-            let mut p0: *mut Point = &mut pts[(path.count-1) as usize];
-            let mut p1: *mut Point = &mut pts[0];
+            let mut p0: *mut PathPoint = &mut pts[(path.count-1) as usize];
+            let mut p1: *mut PathPoint = &mut pts[0];
 
             unsafe {
                 if pt_eq((*p0).x,(*p0).y, (*p1).x,(*p1).y, self.dist_tol) {
@@ -858,7 +858,7 @@ impl Verts {
     }
 
     fn round_join(
-        &mut self, p0: &Point, p1: &Point,
+        &mut self, p0: &PathPoint, p1: &PathPoint,
         lw: f32, rw: f32,
         lu: f32, ru: f32,
         ncap: i32,
@@ -917,7 +917,7 @@ impl Verts {
     }
 
     fn bevel_join(
-        &mut self, p0: &Point, p1: &Point,
+        &mut self, p0: &PathPoint, p1: &PathPoint,
         lw: f32, rw: f32, lu: f32, ru: f32, _fringe: f32,
     ) {
         let dlx0 =  p0.dir.y;
@@ -985,7 +985,7 @@ impl Verts {
     }
 
     fn butt_cap_start(
-        &mut self, p: &Point,
+        &mut self, p: &PathPoint,
         dx: f32, dy: f32, w: f32, d: f32,
         aa: f32, u0: f32, u1: f32,
     ) {
@@ -1000,7 +1000,7 @@ impl Verts {
     }
 
     fn butt_cap_end(
-        &mut self, p: &Point,
+        &mut self, p: &PathPoint,
         dx: f32, dy: f32, w: f32, d: f32,
         aa: f32, u0: f32, u1: f32,
     ) {
@@ -1014,7 +1014,7 @@ impl Verts {
     }
 
     fn round_cap_start(
-        &mut self, p: &Point,
+        &mut self, p: &PathPoint,
         dx: f32, dy: f32, w: f32, ncap: i32,
         _aa: f32, u0: f32, u1: f32,
     ) {
@@ -1032,7 +1032,7 @@ impl Verts {
     }
 
     fn round_cap_end(
-        &mut self, p: &Point,
+        &mut self, p: &PathPoint,
         dx: f32, dy: f32, w: f32, ncap: i32,
         _aa: f32, u0: f32, u1: f32,
     ) {
