@@ -25,18 +25,10 @@ const BEZIERTO: i32 = 2;
 const CLOSE: i32 = 3;
 const WINDING: i32 = 4;
 
-fn triarea2(a: Vector, b: Vector, c: Vector) -> f32 {
-    let ab = b - a;
-    let ac = c - a;
-    ac.x*ab.y - ab.x*ac.y
-}
-
-/*
-#[inline]
+#[inline(always)]
 fn triarea2(a: Vector, b: Vector, c: Vector) -> f32 {
     (c - a).cross(b - a)
 }
-*/
 
 #[inline]
 fn poly_area(pts: &[PathPoint]) -> f32 {
@@ -57,13 +49,13 @@ fn curve_divs(r: f32, arc: f32, tol: f32) -> usize {
 }
 
 #[inline]
-fn choose_bevel(bevel: bool, p0: &PathPoint, p1: &PathPoint, w: f32) -> [[f32; 2]; 2] {
+fn choose_bevel(bevel: bool, p0: &PathPoint, p1: &PathPoint, w: f32) -> [Vector; 2] {
     if bevel {[
-        [p1.pos.x + p0.dir.y * w, p1.pos.y - p0.dir.x * w],
-        [p1.pos.x + p1.dir.y * w, p1.pos.y - p1.dir.x * w],
+        vec2(p1.pos.x + p0.dir.y * w, p1.pos.y - p0.dir.x * w),
+        vec2(p1.pos.x + p1.dir.y * w, p1.pos.y - p1.dir.x * w),
     ]} else {[
-        [p1.pos.x + p1.ext.x * w, p1.pos.y + p1.ext.y * w],
-        [p1.pos.x + p1.ext.x * w, p1.pos.y + p1.ext.y * w],
+        p1.pos + p1.ext * w,
+        p1.pos + p1.ext * w,
     ]}
 }
 
@@ -120,15 +112,11 @@ bitflags::bitflags!(
 struct PathPoint {
     // position
     pos: Vector,
-
     // direction
     dir: Vector,
-
     // extrusions
     ext: Vector,
-
     len: f32,
-
     flags: PointFlags,
 }
 
@@ -384,8 +372,10 @@ impl PathCache {
         }
     }
 
-    pub(crate) fn calculate_joins(&mut self, w: f32, line_join: LineJoin, miter_limit: f32) {
+    fn calculate_joins(&mut self, w: f32, line_join: LineJoin, miter_limit: f32) {
         let iw = if w > 0.0 { 1.0 / w } else { 0.0 };
+
+        let miter_limit2 = miter_limit * miter_limit;
 
         // Calculate which joins needs extra vertices to append, and gather vertex count.
         for path in &mut self.paths {
@@ -401,19 +391,14 @@ impl PathCache {
                 let p0 = pts[p0_idx].clone();
                 let p1 = &mut pts[p1_idx];
 
-                let dlx0 =  p0.dir.y;
-                let dly0 = -p0.dir.x;
-                let dlx1 =  p1.dir.y;
-                let dly1 = -p1.dir.x;
+                let dl0 = vec2(p0.dir.y, -p0.dir.x);
+                let dl1 = vec2(p1.dir.y, -p1.dir.x);
 
                 // Calculate extrusions
-                p1.ext.x = (dlx0 + dlx1) * 0.5;
-                p1.ext.y = (dly0 + dly1) * 0.5;
-                let dmr2 = p1.ext.dot(p1.ext);
+                p1.ext = (dl0 + dl1) * 0.5;
+                let dmr2 = p1.ext.square_length();
                 if dmr2 > 0.000_001 {
-                    let scale = f32::min(1.0 / dmr2, 600.0);
-                    p1.ext.x *= scale;
-                    p1.ext.y *= scale;
+                    p1.ext *= f32::min(1.0 / dmr2, 600.0);
                 }
 
                 // Clear flags, but keep the corner.
@@ -433,9 +418,7 @@ impl PathCache {
                 }
 
                 // Check to see if the corner needs to be beveled.
-                if p1.is_corner() &&
-                    (dmr2 * miter_limit * miter_limit < 1.0 || line_join != LineJoin::Miter)
-                {
+                if p1.is_corner() && (dmr2 * miter_limit2 < 1.0 || line_join != LineJoin::Miter) {
                     p1.flags |= PointFlags::BEVEL;
                 }
 
@@ -533,15 +516,15 @@ impl PathCache {
             for _ in 0..path.count {
                 unsafe {
                     // Calculate segment direction and length
-                    (*p0).dir.x = (*p1).pos.x - (*p0).pos.x;
-                    (*p0).dir.y = (*p1).pos.y - (*p0).pos.y;
+                    (*p0).dir = (*p1).pos - (*p0).pos;
                     (*p0).len = normalize(&mut (*p0).dir.x, &mut (*p0).dir.y);
+                    let pos = (*p0).pos;
                     // Update bounds
                     self.bounds = [
-                        self.bounds[0].min((*p0).pos.x),
-                        self.bounds[1].min((*p0).pos.y),
-                        self.bounds[2].max((*p0).pos.x),
-                        self.bounds[3].max((*p0).pos.y),
+                        self.bounds[0].min(pos.x),
+                        self.bounds[1].min(pos.y),
+                        self.bounds[2].max(pos.x),
+                        self.bounds[3].max(pos.y),
                     ];
                     // Advance
                     p0 = p1;
@@ -574,7 +557,7 @@ impl PathCache {
         let d3 = vec_mul(p3 - p4, dp);
         let d3 = (d3.x - d3.y).abs();
 
-        if (d2 + d3)*(d2 + d3) < self.tess_tol * dp.dot(dp) {
+        if (d2 + d3)*(d2 + d3) < self.tess_tol * dp.square_length() {
             self.add_point(p4.x, p4.y, self.dist_tol, flags);
             return;
         }
@@ -684,8 +667,8 @@ impl PathCache {
                         dst.bevel_join(p0, p1, w, w, u0, u1, aa);
                     }
                 } else {
-                    dst.push([p1.pos.x + (p1.ext.x * w), p1.pos.y + (p1.ext.y * w)], [u0,1.0]);
-                    dst.push([p1.pos.x - (p1.ext.x * w), p1.pos.y - (p1.ext.y * w)], [u1,1.0]);
+                    dst.push(p1.pos + p1.ext * w, [u0,1.0]);
+                    dst.push(p1.pos - p1.ext * w, [u1,1.0]);
                 }
 
                 p0_idx = p1_idx;
@@ -695,8 +678,8 @@ impl PathCache {
             if looped {
                 // Loop it
                 let (v0, v1) = (dst[0].pos, dst[1].pos);
-                dst.push(v0, [u0,1.0]);
-                dst.push(v1, [u1,1.0]);
+                dst.push(v0.into(), [u0,1.0]);
+                dst.push(v1.into(), [u1,1.0]);
             } else {
                 // Add cap
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx % pts.len()]); // XXX
@@ -745,29 +728,21 @@ impl PathCache {
                 // Looping
                 for (p0, p1) in path.pts_fan(&self.points, last_idx, 0) {
                     if p1.is_bevel() {
-                        let dlx0 =  p0.dir.y;
-                        let dly0 = -p0.dir.x;
-                        let dlx1 =  p1.dir.y;
-                        let dly1 = -p1.dir.x;
+                        let dl0 = vec2(p0.dir.y, -p0.dir.x);
+                        let dl1 = vec2(p1.dir.y, -p1.dir.x);
                         if p1.is_left() {
-                            let lx = p1.pos.x + p1.ext.x * woff;
-                            let ly = p1.pos.y + p1.ext.y * woff;
-                            dst.push([lx, ly], [0.5,1.0]);
+                            dst.push(p1.pos + p1.ext * woff, [0.5,1.0]);
                         } else {
-                            let lx0 = p1.pos.x + dlx0 * woff;
-                            let ly0 = p1.pos.y + dly0 * woff;
-                            let lx1 = p1.pos.x + dlx1 * woff;
-                            let ly1 = p1.pos.y + dly1 * woff;
-                            dst.push([lx0, ly0], [0.5,1.0]);
-                            dst.push([lx1, ly1], [0.5,1.0]);
+                            dst.push(p1.pos + dl0 * woff, [0.5,1.0]);
+                            dst.push(p1.pos + dl1 * woff, [0.5,1.0]);
                         }
                     } else {
-                        dst.push([p1.pos.x + (p1.ext.x * woff), p1.pos.y + (p1.ext.y * woff)], [0.5,1.0]);
+                        dst.push(p1.pos + p1.ext * woff, [0.5,1.0]);
                     }
                 }
             } else {
                 for p in pts {
-                    dst.push([p.pos.x, p.pos.y], [0.5,1.0]);
+                    dst.push(p.pos, [0.5,1.0]);
                 }
             }
 
@@ -795,15 +770,15 @@ impl PathCache {
                     if p1.flags.intersects(PointFlags::BEVEL | PointFlags::INNERBEVEL) {
                         dst.bevel_join(p0, p1, lw, rw, lu, ru, self.fringe_width);
                     } else {
-                        dst.push([p1.pos.x + (p1.ext.x * lw), p1.pos.y + (p1.ext.y * lw)], [lu,1.0]);
-                        dst.push([p1.pos.x - (p1.ext.x * rw), p1.pos.y - (p1.ext.y * rw)], [ru,1.0]);
+                        dst.push(p1.pos + p1.ext * lw, [lu,1.0]);
+                        dst.push(p1.pos - p1.ext * rw, [ru,1.0]);
                     }
                 }
 
                 // Loop it
                 let (v0, v1) = (dst[0].pos, dst[1].pos);
-                dst.push(v0, [lu,1.0]);
-                dst.push(v1, [ru,1.0]);
+                dst.push(v0.into(), [lu,1.0]);
+                dst.push(v1.into(), [ru,1.0]);
 
                 path.stroke = Some(dst.raw_parts_mut());
                 verts = dst.end_ptr();
@@ -843,7 +818,7 @@ impl Verts {
     }
 
     #[inline(always)]
-    fn push<T: Into<[f32; 2]>>(&mut self, pos: T, uv: [f32; 2]) {
+    fn push(&mut self, pos: Vector, uv: [f32; 2]) {
         unsafe {
             *self.start.add(self.count) = Vertex::new(pos.into(), uv);
             self.count += 1;
@@ -857,55 +832,51 @@ impl Verts {
         ncap: i32,
         _fringe: f32,
     ) {
-        let dlx0 =  p0.dir.y;
-        let dly0 = -p0.dir.x;
-        let dlx1 =  p1.dir.y;
-        let dly1 = -p1.dir.x;
+        let dl0 = vec2(p0.dir.y, -p0.dir.x);
+        let dl1 = vec2(p1.dir.y, -p1.dir.x);
 
         if p1.is_left() {
-            let [[lx0,ly0], [lx1,ly1]] = choose_bevel(p1.is_innerbevel(), p0, p1, lw);
-            let a0 = (-dly0).atan2(-dlx0);
-            let a1 = (-dly1).atan2(-dlx1);
+            let [l0, l1] = choose_bevel(p1.is_innerbevel(), p0, p1, lw);
+            let a0 = (-dl0.y).atan2(-dl0.x);
+            let a1 = (-dl1.y).atan2(-dl1.x);
             let a1 = if a1 > a0 { a1 - PI*2.0 } else { a1 };
 
-            self.push([lx0, ly0], [lu,1.0]);
-            self.push([p1.pos.x - dlx0*rw, p1.pos.y - dly0*rw], [ru,1.0]);
+            self.push(l0, [lu,1.0]);
+            self.push(p1.pos - dl0*rw, [ru,1.0]);
 
             let n = (a0 - a1) / PI;
             let n = ((n * ncap as f32).ceil() as i32).clamp(2, ncap);
             for i in 0..n {
                 let u = (i as f32) / (n-1) as f32;
                 let a = a0 + u*(a1-a0);
-                let rx = p1.pos.x + a.cos() * rw;
-                let ry = p1.pos.y + a.sin() * rw;
-                self.push([p1.pos.x, p1.pos.y], [0.5,1.0]);
-                self.push([rx, ry], [ru,1.0]);
+                let (sn, cs) = a.sin_cos();
+                self.push(p1.pos, [0.5,1.0]);
+                self.push(p1.pos + vec2(cs, sn) * rw, [ru,1.0]);
             }
 
-            self.push([lx1, ly1], [lu,1.0]);
-            self.push([p1.pos.x - dlx1*rw, p1.pos.y - dly1*rw], [ru,1.0]);
+            self.push(l1, [lu,1.0]);
+            self.push(p1.pos - dl1*rw, [ru,1.0]);
         } else {
-            let [[rx0,ry0], [rx1,ry1]] = choose_bevel(p1.is_innerbevel(), p0, p1, -rw);
-            let     a0 = (dly0).atan2(dlx0);
-            let mut a1 = (dly1).atan2(dlx1);
+            let [r0, r1] = choose_bevel(p1.is_innerbevel(), p0, p1, -rw);
+            let     a0 = (dl0.y).atan2(dl0.x);
+            let mut a1 = (dl1.y).atan2(dl1.x);
             if a1 < a0 { a1 += PI*2.0; }
 
-            self.push([p1.pos.x + dlx0*rw, p1.pos.y + dly0*rw], [lu,1.0]);
-            self.push([rx0, ry0], [ru,1.0]);
+            self.push(p1.pos + dl0*rw, [lu,1.0]);
+            self.push(r0, [ru,1.0]);
 
             let n = (a1 - a0) / PI;
             let n = ((n * ncap as f32).ceil() as i32).clamp(2, ncap);
             for i in 0..n {
                 let u = (i as f32) / (n-1) as f32;
                 let a = a0 + u*(a1-a0);
-                let lx = p1.pos.x + a.cos() * lw;
-                let ly = p1.pos.y + a.sin() * lw;
-                self.push([lx, ly], [lu,1.0]);
-                self.push([p1.pos.x, p1.pos.y], [0.5,1.0]);
+                let (sn, cs) = a.sin_cos();
+                self.push(p1.pos + vec2(cs, sn) * lw, [lu,1.0]);
+                self.push(p1.pos, [0.5,1.0]);
             }
 
-            self.push([p1.pos.x + dlx1*rw, p1.pos.y + dly1*rw], [lu,1.0]);
-            self.push([rx1, ry1], [ru,1.0]);
+            self.push(p1.pos + dl1*rw, [lu,1.0]);
+            self.push(r1, [ru,1.0]);
         }
     }
 
@@ -913,66 +884,62 @@ impl Verts {
         &mut self, p0: &PathPoint, p1: &PathPoint,
         lw: f32, rw: f32, lu: f32, ru: f32, _fringe: f32,
     ) {
-        let dlx0 =  p0.dir.y;
-        let dly0 = -p0.dir.x;
-        let dlx1 =  p1.dir.y;
-        let dly1 = -p1.dir.x;
+        let dl0 = vec2(p0.dir.y, -p0.dir.x);
+        let dl1 = vec2(p1.dir.y, -p1.dir.x);
 
         if p1.is_left() {
             let [l0, l1] = choose_bevel(p1.is_innerbevel(), p0, p1, lw);
 
             self.push(l0, [lu,1.0]);
-            self.push([p1.pos.x - dlx0*rw, p1.pos.y - dly0*rw], [ru,1.0]);
+            self.push(p1.pos - dl0*rw, [ru,1.0]);
 
             if p1.is_bevel() {
                 self.push(l0, [lu,1.0]);
-                self.push([p1.pos.x - dlx0*rw, p1.pos.y - dly0*rw], [ru,1.0]);
+                self.push(p1.pos - dl0*rw, [ru,1.0]);
 
                 self.push(l1, [lu,1.0]);
-                self.push([p1.pos.x - dlx1*rw, p1.pos.y - dly1*rw], [ru,1.0]);
+                self.push(p1.pos - dl1*rw, [ru,1.0]);
             } else {
-                let rx0 = p1.pos.x - p1.ext.x * rw;
-                let ry0 = p1.pos.y - p1.ext.y * rw;
+                let r0 = p1.pos - p1.ext * rw;
 
-                self.push([p1.pos.x, p1.pos.y], [0.5,1.0]);
-                self.push([p1.pos.x - dlx0*rw, p1.pos.y - dly0*rw], [ru,1.0]);
+                self.push(p1.pos, [0.5,1.0]);
+                self.push(p1.pos - dl0*rw, [ru,1.0]);
 
-                self.push([rx0, ry0], [ru,1.0]);
-                self.push([rx0, ry0], [ru,1.0]);
+                self.push(r0, [ru,1.0]);
+                self.push(r0, [ru,1.0]);
 
-                self.push([p1.pos.x, p1.pos.y], [0.5,1.0]);
-                self.push([p1.pos.x - dlx1*rw, p1.pos.y - dly1*rw], [ru,1.0]);
+                self.push(p1.pos, [0.5,1.0]);
+                self.push(p1.pos - dl1*rw, [ru,1.0]);
             }
 
             self.push(l1, [lu,1.0]);
-            self.push([p1.pos.x - dlx1*rw, p1.pos.y - dly1*rw], [ru,1.0]);
+            self.push(p1.pos - dl1*rw, [ru,1.0]);
         } else {
             let [r0, r1] = choose_bevel(p1.is_innerbevel(), p0, p1, -rw);
 
-            self.push([p1.pos.x + dlx0*lw, p1.pos.y + dly0*lw], [lu,1.0]);
+            self.push(p1.pos + dl0*lw, [lu,1.0]);
             self.push(r0, [ru,1.0]);
 
             if p1.is_bevel() {
-                self.push([p1.pos.x + dlx0*lw, p1.pos.y + dly0*lw], [lu,1.0]);
+                self.push(p1.pos + dl0*lw, [lu,1.0]);
                 self.push(r0, [ru,1.0]);
 
-                self.push([p1.pos.x + dlx1*lw, p1.pos.y + dly1*lw], [lu,1.0]);
+                self.push(p1.pos + dl1*lw, [lu,1.0]);
                 self.push(r1, [ru,1.0]);
             } else {
-                let lx0 = p1.pos.x + p1.ext.x * lw;
-                let ly0 = p1.pos.y + p1.ext.y * lw;
+                let l0 = p1.pos + p1.ext * lw;
 
-                self.push([p1.pos.x + dlx0*lw, p1.pos.y + dly0*lw], [lu,1.0]);
-                self.push([p1.pos.x, p1.pos.y], [0.5,1.0]);
+                self.push(p1.pos + dl0*lw, [lu,1.0]);
+                self.push(p1.pos, [0.5,1.0]);
 
-                self.push([lx0, ly0], [lu,1.0]);
-                self.push([lx0, ly0], [lu,1.0]);
+                self.push(l0, [lu,1.0]);
+                self.push(l0, [lu,1.0]);
 
-                self.push([p1.pos.x + dlx1*lw, p1.pos.y + dly1*lw], [lu,1.0]);
-                self.push([p1.pos.x, p1.pos.y], [0.5,1.0]);
+                self.push(p1.pos + dl1*lw, [lu,1.0]);
+                self.push(p1.pos, [0.5,1.0]);
             }
 
-            self.push([p1.pos.x + dlx1*lw, p1.pos.y + dly1*lw], [lu,1.0]);
+            self.push(p1.pos + dl1*lw, [lu,1.0]);
             self.push(r1, [ru,1.0]);
         }
     }
@@ -982,14 +949,13 @@ impl Verts {
         dx: f32, dy: f32, w: f32, d: f32,
         aa: f32, u0: f32, u1: f32,
     ) {
-        let px = p.pos.x - dx*d;
-        let py = p.pos.y - dy*d;
-        let dlx = dy;
-        let dly = -dx;
-        self.push([px + dlx*w - dx*aa, py + dly*w - dy*aa], [u0,0.0]);
-        self.push([px - dlx*w - dx*aa, py - dly*w - dy*aa], [u1,0.0]);
-        self.push([px + dlx*w, py + dly*w], [u0,1.0]);
-        self.push([px - dlx*w, py - dly*w], [u1,1.0]);
+        let dd = vec2(dx, dy);
+        let p = p.pos - dd * d;
+        let dl = vec2(dy, -dx) * w;
+        self.push(p + dl - dd*aa, [u0,0.0]);
+        self.push(p - dl - dd*aa, [u1,0.0]);
+        self.push(p + dl, [u0,1.0]);
+        self.push(p - dl, [u1,1.0]);
     }
 
     fn butt_cap_end(
@@ -997,13 +963,13 @@ impl Verts {
         dx: f32, dy: f32, w: f32, d: f32,
         aa: f32, u0: f32, u1: f32,
     ) {
-        let p = crate::Point::new(p.pos.x, p.pos.y) + crate::Vector::new(dx, dy) * d;
-        let dlx = dy;
-        let dly = -dx;
-        self.push([p.x + dlx*w, p.y + dly*w], [u0,1.0]);
-        self.push([p.x - dlx*w, p.y - dly*w], [u1,1.0]);
-        self.push([p.x + dlx*w + dx*aa, p.y + dly*w + dy*aa], [u0,0.0]);
-        self.push([p.x - dlx*w + dx*aa, p.y - dly*w + dy*aa], [u1,0.0]);
+        let dd = vec2(dx, dy);
+        let p = p.pos + dd * d;
+        let dl = vec2(dy, -dx) * w;
+        self.push(p + dl, [u0,1.0]);
+        self.push(p - dl, [u1,1.0]);
+        self.push(p + dl + dd * aa, [u0,0.0]);
+        self.push(p - dl + dd * aa, [u1,0.0]);
     }
 
     fn round_cap_start(
@@ -1011,17 +977,16 @@ impl Verts {
         dx: f32, dy: f32, w: f32, ncap: i32,
         _aa: f32, u0: f32, u1: f32,
     ) {
-        let dlx = dy;
-        let dly = -dx;
+        let dl = vec2(dy, -dx);
         for i in 0..ncap {
             let a = (i as f32) / ((ncap-1) as f32) * PI;
             let ax = a.cos() * w;
             let ay = a.sin() * w;
-            self.push([p.pos.x - dlx*ax - dx*ay, p.pos.y - dly*ax - dy*ay], [u0,1.0]);
-            self.push([p.pos.x, p.pos.y], [0.5,1.0]);
+            self.push(p.pos - dl*ax - vec2(dx*ay, dy*ay), [u0,1.0]);
+            self.push(p.pos, [0.5,1.0]);
         }
-        self.push([p.pos.x + dlx*w, p.pos.y + dly*w], [u0,1.0]);
-        self.push([p.pos.x - dlx*w, p.pos.y - dly*w], [u1,1.0]);
+        self.push(p.pos + dl*w, [u0,1.0]);
+        self.push(p.pos - dl*w, [u1,1.0]);
     }
 
     fn round_cap_end(
@@ -1029,17 +994,16 @@ impl Verts {
         dx: f32, dy: f32, w: f32, ncap: i32,
         _aa: f32, u0: f32, u1: f32,
     ) {
-        let dlx = dy;
-        let dly = -dx;
-        self.push([p.pos.x + dlx*w, p.pos.y + dly*w], [u0,1.0]);
-        self.push([p.pos.x - dlx*w, p.pos.y - dly*w], [u1,1.0]);
+        let dl = vec2(dy, -dx);
+        self.push(p.pos + dl*w, [u0,1.0]);
+        self.push(p.pos - dl*w, [u1,1.0]);
         for i in 0..ncap {
             let a = (i as f32) / ((ncap-1) as f32) * PI;
             let (sn, cs) = a.sin_cos();
             let ax = cs * w;
             let ay = sn * w;
-            self.push([p.pos.x, p.pos.y], [0.5,1.0]);
-            self.push([p.pos.x - dlx*ax + dx*ay, p.pos.y - dly*ax + dy*ay], [u0,1.0]);
+            self.push(p.pos, [0.5,1.0]);
+            self.push(p.pos - dl*ax + vec2(dx*ay, dy*ay), [u0,1.0]);
         }
     }
 }

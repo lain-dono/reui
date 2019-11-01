@@ -136,7 +136,7 @@ impl Paint {
         }
     }
 
-    pub fn with_color(color: Color) -> Self {
+    pub fn color(color: Color) -> Self {
         Self {
             xform: Transform::identity(),
             extent: [0.0, 0.0],
@@ -146,9 +146,5 @@ impl Paint {
             inner_color: color,
             outer_color: color,
         }
-    }
-
-    pub fn set_color(&mut self, color: Color) {
-        *self = Self::with_color(color)
     }
 }

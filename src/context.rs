@@ -5,9 +5,9 @@ use crate::{
     cache::{PathCache, LineCap, LineJoin},
     vg::*,
     font::*,
-    picture::Picture,
     Point,
     Transform,
+    canvas::Picture,
 };
 
 use std::ptr::null;
@@ -92,7 +92,7 @@ impl Context {
     // State setting
 
     pub fn shape_anti_alias(&mut self, enabled: bool) {
-        //TODO: self.states.last_mut().shape_aa = enabled;
+        self.states.last_mut().shape_aa = enabled;
     }
     pub fn stroke_width(&mut self, width: f32) {
         self.states.last_mut().stroke_width = width;
@@ -109,11 +109,11 @@ impl Context {
     pub fn global_alpha(&mut self, alpha: f32) {
         self.states.last_mut().alpha = alpha;
     }
-    pub fn stroke_color(&mut self, color: Color) {
-        self.states.last_mut().stroke.set_color(color)
+    pub fn stroke_color(&mut self, color: u32) {
+        self.states.last_mut().stroke = Paint::color(Color::new(color))
     }
-    pub fn fill_color(&mut self, color: Color) {
-        self.states.last_mut().fill.set_color(color)
+    pub fn fill_color(&mut self, color: u32) {
+        self.states.last_mut().fill = Paint::color(Color::new(color))
     }
     pub fn stroke_paint(&mut self, paint: Paint) {
         let state = self.states.last_mut();

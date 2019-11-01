@@ -1,4 +1,4 @@
-extern crate oni2d;
+#![feature(clamp)]
 
 mod sup;
 use self::sup::*;
@@ -186,32 +186,28 @@ use std::ptr::null;
 use std::f32::consts::PI;
 
 use oni2d::{
-    Winding,
     Image, ImageFlags,
-    Paint, Color,
+    Color,
     Context, Align,
     TextRow, GlyphPosition,
 
     canvas::Canvas,
 
-    utils::{
-        deg2rad,
-        clampf,
-        maxf,
-        slice_start_end,
-    },
+    utils::slice_start_end,
 
     rect, Rect,
     size2, Size,
     point2, Point,
 };
 
+/*
 const ICON_SEARCH: char = '\u{1F50D}';
 const ICON_CIRCLED_CROSS: char = '\u{2716}';
 const ICON_CHEVRON_RIGHT: char = '\u{E75E}';
 const ICON_CHECK: char = '\u{2713}';
 const ICON_LOGIN: char = '\u{E740}';
 const ICON_TRASH: char = '\u{E729}';
+*/
 
 #[repr(C)]
 pub struct DemoData {
@@ -234,12 +230,13 @@ impl DemoData {
         }
 
         let font_icons = vg.create_font("icons", "assets/fonts/entypo.ttf");
-        assert_ne!(font_icons, -1, "Could not add font icons.");
         let font_normal = vg.create_font("sans", "assets/fonts/Roboto-Regular.ttf");
-        assert_ne!(font_normal, -1, "Could not add font italic.");
         let font_bold = vg.create_font("sans-bold", "assets/fonts/Roboto-Bold.ttf");
-        assert_ne!(font_bold, -1, "Could not add font bold.");
         let font_emoji = vg.create_font("emoji", "assets/fonts/NotoEmoji-Regular.ttf");
+
+        assert_ne!(font_icons, -1, "Could not add font icons.");
+        assert_ne!(font_normal, -1, "Could not add font italic.");
+        assert_ne!(font_bold, -1, "Could not add font bold.");
         assert_ne!(font_emoji, -1, "Could not add font emoji.");
 
         vg.add_fallback_font_id(font_normal, font_emoji);
@@ -266,10 +263,10 @@ pub fn render_demo(
     let (width, height) = wsize.into();
 
     draw_paragraph(vg, rect(width - 450.0, 50.0, 150.0, 100.0), mouse);
-    draw_colorwheel(vg, rect(width - 300.0, height - 300.0, 250.0, 250.0), time);
 
     {
         let mut ctx = Canvas::new(vg);
+        draw_colorwheel(&mut ctx, rect(width - 300.0, height - 300.0, 250.0, 250.0), time);
         draw_eyes(&mut ctx, rect(width - 250.0, 50.0, 150.0, 100.0), mouse, time);
         draw_graph(&mut ctx, 0.0, height/2.0, width, height/2.0, time);
         // Line joints
@@ -333,124 +330,15 @@ pub fn render_demo(
 
         ctx.draw_line([60.0, 60.0], [140.0, 140.0], Paint::stroke(0xFF_00CCCC));
     }
-}
 
-fn draw_colorwheel(vg: &mut Context, rr: Rect, time: f32) {
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
-    let hue = (time * 0.12).sin();
-
-    vg.save();
-
-    /*
-    vg.BeginPath();
-    vg.Rect(x,y,w,h);
-    vg.FillColor(Color::rgba(255,0,0,128));
-    vg.Fill();
-    */
-
-    let cx = x + w*0.5;
-    let cy = y + h*0.5;
-    let r1 = if w < h { w } else { h } * 0.5 - 5.0;
-    let r0 = r1 - 20.0;
-    let aeps = 0.5 / r1;    // half a pixel arc length in radians (2pi cancels out).
-
-    for i in 0..6 {
-        let a0 = (i as f32) / 6.0 * PI * 2.0 - aeps;
-        let a1 = ((i as f32)+1.0) / 6.0 * PI * 2.0 + aeps;
-        vg.begin_path();
-        vg.arc(cx,cy, r0, a0, a1, Winding::CW);
-        vg.arc(cx,cy, r1, a1, a0, Winding::CCW);
-        vg.close_path();
-        let ax = cx + a0.cos() * (r0+r1)*0.5;
-        let ay = cy + a0.sin() * (r0+r1)*0.5;
-        let bx = cx + a1.cos() * (r0+r1)*0.5;
-        let by = cy + a1.sin() * (r0+r1)*0.5;
-        let paint = Paint::linear_gradient(
-            ax,ay, bx,by,
-            Color::hsla(a0/(PI*2.0),1.0,0.55,255),
-            Color::hsla(a1/(PI*2.0),1.0,0.55,255));
-        vg.fill_paint(paint);
-        vg.fill();
+    {
+        use oni2d::canvas::*;
+        let mut ctx = Canvas::new(vg);
+        sup::blendish::run(&mut ctx, rect(50.0, 50.0, 200.0, 200.0));
     }
 
-    vg.begin_path();
-    vg.circle(cx,cy, r0-0.5);
-    vg.circle(cx,cy, r1+0.5);
-    vg.stroke_color(Color::rgba(0,0,0,64));
-    vg.stroke_width(1.0);
-    vg.stroke();
-
-    // Selector
-    vg.save();
-    vg.translate(cx,cy);
-    vg.rotate(hue*PI*2.0);
-
-    // Marker on
-    vg.stroke_width(2.0);
-    vg.begin_path();
-    vg.rect(rect(r0-1.0,-3.0,r1-r0+2.0,6.0));
-    vg.stroke_color(Color::rgba(255,255,255,192));
-    vg.stroke();
-
-    let paint = Paint::box_gradient(
-        rect(r0-3.0,-5.0,r1-r0+6.0,10.0), 2.0,4.0,
-        Color::rgba(0,0,0,128), Color::rgba(0,0,0,0));
-    vg.begin_path();
-    vg.rect(rect(r0-2.0-10.0,-4.0-10.0,r1-r0+4.0+20.0,8.0+20.0));
-    vg.rect(rect(r0-2.0,-4.0,r1-r0+4.0,8.0));
-    vg.path_winding(Winding::CW);
-    vg.fill_paint(paint);
-    vg.fill();
-
-    // Center triangle
-    let radius = r0 - 6.0;
-    let ax = (120.0/180.0*PI).cos() * radius;
-    let ay = (120.0/180.0*PI).sin() * radius;
-    let bx = (-120.0/180.0*PI).cos() * radius;
-    let by = (-120.0/180.0*PI).sin() * radius;
-    vg.begin_path();
-    vg.move_to(radius,0.0);
-    vg.line_to(ax,ay);
-    vg.line_to(bx,by);
-    vg.close_path();
-
-    let paint = Paint::linear_gradient(
-        radius,0.0, ax,ay,
-        Color::hsla(hue,1.0,0.5,255), Color::rgba(255,255,255,255));
-    vg.fill_paint(paint);
-    vg.fill();
-
-    let paint = Paint::linear_gradient(
-        (radius+ax)*0.5,(0.0+ay)*0.5, bx,by,
-        Color::rgba(0,0,0,0), Color::rgba(0,0,0,255));
-    vg.fill_paint(paint);
-    vg.fill();
-    vg.stroke_color(Color::rgba(0,0,0,64));
-    vg.stroke();
-
-    // Select circle on triangle
-    let ax = (120.0/180.0*PI).cos() * radius*0.3;
-    let ay = (120.0/180.0*PI).sin() * radius*0.4;
-    vg.stroke_width(2.0);
-    vg.begin_path();
-    vg.circle(ax,ay,5.0);
-    vg.stroke_color(Color::rgba(255,255,255,192));
-    vg.stroke();
-
-    let paint = Paint::radial_gradient(
-        ax,ay, 7.0,9.0,
-        Color::rgba(0,0,0,64), Color::rgba(0,0,0,0));
-    vg.begin_path();
-    vg.rect(rect(ax-20.0,ay-20.0,40.0,40.0));
-    vg.circle(ax,ay,7.0);
-    vg.path_winding(Winding::CW);
-    vg.fill_paint(paint);
-    vg.fill();
-
-    vg.restore();
-
-    vg.restore();
 }
+
 
 
 fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
@@ -493,9 +381,9 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
         for row in rows {
             let hit = mx > x && mx < (x+width) && my >= y && my < (y+lineh);
 
-            vg.fill_rect(rect(x, y, row.width, lineh), Color::rgba(255,255,255, if hit { 64 } else { 16 }));
+            vg.fill_rect(rect(x, y, row.width, lineh), if hit { 0x40_FFFFFF } else { 0x10_FFFFFF });
 
-            vg.fill_color(Color::rgba(255,255,255,255));
+            vg.fill_color(0xFF_FFFFFF);
             vg.text(x, y, row.text());
 
             if hit {
@@ -517,7 +405,7 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
                     px = gx;
                 }
 
-                vg.fill_rect(rect(caretx, y, 1.0, lineh), Color::rgba(255,192,0,255));
+                vg.fill_rect(rect(caretx, y, 1.0, lineh), Color::rgba(255,192,0,255).to_bgra());
 
                 gutter = lnum+1;
                 gx = x - 10.0;
@@ -541,7 +429,7 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
         let (_, bounds) = vg.text_bounds(gx,gy, &txt);
 
         vg.begin_path();
-        vg.fill_color(Color::rgba(255,192,0,255));
+        vg.fill_color(Color::rgba(255,192,0,255).to_bgra());
         vg.rrect(rect(
                 bounds[0].floor()-4.0,
                 bounds[1].floor()-2.0,
@@ -551,7 +439,7 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
         );
         vg.fill();
 
-        vg.fill_color(Color::rgba(32,32,32,255));
+        vg.fill_color(0xFF_202020);
         vg.text(gx,gy, &txt);
     }
     vg.line_height(1.2);
@@ -568,12 +456,12 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
     // Fade the tooltip out when close to it.
     let gx = ((mx - (bounds[0]+bounds[2])*0.5) / (bounds[0] - bounds[2])).abs();
     let gy = ((my - (bounds[1]+bounds[3])*0.5) / (bounds[1] - bounds[3])).abs();
-    let a = maxf(gx, gy) - 0.5;
-    let a = clampf(a, 0.0, 1.0);
+    let a = f32::max(gx, gy) - 0.5;
+    let a = a.clamp(0.0, 1.0);
     vg.global_alpha(a);
 
     vg.begin_path();
-    vg.fill_color(Color::rgba(220,220,220,255));
+    vg.fill_color(0xFF_DCDCDC);
     vg.rrect(rect(
             bounds[0]-2.0,bounds[1]-2.0,
             (bounds[2]-bounds[0]).floor()+4.0,
@@ -585,7 +473,7 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
     vg.line_to(px-7.0,bounds[1]+1.0);
     vg.fill();
 
-    vg.fill_color(Color::rgba(0,0,0,220));
+    vg.fill_color(0xDC_000000);
     vg.text_box(x,y, 150.0, "Hover your mouse over the text to see calculated caret position.");
 
     vg.restore();

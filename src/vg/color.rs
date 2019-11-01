@@ -13,8 +13,6 @@ fn hue(mut h: f32, m1: f32, m2: f32) -> f32 {
     }
 }
 
-pub struct Bgra(pub u32);
-
 #[derive(Clone, Copy)]
 pub struct Color {
     pub r: f32,
@@ -35,6 +33,7 @@ impl Color {
         let [b, g, r, a] = color.to_le_bytes();
         Self::rgba(r, g, b, a)
     }
+
     pub fn to_bgra(self) -> u32 {
         let Color { b, g, r, a } = self;
         let r = (r * 255.0) as u8;
@@ -57,6 +56,20 @@ impl Color {
             g: (g as f32) / 255.0,
             b: (b as f32) / 255.0,
             a: (a as f32) / 255.0,
+        }
+    }
+
+    pub fn offset(self, delta: i32) -> Self {
+        if delta != 0 {
+            let offset = delta as f32 / 255.0;
+            Self {
+                r: (self.r + offset).clamp(0.0, 1.0),
+                g: (self.g + offset).clamp(0.0, 1.0),
+                b: (self.b + offset).clamp(0.0, 1.0),
+                a: self.a,
+            }
+        } else {
+            self
         }
     }
 

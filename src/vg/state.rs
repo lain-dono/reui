@@ -31,8 +31,8 @@ pub struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            fill: Paint::with_color(Color::new(0xFF_FFFFFF)),
-            stroke: Paint::with_color(Color::new(0xFF_000000)),
+            fill: Paint::color(Color::new(0xFF_FFFFFF)),
+            stroke: Paint::color(Color::new(0xFF_000000)),
 
             shape_aa: true,
             stroke_width: 1.0,
@@ -58,8 +58,6 @@ impl Default for State {
 }
 
 impl State {
-    //pub fn composite(&self) -> CompositeState { CompositeOp::SrcOver.into() }
-
     pub fn set_scissor(&mut self, rect: Rect) {
         let (x, y) = rect.origin.into();
         let w = rect.size.width.max(0.0);
@@ -71,6 +69,7 @@ impl State {
         self.scissor.extent[0] = w*0.5;
         self.scissor.extent[1] = h*0.5;
     }
+
     pub fn intersect_scissor(&mut self, r: Rect) {
         // If no previous scissor has been set, set the scissor as current scissor.
         if self.scissor.extent[0] < 0.0 {

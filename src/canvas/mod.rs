@@ -1,5 +1,6 @@
 mod path;
 mod paint;
+mod picture;
 
 pub use slotmap::Key;
 
@@ -9,13 +10,23 @@ pub use crate::{
     Context, Transform,
     backend::Image,
     font::Align,
+    Point,
+    Winding,
+
+    Vector,
 };
 
-pub use self::path::Path;
-pub use self::paint::{
-    Paint, PaintingStyle, StrokeCap, StrokeJoin,
-    Gradient,
-    Color,
+pub use self::{
+    path::Path,
+    picture::Picture,
+    paint::{
+        Paint,
+        PaintingStyle,
+        StrokeCap,
+        StrokeJoin,
+        Gradient,
+        Color,
+    },
 };
 
 #[derive(Clone, Copy)]
@@ -23,7 +34,7 @@ pub struct TextStyle<'a> {
     pub font_size: f32,
     pub font_face: &'a [u8],
     pub font_blur: f32,
-    pub color: Color,
+    pub color: u32,
     pub text_align: Align,
 }
 
@@ -68,10 +79,22 @@ impl RRect {
         }
     }
     pub fn rect(&self) -> Rect {
-        Rect::new([self.left, self.top].into(), [self.right, self.bottom].into())
+        let origin = [self.left, self.top].into();
+        let size = [self.width(), self.height()].into();
+        Rect::new(origin, size)
     }
     pub fn width(&self) -> f32 { self.right - self.left }
     pub fn height(&self) -> f32 { self.bottom - self.top }
+
+    pub fn add(self, v: f32) -> Self {
+        Self {
+            left: self.left - v,
+            top: self.left - v,
+            bottom: self.left + v,
+            right: self.left + v,
+            .. self
+        }
+    }
 }
 
 pub struct Canvas<'a> {
@@ -91,23 +114,23 @@ fn gradient_to_paint(gradient: Gradient) -> crate::vg::Paint {
             crate::vg::Paint::linear_gradient(
                 from[0], from[1],
                 to[0], to[1],
-                inner_color,
-                outer_color,
+                Color::new(inner_color),
+                Color::new(outer_color),
             ),
         Gradient::Box { rect, radius, feather, inner_color, outer_color } =>
             crate::vg::Paint::box_gradient(
                 rect,
                 radius,
                 feather,
-                inner_color,
-                outer_color,
+                Color::new(inner_color),
+                Color::new(outer_color),
             ),
         Gradient::Radial { center, inr, outr, inner_color, outer_color } =>
             crate::vg::Paint::radial_gradient(
                 center[0], center[1],
                 inr, outr,
-                inner_color,
-                outer_color,
+                Color::new(inner_color),
+                Color::new(outer_color),
             ),
         Gradient::ImagePattern { center, size, angle, image, alpha } =>
             crate::vg::Paint::image_pattern(
@@ -147,7 +170,7 @@ impl<'a> Canvas<'a> {
     }
 
     fn fill_or_stroke(&mut self, paint: &Paint) {
-        // TODO: self.ctx.shape_anti_alias(paint.aa);
+        self.ctx.shape_anti_alias(paint.aa);
         match paint.style {
             PaintingStyle::Fill => {
                 self.sync_fill(paint);
@@ -266,19 +289,22 @@ impl<'a> Canvas<'a> {
 
     //drawAtlas(Image atlas, List<RSTransform> transforms, List<Rect> rects, List<Color> colors, BlendMode blendMode, Rect cullRect, Paint paint) -> void
 
-    /// Draws a circle centered at the point given by the first argument and that has the radius given by the second argument, with the Paint given in the third argument. Whether the circle is filled or stroked (or both) is controlled by Paint.style. 
+    /// Draws a circle centered at the point given by the first argument
+    /// and that has the radius given by the second argument, with the Paint given in the third argument.
+    /// Whether the circle is filled or stroked (or both) is controlled by Paint.style. 
     pub fn draw_circle(&mut self, c: Offset, radius: f32, paint: Paint) {
         self.ctx.begin_path();
         self.ctx.circle(c[0], c[1], radius);
         self.fill_or_stroke(&paint);
     }
 
-/*
+    /*
     /// Paints the given Color onto the canvas, applying the given BlendMode,
     /// with the given color being the source and the background being the destination. 
     pub fn draw_color(&mut self, color: Color, blend: BlendMode) -> void
 
-    /// Draws a shape consisting of the difference between two rounded rectangles with the given Paint. Whether this shape is filled or stroked (or both) is controlled by Paint.style. [...] 
+    /// Draws a shape consisting of the difference between two rounded rectangles with the given Paint.
+    /// Whether this shape is filled or stroked (or both) is controlled by Paint.style. [...] 
     pub fn draw_drrect(&mut self, RRect outer, RRect inner, Paint paint) -> void
 
     /// Draws the given Image into the canvas with its top-left corner at the given Offset.
@@ -286,9 +312,10 @@ impl<'a> Canvas<'a> {
     pub fn draw_image(&mut self, Image image, Offset p, Paint paint) -> void
 
     /// Draws the given Image into the canvas using the given Paint. [...] 
-    pub fn draw_ImageNine(&mut self, Image image, Rect center, Rect dst, Paint paint) -> void
-    /// Draws the subset of the given image described by the src argument into the canvas in the axis-aligned rectangle given by the dst argument. [...] 
-    pub fn draw_ImageRect(&mut self, Image image, Rect src, Rect dst, Paint paint) -> void
+    pub fn draw_image_nine(&mut self, Image image, Rect center, Rect dst, Paint paint) -> void
+    /// Draws the subset of the given image described by the src argument into the canvas
+    /// in the axis-aligned rectangle given by the dst argument. [...] 
+    pub fn draw_image_rect(&mut self, Image image, Rect src, Rect dst, Paint paint) -> void
     */
 
     /// Draws a line between the given points using the given paint.
@@ -302,6 +329,19 @@ impl<'a> Canvas<'a> {
         self.ctx.stroke();
     }
 
+    pub fn draw_lines(&mut self, points: &[Offset], paint: Paint) {
+        if points.len() < 2 { return }
+
+        self.sync_stroke(&paint);
+
+        self.ctx.begin_path();
+        self.ctx.move_to(points[0][0], points[0][1]);
+        for p in points.iter().skip(1) {
+            self.ctx.line_to(p[0], p[1]);
+        }
+        self.ctx.stroke();
+    }
+
     /// Draws an axis-aligned oval that fills the given axis-aligned rectangle with the given Paint.
     /// Whether the oval is filled or stroked (or both) is controlled by Paint.style. 
     pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
@@ -309,12 +349,13 @@ impl<'a> Canvas<'a> {
         self.ctx.ellipse(rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
         self.fill_or_stroke(&paint);
     }
-/*
+
+    /*
     /// Fills the canvas with the given Paint. [...] 
     pub fn draw_paint(&mut self, Paint paint) -> void
 
     /// Draws the text in the given Paragraph into this canvas at the given Offset. [...] 
-    pub fn draw_Paragraph(&mut self, Paragraph paragraph, Offset offset) -> void
+    pub fn draw_paragraph(&mut self, Paragraph paragraph, Offset offset) -> void
     */
 
     /// Draws the given Path with the given Paint.
@@ -338,16 +379,16 @@ impl<'a> Canvas<'a> {
     }
 
 
-/*
+    /*
     /// Draw the given picture onto the canvas. To create a picture, see PictureRecorder. 
-    pub fn draw_Picture(&mut self, Picture picture) -> void
+    pub fn draw_picture(&mut self, Picture picture) -> void
     /// Draws a sequence of points according to the given PointMode. [...] 
-    pub fn draw_Points(&mut self, PointMode pointMode, List<Offset> points, Paint paint) -> void
+    pub fn draw_points(&mut self, PointMode pointMode, List<Offset> points, Paint paint) -> void
 
-    pub fn draw_RawAtlas(&mut self, Image atlas, Float32List rstTransforms, Float32List rects, Int32List colors, BlendMode blendMode, Rect cullRect, Paint paint) -> void
+    pub fn draw_raw_atlas(&mut self, Image atlas, Float32List rstTransforms, Float32List rects, Int32List colors, BlendMode blendMode, Rect cullRect, Paint paint) -> void
 
     /// Draws a sequence of points according to the given PointMode. [...] 
-    pub fn draw_RawPoints(&mut self, PointMode pointMode, Float32List points, Paint paint) -> void
+    pub fn draw_raw_points(&mut self, PointMode pointMode, Float32List points, Paint paint) -> void
     */
 
     /// Draws a rectangle with the given Paint.
@@ -372,10 +413,10 @@ impl<'a> Canvas<'a> {
         self.fill_or_stroke(&paint);
     }
 
-/*
+    /*
     /// Draws a shadow for a Path representing the given material elevation. [...] 
-    pub fn draw_Shadow(&mut self, Path path, Color color, double elevation, bool transparentOccluder) -> void
+    pub fn draw_shadow(&mut self, Path path, Color color, double elevation, bool transparentOccluder) -> void
 
     pub fn draw_vertices(&mut self, Vertices vertices, BlendMode blendMode, Paint paint) -> void
-*/
+    */
 }

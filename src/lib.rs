@@ -5,7 +5,6 @@
 #![feature(extern_types)]
 
 //mod api;
-pub mod perf;
 mod vg;
 mod backend;
 mod font;
@@ -14,14 +13,9 @@ mod draw_api;
 mod context;
 mod images;
 
-mod picture;
-
+pub mod perf;
 pub mod canvas;
-
 pub use euclid;
-
-
-//mod wgpu;
 
 pub use crate::{
     cache::{Winding, LineJoin, LineCap},

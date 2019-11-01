@@ -1185,7 +1185,7 @@ pub unsafe fn stbtt_Rasterize(
         stash,
     );
     if !windings.is_null() {
-        stbtt__rasterize(
+        rasterize(
             result,
             windings,
             winding_lengths,
@@ -1370,7 +1370,7 @@ impl Points {
     }
 }
 
-unsafe fn stbtt__rasterize(
+unsafe fn rasterize(
     result: *mut Bitmap,
     pts: *mut Point,
     wcount: *mut i32,
@@ -1381,7 +1381,9 @@ unsafe fn stbtt__rasterize(
     invert: i32,
     stash: &mut Stash,
 ) {
-    let y_scale_inv: f32 = if 0 != invert { -scale[1] } else { scale[1] };
+    let invert = invert != 0;
+
+    let y_scale_inv: f32 = if invert { -scale[1] } else { scale[1] };
     let vsubsample = 1;
 
     let mut n = 0;
@@ -1389,47 +1391,49 @@ unsafe fn stbtt__rasterize(
         n += *wcount.offset(i as isize);
     }
 
-    let e: *mut Edge = stash.calloc((n + 1) as usize);
-    if e.is_null() {
+    let edge: *mut Edge = stash.calloc((n + 1) as usize);
+    if edge.is_null() {
         return;
     }
 
     let mut n = 0isize;
     let mut m = 0isize;
     for i in 0..windings as isize {
-        let p: *mut Point = pts.offset(m);
+        let point: *mut Point = pts.offset(m);
         m += *wcount.offset(i) as isize;
         let mut j = *wcount.offset(i) as isize - 1;
         for k in 0..*wcount.offset(i) as isize {
             let mut a = k;
             let mut b = j;
+            let (j_point, k_point) = (*point.offset(j), *point.offset(k));
             // skip the edge if horizontal
-            if !((*p.offset(j)).y == (*p.offset(k)).y) {
-                (*e.offset(n)).invert = 0;
-                if 0 != if 0 != invert {
-                    ((*p.offset(j)).y > (*p.offset(k)).y) as i32
-                } else {
-                    ((*p.offset(j)).y < (*p.offset(k)).y) as i32
-                } {
-                    (*e.offset(n)).invert = 1;
+            if j_point.y != k_point.y {
+                (*edge.offset(n)).invert = 0;
+
+                if invert && j_point.y > k_point.y || !invert && j_point.y < k_point.y {
+                    (*edge.offset(n)).invert = 1;
                     a = j;
                     b = k;
                 }
-                (*e.offset(n)).x0 =  (*p.offset(a)).x * scale[0] + shift[0];
-                (*e.offset(n)).y0 = ((*p.offset(a)).y * y_scale_inv + shift[1]) * vsubsample as f32;
-                (*e.offset(n)).x1 =  (*p.offset(b)).x * scale[0] + shift[0];
-                (*e.offset(n)).y1 = ((*p.offset(b)).y * y_scale_inv + shift[1]) * vsubsample as f32;
+                let a = *point.offset(a);
+                let b = *point.offset(b);
+
+                let edge = &mut *edge.offset(n);
+                edge.x0 =  a.x * scale[0] + shift[0];
+                edge.y0 = (a.y * y_scale_inv + shift[1]) * vsubsample as f32;
+                edge.x1 =  b.x * scale[0] + shift[0];
+                edge.y1 = (b.y * y_scale_inv + shift[1]) * vsubsample as f32;
                 n += 1
             }
             j = k; 
         }
     }
 
-    sort_edges(e, n as i32);
-    stbtt__rasterize_sorted_edges(result, e, n as i32, vsubsample, off[0], off[1], stash);
+    sort_edges(edge, n as i32);
+    rasterize_sorted_edges(result, edge, n as i32, vsubsample, off[0], off[1], stash);
 }
 // directly AA rasterize edges w/o supersampling
-unsafe fn stbtt__rasterize_sorted_edges(
+unsafe fn rasterize_sorted_edges(
     result: *mut Bitmap,
     mut edge: *mut Edge,
     len: i32,
@@ -1466,7 +1470,7 @@ unsafe fn stbtt__rasterize_sorted_edges(
             if (*z).ey <= scan_y_top {
                 *step = (*z).next;
                 assert!(0. != (*z).direction);
-                (*z).direction = 0 as f32;
+                (*z).direction = 0.0;
                 hh.free(z as *mut libc::c_void);
             } else {
                 step = &mut (**step).next
@@ -1484,7 +1488,7 @@ unsafe fn stbtt__rasterize_sorted_edges(
             edge = edge.offset(1)
         }
         if !active.is_null() {
-            stbtt__fill_active_edges_new(
+            fill_active_edges_new(
                 scanline,
                 scanline2.offset(1),
                 (*result).w,
@@ -1514,7 +1518,7 @@ unsafe fn stbtt__rasterize_sorted_edges(
 
     hh.cleanup();
 }
-unsafe fn stbtt__fill_active_edges_new(
+unsafe fn fill_active_edges_new(
     scanline: *mut f32,
     scanline_fill: *mut f32,
     len: i32,
@@ -1547,14 +1551,12 @@ unsafe fn stbtt__fill_active_edges_new(
             let mut x0_0: f32 = (*e).fx;
             let mut dx: f32 = (*e).fdx;
             let mut xb: f32 = x0_0 + dx;
-            let mut x_top;
-            let mut x_bottom;
-            let mut sy0;
-            let mut sy1;
             let mut dy: f32 = (*e).fdy;
 
             assert!((*e).sy <= y_bottom && (*e).ey >= y_top);
 
+            let mut x_top;
+            let mut sy0;
             if (*e).sy > y_top {
                 x_top = x0_0 + dx * ((*e).sy - y_top);
                 sy0 = (*e).sy
@@ -1562,6 +1564,9 @@ unsafe fn stbtt__fill_active_edges_new(
                 x_top = x0_0;
                 sy0 = y_top
             }
+
+            let mut x_bottom;
+            let mut sy1;
             if (*e).ey < y_bottom {
                 x_bottom = x0_0 + dx * ((*e).ey - y_top);
                 sy1 = (*e).ey
@@ -1570,11 +1575,7 @@ unsafe fn stbtt__fill_active_edges_new(
                 sy1 = y_bottom
             }
 
-            if x_top >= 0 as f32
-                && x_bottom >= 0 as f32
-                && x_top < len as f32
-                && x_bottom < len as f32
-            {
+            if x_top >= 0.0 && x_bottom >= 0.0 && x_top < len as f32 && x_bottom < len as f32 {
                 if x_top as i32 == x_bottom as i32 {
                     let x: i32 = x_top as i32;
                     let height = sy1 - sy0;
@@ -1663,10 +1664,8 @@ unsafe fn handle_clipped_edge(
     scanline: *mut f32,
     x: i32,
     e: *mut ActiveEdge,
-    mut x0: f32,
-    mut y0: f32,
-    mut x1: f32,
-    mut y1: f32,
+    mut x0: f32, mut y0: f32,
+    mut x1: f32, mut y1: f32,
 ) {
     if y0 == y1 {
         return;
@@ -1835,7 +1834,7 @@ impl Font {
 
 
 impl Stash {
-    pub fn text_bounds(&mut self, mut x: f32, mut y: f32, mut str: *const u8, mut end: *const u8) -> (f32, [f32; 4]) {
+    pub fn text_bounds(&mut self, mut x: f32, mut y: f32, mut str: *const u8, end: *const u8) -> (f32, [f32; 4]) {
         assert!(!end.is_null());
         unsafe {
             let state: *mut State = self.state_mut();
@@ -1884,19 +1883,11 @@ impl Stash {
                             &mut q,
                         );
 
-                        if q.x0 < minx {
-                            minx = q.x0
-                        }
-                        if q.x1 > maxx {
-                            maxx = q.x1
-                        }
+                        minx = minx.min(q.x0);
+                        maxx = maxx.max(q.x1);
 
-                        if q.y0 < miny {
-                            miny = q.y0
-                        }
-                        if q.y1 > maxy {
-                            maxy = q.y1
-                        }
+                        miny = miny.min(q.y0);
+                        maxy = maxy.max(q.y1);
                     }
                     prevGlyphIndex = if !glyph.is_null() { (*glyph).index } else { -1 }
                 }
@@ -1966,7 +1957,7 @@ pub unsafe fn fonsTextIterInit(
     mut x: f32,
     mut y: f32,
     str: *const u8,
-    mut end: *const u8,
+    end: *const u8,
     bitmapOption: i32,
 ) -> i32 {
     assert!(!end.is_null());

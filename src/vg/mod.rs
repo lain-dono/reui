@@ -1,4 +1,3 @@
-mod composite;
 mod paint;
 mod color;
 mod state;
@@ -6,7 +5,6 @@ mod state;
 pub mod utils;
 
 pub use self::{
-    composite::{CompositeState, CompositeOp, BlendFactor},
     paint::Paint,
     color::Color,
     state::State,

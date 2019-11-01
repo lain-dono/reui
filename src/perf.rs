@@ -2,7 +2,6 @@ use std::fmt::Write;
 
 use arrayvec::ArrayString;
 
-use crate::vg::*;
 use crate::{context::Context, font::Align, rect};
 
 pub enum GraphStyle {
@@ -81,7 +80,7 @@ impl PerfGraph {
 
         vg.begin_path();
         vg.rect(rect(x,y, width,height));
-        vg.fill_color(Color::new(0x80_000000));
+        vg.fill_color(0x80_000000);
         vg.fill();
 
         vg.begin_path();
@@ -109,21 +108,21 @@ impl PerfGraph {
         }
 
         vg.line_to(x+width, y+height);
-        vg.fill_color(Color::new(0x80_FFC000));
+        vg.fill_color(0x80_FFC000);
         vg.fill();
 
         vg.font_face(b"sans\0");
 
         vg.font_size(14.0);
         vg.text_align(Align::LEFT|Align::TOP);
-        vg.fill_color(Color::new(0xC0_F0F0F0));
+        vg.fill_color(0xC0_F0F0F0);
         vg.text(x+3.0,y+1.0, &self.name);
 
         let mut s = ArrayString::<[_; 16]>::new();
 
         vg.font_size(18.0);
         vg.text_align(Align::RIGHT|Align::TOP);
-        vg.fill_color(Color::new(0xFF_F0F0F0));
+        vg.fill_color(0xFF_F0F0F0);
         match self.style {
             GraphStyle::Fps => {
                 let _ = s.write_fmt(format_args!("{:.2} FPS", 1.0 / avg));
@@ -133,7 +132,7 @@ impl PerfGraph {
 
                 vg.font_size(15.0);
                 vg.text_align(Align::RIGHT|Align::BOTTOM);
-                vg.fill_color(Color::new(0xA0_F0F0F0));
+                vg.fill_color(0xA0_F0F0F0);
                 let _ = s.write_fmt(format_args!("{:.2} ms", avg * 1000.0));
                 vg.text(x+width-3.0,y+height-1.0, &s);
             },

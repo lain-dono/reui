@@ -1,5 +1,5 @@
 use super::gl::{self, types::{GLenum, GLuint}};
-use crate::vg::{CompositeState, BlendFactor};
+//use crate::vg::{CompositeState, BlendFactor};
 
 pub fn gl_draw_strip(offset: usize, count: usize) {
     unsafe {
@@ -81,6 +81,7 @@ impl Blend {
     }
 }
 
+/*
 fn blend_factor(factor: BlendFactor) -> GLenum {
     match factor {
         BlendFactor::Zero               => gl::ZERO,
@@ -107,6 +108,7 @@ impl From<CompositeState> for Blend {
         }
     }
 }
+*/
 
 /*
 impl Default for Blend {

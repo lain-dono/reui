@@ -179,5 +179,6 @@ void main(void) {
         color *= scissor;
         result = color * innerCol;
     }
+
     gl_FragColor = result;
 }\0";

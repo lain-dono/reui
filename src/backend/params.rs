@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     cache::{Path, Vertex},
-    vg::{Scissor, Paint, CompositeState},
+    vg::{Scissor, Paint},
     Transform,
 };
 
@@ -627,7 +627,7 @@ impl BackendGL {
 
     pub fn draw_stroke(
         &mut self, paint: &Paint,
-        op: CompositeState , scissor: &Scissor, fringe: f32,
+        scissor: &Scissor, fringe: f32,
         stroke_width: f32, paths: &[Path],
     ) {
         let path_offset = self.alloc_paths(paths.len());

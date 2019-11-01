@@ -46,25 +46,6 @@ pub fn pt_eq(x1: f32, y1: f32, x2: f32, y2: f32, tol: f32) -> bool {
     */
 }
 
-pub fn dist_pt_seg(x: f32, y: f32, px: f32, py: f32, qx: f32, qy: f32) -> f32 {
-    let pqx = qx-px;
-    let pqy = qy-py;
-    let dx = x-px;
-    let dy = y-py;
-    let d = pqx*pqx + pqy*pqy;
-
-    let mut t = pqx*dx + pqy*dy;
-    if d > 0.0 { t /= d }
-    let t = if t < 0.0 {
-        0.0
-    } else if t > 1.0 {
-        1.0
-    } else { t };
-
-    let dx = px + t*pqx - x;
-    let dy = py + t*pqy - y;
-    dx*dx + dy*dy
-}
 
 pub fn average_scale(t: &Transform) -> f32 {
     let sx = (t.m11*t.m11 + t.m12*t.m12).sqrt();
@@ -77,8 +58,4 @@ pub const fn pack_uv(u: f32, v: f32) -> [u16; 2] {
     let u = (u * 65535.0) as u16;
     let v = (v * 65535.0) as u16;
     [u, v]
-}
-
-pub fn _xfloor(f: f32) -> f32 {
-    f - (f % 1.0)
 }

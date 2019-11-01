@@ -4,10 +4,12 @@ use smallvec::{SmallVec, Array};
 
 use crate::{
     cache::Winding,
-    draw_api::{MOVETO, LINETO, BEZIERTO, CLOSE, WINDING},
 };
 
-use super::{Rect, RRect, Offset};
+use super::{
+    Rect, RRect, Offset,
+    picture::{MOVETO, LINETO, BEZIERTO, CLOSE, WINDING},
+};
 
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.
 const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
@@ -35,24 +37,6 @@ impl<A: Array<Item = f32>> std::ops::DerefMut for Path<A> {
         &mut self.commands[..]
     }
 }
-
-/*
-    pub fn close_path(&mut self) {
-        self.append_commands(&mut [ CLOSE as f32 ]);
-    }
-
-    pub fn path_winding(&mut self, dir: Winding) {
-        self.append_commands(&mut [ WINDING as f32, dir as i32 as f32 ]);
-    }
-
-    pub fn move_to(&mut self, x: f32, y: f32) {
-    }
-
-    pub fn line_to(&mut self, x: f32, y: f32) {
-        self.append_commands(&mut [ LINETO as f32, x, y ]);
-    }
-*/
-
 
 impl<A: Array<Item = f32>> Path<A> {
     pub fn new() -> Self {
@@ -167,7 +151,7 @@ impl<A: Array<Item = f32>> Path<A> {
         }
     }
 
-/*
+    /*
     /// If the forceMoveTo argument is false, adds a straight line segment and an arc segment. [...] 
     pub fn arc_to(Rect rect, double startAngle, double sweepAngle, bool forceMoveTo) -> void
     /// Appends up to four conic curves weighted to describe an oval of radius and rotated by rotation. [...] 
@@ -206,7 +190,6 @@ impl<A: Array<Item = f32>> Path<A> {
     pub fn relative_line_to(&mut self, dx: f32, dy: f32) {
         self.line_to(self.current[0] + dx, self.current[1] + dy);
     }
-
 
     /*
     /// Adds a quadratic bezier segment that curves from the current point to the given point (x2,y2), using the control point (x1,y1). 
