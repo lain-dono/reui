@@ -136,12 +136,10 @@ float sdroundrect(vec2 pt, vec2 ext, float rad) {
     return min(max(d.x,d.y),0.0) + length(max(d,0.0)) - rad;
 }
 
-vec2 applyTransform(vec4 transform, vec2 p) {
-    float scos = transform.x;
-    float ssin = transform.y;
-    return transform.zw + vec2(
-        p.x * scos - p.y * ssin,
-        p.y * scos + p.x * ssin);
+vec2 applyTransform(vec4 transform, vec2 pt) {
+    float re = transform.x;
+    float im = transform.y;
+    return transform.zw + vec2(pt.x * re - pt.y * im, pt.x * im + pt.y * re);
 }
 
 // Scissoring
