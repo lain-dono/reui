@@ -5,8 +5,7 @@ use crate::{
     cache::{PathCache, LineCap, LineJoin},
     vg::*,
     font::*,
-    Point,
-    Transform,
+    math::{Point, Transform},
     canvas::Picture,
 };
 
@@ -119,11 +118,13 @@ impl Context {
         let state = self.states.last_mut();
         state.stroke = paint;
         state.stroke.xform = state.stroke.xform.post_transform(&state.xform);
+        //state.stroke.xform = state.stroke.xform.append(&state.xform);
     }
     pub fn fill_paint(&mut self, paint: Paint) {
         let state = self.states.last_mut();
         state.fill = paint;
         state.fill.xform = state.fill.xform.post_transform(&state.xform);
+        //state.fill.xform = state.fill.xform.append(&state.xform);
     }
 
     pub fn font_size(&mut self, size: f32) {

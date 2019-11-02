@@ -7,7 +7,7 @@ use std::{
 use crate::{
     cache::{Path, Vertex},
     vg::{Scissor, Paint},
-    Transform,
+    math::Transform,
 };
 
 use super::{Image, ImageFlags, TEXTURE_RGBA};

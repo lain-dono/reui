@@ -25,7 +25,7 @@ use crate::{
         average_scale,
         str_start_end,
     },
-    transform_point,
+    math::transform_point,
 };
 
 use std::{

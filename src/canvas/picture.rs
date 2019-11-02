@@ -1,10 +1,12 @@
-use euclid::approxeq::ApproxEq;
 use crate::{
-    Transform,
-    Point, Vector,
-    point2, size2, vec2,
-    Rect,
-    transform_pt,
+    math::{
+        Transform,
+        Point, Vector,
+        point2, size2, vec2,
+        Rect,
+        transform_pt,
+        ApproxEq,
+    },
     cache::Winding,
 };
 
@@ -115,26 +117,26 @@ impl Picture {
     pub fn rrect_varying(
         &mut self,
         rect: Rect,
-        top_left: f32,
-        top_right: f32,
-        bottom_right: f32,
-        bottom_left: f32,
+        tl: f32,
+        tr: f32,
+        br: f32,
+        bl: f32,
     ) {
         let (x, y, w, h) = (rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
-        if top_left < 0.1 && top_right < 0.1 && bottom_right < 0.1 && bottom_left < 0.1 {
+        if tl < 0.1 && tr < 0.1 && br < 0.1 && bl < 0.1 {
             self.rect(Rect { origin: point2(x, y), size: size2(w, h) });
         } else {
             let halfw = w.abs()*0.5;
             let halfh = h.abs()*0.5;
             let sign = if w < 0.0 { -1.0 } else { 1.0 };
-            let rx_bl = sign * halfw.min(bottom_left );
-            let ry_bl = sign * halfh.min(bottom_left );
-            let rx_br = sign * halfw.min(bottom_right);
-            let ry_br = sign * halfh.min(bottom_right);
-            let rx_tr = sign * halfw.min(top_right   );
-            let ry_tr = sign * halfh.min(top_right   );
-            let rx_tl = sign * halfw.min(top_left    );
-            let ry_tl = sign * halfh.min(top_left    );
+            let rx_bl = sign * halfw.min(bl);
+            let ry_bl = sign * halfh.min(bl);
+            let rx_br = sign * halfw.min(br);
+            let ry_br = sign * halfh.min(br);
+            let rx_tr = sign * halfw.min(tr);
+            let ry_tr = sign * halfh.min(tr);
+            let rx_tl = sign * halfw.min(tl);
+            let ry_tl = sign * halfh.min(tl);
             let kappa = 1.0 - KAPPA90;
             self.append_commands(&mut [
                 MOVETO as f32, x, y + ry_tl,

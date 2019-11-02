@@ -2,8 +2,7 @@ use crate::{
     context::Context,
     cache::{Winding, LineJoin},
     vg::utils::average_scale,
-    Rect,
-    point2,
+    math::{Transform, Rect, point2},
 };
 
 pub struct Stroke {
@@ -78,16 +77,9 @@ impl Context {
         self.picture.rrect_varying(rect, radius, radius, radius, radius);
     }
 
-    pub fn rrect_varying(
-        &mut self,
-        rect: Rect,
-        top_left: f32,
-        top_right: f32,
-        bottom_right: f32,
-        bottom_left: f32,
-    ) {
+    pub fn rrect_varying(&mut self, rect: Rect, tl: f32, tr: f32, br: f32, bl: f32) {
         self.picture.xform = self.states.last().xform;
-        self.picture.rrect_varying(rect, top_left, top_right, bottom_right, bottom_left);
+        self.picture.rrect_varying(rect, tl, tr, br, bl);
     }
 
     pub fn ellipse(&mut self, cx: f32, cy: f32, rx: f32, ry: f32) {
@@ -143,7 +135,7 @@ impl Context {
 
     pub fn run_stroke(
         &mut self,
-        xform: crate::Transform,
+        xform: Transform,
         alpha: f32,
         stroke: &Stroke,
     ) {

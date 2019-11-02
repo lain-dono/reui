@@ -36,7 +36,6 @@ pub enum Gradient {
     ImagePattern {
         center: [f32; 2],
         size: [f32; 2],
-        angle: f32,
         image: Image,
         alpha: f32,
     },
@@ -132,7 +131,7 @@ impl Paint {
     pub fn radial_gradient(center: [f32; 2], inr: f32, outr: f32, inner_color: u32, outer_color: u32) -> Self {
         Self::gradient(Gradient::Radial { center, inr, outr, inner_color, outer_color })
     }
-    pub fn image_pattern(center: [f32; 2], size: [f32; 2], angle: f32, image: Image, alpha: f32) -> Self {
-        Self::gradient(Gradient::ImagePattern { center, size, angle, image, alpha })
+    pub fn image_pattern(center: [f32; 2], size: [f32; 2], image: Image, alpha: f32) -> Self {
+        Self::gradient(Gradient::ImagePattern { center, size, image, alpha })
     }
 }

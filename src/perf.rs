@@ -1,8 +1,6 @@
 use std::fmt::Write;
-
 use arrayvec::ArrayString;
-
-use crate::{context::Context, font::Align, rect};
+use crate::{context::Context, font::Align, math::rect};
 
 pub enum GraphStyle {
     Fps = 0,

@@ -10,7 +10,7 @@ pub use self::{
     state::State,
 };
 
-use crate::{context::Context, Rect, Transform};
+use crate::{context::Context, math::{Rect, Transform}};
 
 #[derive(Clone, Copy)]
 pub struct Scissor {

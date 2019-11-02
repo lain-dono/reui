@@ -596,12 +596,8 @@ pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) 
             draw_spinner(ctx, tx+thumb/2.0,ty+thumb/2.0, thumb*0.25, time);
         }
 
-        ctx.draw_rrect(RRect::new([tx,ty], [thumb,thumb], 5.0), Paint::gradient(Gradient::ImagePattern {
-            center: [tx+ix, ty+iy],
-            size: [iw,ih],
-            angle: 0.0/180.0*PI, image,
-            alpha: a,
-        }));
+        let paint = Paint::image_pattern([tx+ix, ty+iy], [iw,ih], image, a);
+        ctx.draw_rrect(RRect::new([tx,ty], [thumb,thumb], 5.0), paint);
 
         path.clear();
         path.add_rect(rect(tx-5.0,ty-5.0, thumb+10.0,thumb+10.0));

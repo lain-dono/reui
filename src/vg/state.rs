@@ -2,7 +2,7 @@ use crate::{
     cache::{LineCap, LineJoin},
     vg::*,
     font::Align,
-    rect, Rect, Transform,
+    math::{rect, Rect, Transform},
 };
 
 #[derive(Clone)]

@@ -112,8 +112,12 @@ uniform sampler2D tex;
 varying vec2 ftcoord;
 varying vec2 fpos;
 
-#define scissorMat mat3(frag[0].xyz, frag[1].xyz, frag[2].xyz)
-#define paintMat mat3(frag[3].xyz, frag[4].xyz, frag[5].xyz)
+//#define scissorMat mat3(frag[0].xyz, frag[1].xyz, frag[2].xyz)
+//#define paintMat mat3(frag[3].xyz, frag[4].xyz, frag[5].xyz)
+
+#define scissorTransform vec4(frag[0].x, frag[0].y, frag[2].x, frag[2].y)
+#define paintTransform vec4(frag[3].x, frag[3].y, frag[5].x, frag[5].y)
+
 #define innerCol frag[6]
 #define outerCol frag[7]
 #define scissorExt frag[8].xy
@@ -132,9 +136,18 @@ float sdroundrect(vec2 pt, vec2 ext, float rad) {
     return min(max(d.x,d.y),0.0) + length(max(d,0.0)) - rad;
 }
 
+vec2 applyTransform(vec4 transform, vec2 p) {
+    float scos = transform.x;
+    float ssin = transform.y;
+    return transform.zw + vec2(
+        p.x * scos - p.y * ssin,
+        p.y * scos + p.x * ssin);
+}
+
 // Scissoring
 float scissorMask(vec2 p) {
-    vec2 sc = (abs((scissorMat * vec3(p,1.0)).xy) - scissorExt);
+    //vec2 sc = (abs((scissorMat * vec3(p,1.0)).xy) - scissorExt);
+    vec2 sc = (abs(applyTransform(scissorTransform, p)) - scissorExt);
     sc = vec2(0.5,0.5) - sc * scissorScale;
     return clamp(sc.x,0.0,1.0) * clamp(sc.y,0.0,1.0);
 }
@@ -153,7 +166,7 @@ void main(void) {
 
     if (type == 0) {            // Gradient
         // Calculate gradient color using box gradient
-        vec2 pt = (paintMat * vec3(fpos,1.0)).xy;
+        vec2 pt = applyTransform(paintTransform, fpos);
         float d = clamp((sdroundrect(pt, extent, radius) + feather*0.5) / feather, 0.0, 1.0);
         vec4 color = mix(innerCol,outerCol,d);
         // Combine alpha
@@ -161,7 +174,7 @@ void main(void) {
         result = color;
     } else if (type == 1) {        // Image
         // Calculate color fron texture
-        vec2 pt = (paintMat * vec3(fpos,1.0)).xy / extent;
+        vec2 pt = applyTransform(paintTransform, fpos) / extent;
         vec4 color = texture2D(tex, pt);
         if (texType == 1) color = vec4(color.xyz*color.w,color.w);
         if (texType == 2) color = vec4(color.x);
@@ -174,7 +187,7 @@ void main(void) {
         result = vec4(1,1,1,1);
     } else if (type == 3) {        // Textured tris
         vec4 color = texture2D(tex, ftcoord);
-        if (texType == 1) color = vec4(color.xyz*color.w,color.w);
+        if (texType == 1) color = vec4(color.xyz*color.w, color.w);
         if (texType == 2) color = vec4(color.x);
         color *= scissor;
         result = color * innerCol;

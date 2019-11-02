@@ -1,6 +1,4 @@
-use euclid::approxeq::ApproxEq;
-
-use crate::{Transform, Vector, Point};
+use crate::math::{Transform, Vector, Point, ApproxEq};
 
 pub fn slice_start_end(b: &[u8]) -> (*const u8, *const u8) {
     unsafe {

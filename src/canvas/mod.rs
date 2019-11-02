@@ -5,15 +5,17 @@ mod picture;
 pub use slotmap::Key;
 
 pub use crate::{
-    Rect,
-    rect,
-    Context, Transform,
+    Context,
     backend::Image,
     font::Align,
-    Point,
     Winding,
-
-    Vector,
+    math::{
+        Vector,
+        Point,
+        Transform,
+        Rect,
+        rect,
+    },
 };
 
 pub use self::{
@@ -52,16 +54,24 @@ pub type Size = [f32; 2];
 pub type Radius = f32; // TODO: [f32; 2]
 
 #[derive(Clone, Copy, Default)]
+pub struct Corners {
+    pub tl: f32,
+    pub tr: f32,
+    pub br: f32,
+    pub bl: f32,
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct RRect {
     pub left: f32,
     pub top: f32,
     pub right: f32,
     pub bottom: f32,
 
-    pub top_left: Radius,
-    pub top_right: Radius,
-    pub bottom_right: Radius,
-    pub bottom_left: Radius,
+    pub tl_radius: Radius,
+    pub tr_radius: Radius,
+    pub br_radius: Radius,
+    pub bl_radius: Radius,
 }
 
 impl RRect {
@@ -72,17 +82,19 @@ impl RRect {
             right: o[0] + s[0],
             bottom: o[1] + s[1],
 
-            top_right: radius,
-            top_left: radius,
-            bottom_right: radius,
-            bottom_left: radius,
+            tr_radius: radius,
+            tl_radius: radius,
+            br_radius: radius,
+            bl_radius: radius,
         }
     }
+
     pub fn rect(&self) -> Rect {
         let origin = [self.left, self.top].into();
         let size = [self.width(), self.height()].into();
         Rect::new(origin, size)
     }
+
     pub fn width(&self) -> f32 { self.right - self.left }
     pub fn height(&self) -> f32 { self.bottom - self.top }
 
@@ -132,11 +144,11 @@ fn gradient_to_paint(gradient: Gradient) -> crate::vg::Paint {
                 Color::new(inner_color),
                 Color::new(outer_color),
             ),
-        Gradient::ImagePattern { center, size, angle, image, alpha } =>
+        Gradient::ImagePattern { center, size, image, alpha } =>
             crate::vg::Paint::image_pattern(
                 center[0], center[1],
                 size[0], size[1],
-                angle, image, alpha,
+                image, alpha,
             ),
     }
 }
@@ -404,11 +416,11 @@ impl<'a> Canvas<'a> {
     pub fn draw_rrect(&mut self, rrect: RRect, paint: Paint) {
         self.ctx.begin_path();
         self.ctx.rrect_varying(
-            euclid::rect(rrect.left, rrect.top, rrect.width(), rrect.height()),
-            rrect.top_left,
-            rrect.top_right,
-            rrect.bottom_right,
-            rrect.bottom_left,
+            rect(rrect.left, rrect.top, rrect.width(), rrect.height()),
+            rrect.tl_radius,
+            rrect.tr_radius,
+            rrect.br_radius,
+            rrect.bl_radius,
         );
         self.fill_or_stroke(&paint);
     }

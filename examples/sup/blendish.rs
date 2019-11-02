@@ -1,4 +1,4 @@
-use oni2d::canvas::*;
+use oni2d::{canvas::*, math::*};
 
 const HOVER_SHADE: i32 = 15;
 
@@ -11,6 +11,15 @@ pub enum State {
     Normal,
     Hovered,
     Active,
+}
+
+pub enum Gropped {
+    None,
+    StartVertical,
+    StartHorizontal,
+    Middle,
+    EndVertical,
+    EndHorizontal,
 }
 
 pub struct WidgetTheme {
@@ -70,23 +79,23 @@ pub fn run(ctx: &mut Canvas, bounds: Rect) {
         euclid::Size2D::new(160.0, 18.0),
     );
 
-    draw_num(ctx, num, &num_theme, State::Normal, "1234");
-    num.origin += Vector::new(0.0, 20.0);
-    draw_num(ctx, num, &num_theme, State::Hovered, "1234");
-    num.origin += Vector::new(0.0, 20.0);
-    draw_num(ctx, num, &num_theme, State::Active, "1234");
-    num.origin += Vector::new(0.0, 20.0);
-    num.origin += Vector::new(0.0, 20.0);
+    draw_num(ctx, num, &num_theme, State::Normal, Gropped::StartVertical, "Normal");
+    num.origin += Vector::new(0.0, 18.5);
+    draw_num(ctx, num, &num_theme, State::Hovered, Gropped::Middle, "Hovered");
+    num.origin += Vector::new(0.0, 18.5);
+    draw_num(ctx, num, &num_theme, State::Active, Gropped::EndVertical, "Active");
+
+    num.origin += Vector::new(0.0, 40.0);
 
     let mut opt = Rect::new(
         num.origin,
         euclid::Size2D::new(13.0, 13.0),
     );
-    draw_opt(ctx, opt, &opt_theme, State::Normal);
+    draw_option(ctx, opt, &opt_theme, State::Normal, "Normal");
     opt.origin += Vector::new(0.0, 20.0);
-    draw_opt(ctx, opt, &opt_theme, State::Hovered);
+    draw_option(ctx, opt, &opt_theme, State::Hovered, "Hovered");
     opt.origin += Vector::new(0.0, 20.0);
-    draw_opt(ctx, opt, &opt_theme, State::Active);
+    draw_option(ctx, opt, &opt_theme, State::Active, "Hovered");
     opt.origin += Vector::new(0.0, 20.0);
 }
 
@@ -106,11 +115,12 @@ pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {
     ctx.draw_rrect(left_scroll.add(1.0), Paint::stroke(0xFF_424242));
 }
 
-pub fn draw_opt(
+pub fn draw_option(
     ctx: &mut Canvas,
     bounds: Rect,
     theme: &WidgetTheme,
     state: State,
+    label: &str,
 ) {
     let bg = match state {
         State::Normal => theme.background,
@@ -119,9 +129,9 @@ pub fn draw_opt(
     };
     let rrect = RRect::new(bounds.origin.into(), bounds.size.into(), theme.radius);
     ctx.draw_rrect(rrect, Paint::fill(bg));
-    let a = oni2d::vec2(2.5, 6.0);
-    let b = oni2d::vec2(5.5, 9.0);
-    let c = oni2d::vec2(10.5, 3.5);
+    let a = vec2(2.5, 6.0);
+    let b = vec2(5.5, 9.0);
+    let c = vec2(10.5, 3.5);
 
     if state == State::Active {
         ctx.draw_lines(&[
@@ -132,6 +142,10 @@ pub fn draw_opt(
     }
 
     ctx.draw_rrect(rrect.add(1.0), Paint::stroke(theme.outline).stroke_width(0.5));
+
+    let p = point2(bounds.origin.x + bounds.size.width * 1.375, bounds.origin.y + bounds.size.height / 2.0);
+
+    text_with_shadow(ctx, p, theme.color, Align::LEFT|Align::MIDDLE, label);
 }
 
 pub fn draw_num(
@@ -139,6 +153,7 @@ pub fn draw_num(
     bounds: Rect,
     theme: &WidgetTheme,
     state: State,
+    gropped: Gropped,
     text: &str,
 ) {
     let bg = match state {
@@ -147,37 +162,46 @@ pub fn draw_num(
         State::Active => theme.active,
     };
 
-    let text_style = TextStyle {
-        font_size: 14.0,
-        font_face: b"sans\0",
-        font_blur: 0.0,
-        color: theme.color,
-        text_align: Align::CENTER|Align::MIDDLE,
-    };
-
-    let text_style_back = TextStyle {
-        font_size: 14.0,
-        font_face: b"sans\0",
-        font_blur: 1.0,
-        color: 0xFF_000000,
-        text_align: Align::CENTER|Align::MIDDLE,
-    };
-
-    let rrect = RRect::new(bounds.origin.into(), bounds.size.into(), theme.radius);
+    let mut rrect = RRect::new(bounds.origin.into(), bounds.size.into(), theme.radius);
+    match gropped {
+        Gropped::None => (),
+        Gropped::StartVertical => {
+            rrect.bl_radius = 0.0;
+            rrect.br_radius = 0.0;
+        },
+        Gropped::StartHorizontal => {
+            rrect.br_radius = 0.0;
+            rrect.tr_radius = 0.0;
+        },
+        Gropped::Middle => {
+            rrect.bl_radius = 0.0;
+            rrect.br_radius = 0.0;
+            rrect.tl_radius = 0.0;
+            rrect.tr_radius = 0.0;
+        },
+        Gropped::EndVertical => {
+            rrect.tl_radius = 0.0;
+            rrect.tr_radius = 0.0;
+        },
+        Gropped::EndHorizontal => {
+            rrect.tl_radius = 0.0;
+            rrect.bl_radius = 0.0;
+        },
+    }
     ctx.draw_rrect(rrect, Paint::fill(bg));
 
     if state == State::Hovered {
         let arr = 13.0;
         let left = RRect {
             right: rrect.left + arr,
-            top_right: 0.0,
-            bottom_right: 0.0,
+            tr_radius: 0.0,
+            br_radius: 0.0,
             .. rrect
         };
         let right = RRect {
             left: rrect.right - arr,
-            top_left: 0.0,
-            bottom_left: 0.0,
+            tl_radius: 0.0,
+            bl_radius: 0.0,
             .. rrect
         };
 
@@ -189,8 +213,6 @@ pub fn draw_num(
         let right = right.rect().center();
 
         let paint = Paint::fill(0xFF_E6E6E6).stroke_width(1.0);
-
-        use euclid::vec2;
 
         let cc = vec2(1.5, 0.0);
         let aa = vec2(1.5, -3.0);
@@ -210,6 +232,32 @@ pub fn draw_num(
 
     ctx.draw_rrect(rrect.add(1.0), Paint::stroke(theme.outline).stroke_width(0.5));
 
-    ctx.text(bounds.center().into(), text, text_style_back);
-    ctx.text(bounds.center().into(), text, text_style);
+    text_with_shadow( ctx, bounds.center(), theme.color, Align::CENTER|Align::MIDDLE, text);
+}
+
+fn text_with_shadow(
+    ctx: &mut Canvas,
+    position: Point,
+    color: u32,
+    text_align: Align,
+    text: &str,
+) {
+    let text_style = TextStyle {
+        font_size: 14.0,
+        font_face: b"sans\0",
+        font_blur: 0.0,
+        color,
+        text_align,
+    };
+
+    let text_style_back = TextStyle {
+        font_size: 14.0,
+        font_face: b"sans\0",
+        font_blur: 1.0,
+        color: 0xFF_000000,
+        text_align,
+    };
+
+    ctx.text((position + vec2(0.0, 0.5)).into(), text, text_style_back);
+    ctx.text(position.into(), text, text_style);
 }

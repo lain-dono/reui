@@ -4,15 +4,13 @@ use std::{
     f32::consts::PI,
     slice::from_raw_parts_mut,
 };
-
-use euclid::vec2;
-
-use crate::Vector;
-
-use crate::vg::utils::{
-    normalize,
-    pt_eq,
-    vec_mul,
+use crate::{
+    math::{Vector, vec2},
+    vg::utils::{
+        normalize,
+        pt_eq,
+        vec_mul,
+    },
 };
 
 const INIT_POINTS_SIZE: usize = 128;

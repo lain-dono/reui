@@ -117,20 +117,20 @@ impl<A: Array<Item = f32>> Path<A> {
     /// Adds a new sub-path that consists of the straight lines and curves needed to form the rounded rectangle described by the argument. 
     pub fn add_rrect(&mut self, rr: RRect) {
         let (x, y, w, h) = (rr.left, rr.top, rr.width(), rr.height());
-        if rr.top_left < 0.1 && rr.top_right < 0.1 && rr.bottom_right < 0.1 && rr.bottom_left < 0.1 {
+        if rr.tl_radius < 0.1 && rr.tr_radius < 0.1 && rr.br_radius < 0.1 && rr.bl_radius < 0.1 {
             self.add_rect(Rect::new([x, y].into(), [w, h].into()));
         } else {
             let halfw = w.abs()*0.5;
             let halfh = h.abs()*0.5;
             let sign = if w < 0.0 { -1.0 } else { 1.0 };
-            let rx_bl = sign * halfw.min(rr.bottom_left );
-            let ry_bl = sign * halfh.min(rr.bottom_left );
-            let rx_br = sign * halfw.min(rr.bottom_right);
-            let ry_br = sign * halfh.min(rr.bottom_right);
-            let rx_tr = sign * halfw.min(rr.top_right   );
-            let ry_tr = sign * halfh.min(rr.top_right   );
-            let rx_tl = sign * halfw.min(rr.top_left    );
-            let ry_tl = sign * halfh.min(rr.top_left    );
+            let rx_bl = sign * halfw.min(rr.bl_radius);
+            let ry_bl = sign * halfh.min(rr.bl_radius);
+            let rx_br = sign * halfw.min(rr.br_radius);
+            let ry_br = sign * halfh.min(rr.br_radius);
+            let rx_tr = sign * halfw.min(rr.tr_radius);
+            let ry_tr = sign * halfh.min(rr.tr_radius);
+            let rx_tl = sign * halfw.min(rr.tl_radius);
+            let ry_tl = sign * halfh.min(rr.tl_radius);
             let kappa = 1.0 - KAPPA90;
             self.commands.extend_from_slice(&[
                 MOVETO as f32, x, y + ry_tl,

@@ -195,9 +195,11 @@ use oni2d::{
 
     utils::slice_start_end,
 
-    rect, Rect,
-    size2, Size,
-    point2, Point,
+    math::{
+        rect, Rect,
+        size2, Size,
+        point2, Point,
+    },
 };
 
 /*
@@ -224,7 +226,7 @@ impl DemoData {
         
         for (i, image) in images.iter_mut().enumerate() {
             let file = format!("assets/images/image{}.jpg", i+1);
-            let m = vg.create_image(&file, ImageFlags::empty());
+            let m = vg.create_image(&file, ImageFlags::REPEATX | ImageFlags::REPEATY);
             assert!(!m.is_null(), "Could not load {}.", file);
             *image = m;
         }

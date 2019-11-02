@@ -1,7 +1,6 @@
 use super::Color;
-use crate::{backend::Image, Transform, Rect};
+use crate::{backend::Image, math::{Transform, Rect}};
 use slotmap::Key;
-use euclid::Angle;
 
 #[derive(Clone, Copy)]
 pub struct Paint {
@@ -47,8 +46,16 @@ impl Paint {
             xform: Transform::row_major(
                 dy, -dx,
                 dx, dy,
-                sx - dx*large, sy - dy*large,
+                sx - dx*large,
+                sy - dy*large,
             ),
+            /*
+            xform: Transform::new(
+                dy, -dx,
+                sx - dx*large,
+                sy - dy*large,
+            ),
+            */
             extent: [large, large + d * 0.5],
             radius: 0.0,
             feather: d.max(1.0),
@@ -116,17 +123,12 @@ impl Paint {
     /// The gradient is transformed by the current transform when it is passed to FillPaint() or StrokePaint().
     pub fn image_pattern(
         cx: f32, cy: f32,
-        w: f32, h: f32, angle: f32,
+        w: f32, h: f32,
         image: Image, alpha: f32,
     ) -> Self {
-        let mut xform = Transform::create_rotation(Angle::radians(angle));
-        xform.m31 = cx;
-        xform.m32 = cy;
-
         let white = Color::rgbaf(1.0, 1.0, 1.0, alpha);
-
         Self {
-            xform,
+            xform: Transform::create_translation(cx, cy),
             extent: [w, h],
             radius: 0.0,
             feather: 0.0,
