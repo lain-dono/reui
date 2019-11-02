@@ -344,17 +344,8 @@ impl BackendGL {
             } else {
                 frag.set_tex_type(2.0);
             }
-            //      printf("frag.texType = %d\n", frag.texType);
-            if tex.flags.contains(ImageFlags::FLIPY) {
-                let t1 = Transform::create_translation(0.0, paint.extent[1] * 0.5);
-                let t2 = Transform::create_translation(0.0, -paint.extent[1] * 0.5);
-                let scale = Transform::create_scale(1.0, -1.0);
 
-                t2.post_transform(&scale.post_transform(&t1.post_transform(&paint.xform)))
-                    .inverse().unwrap_or_else(Transform::identity)
-            } else {
-                paint.xform.inverse().unwrap_or_else(Transform::identity)
-            }
+            paint.xform.inverse().unwrap_or_else(Transform::identity)
         } else {
             frag.set_type(SHADER_FILLGRAD);
             frag.set_radius(paint.radius);

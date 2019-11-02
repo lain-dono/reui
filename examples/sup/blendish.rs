@@ -51,7 +51,7 @@ pub struct WindowTheme {
     pub background: u32,
 }
 
-pub fn run(ctx: &mut Canvas, bounds: Rect) {
+pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
     let win_theme = WindowTheme {
         background: 0xFF_424242,
     };
@@ -97,6 +97,22 @@ pub fn run(ctx: &mut Canvas, bounds: Rect) {
     opt.origin += Vector::new(0.0, 20.0);
     draw_option(ctx, opt, &opt_theme, State::Active, "Hovered");
     opt.origin += Vector::new(0.0, 20.0);
+
+    {
+        use oni2d::math::transform::Transform;
+
+        let pos = bounds.center().to_vector();
+        let rect = Rect::from_size(euclid::size2(4.0, 4.0))
+            .translate(pos);
+
+        ctx.draw_rect(rect, Paint::fill(0xFF_CC0000));
+
+        let (sn, cs) = time.sin_cos();
+        let tr = Transform::new(sn, cs, 0.0, 0.0);
+        let pos = tr.apply([20.0, 0.0]);
+
+        ctx.draw_rect(rect.translate(pos.into()), Paint::fill(0x99_CC0000));
+    }
 }
 
 pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {

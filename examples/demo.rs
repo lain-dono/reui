@@ -336,7 +336,7 @@ pub fn render_demo(
     {
         use oni2d::canvas::*;
         let mut ctx = Canvas::new(vg);
-        sup::blendish::run(&mut ctx, rect(50.0, 50.0, 200.0, 200.0));
+        sup::blendish::run(&mut ctx, time, rect(50.0, 50.0, 200.0, 200.0));
     }
 
 }
