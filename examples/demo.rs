@@ -284,7 +284,7 @@ pub fn render_demo(
         let mut ctx = Canvas::new(vg);
         if blowup {
             ctx.rotate((time*0.3).sin()*5.0/180.0*PI);
-            ctx.scale(2.0, 2.0);
+            ctx.scale(2.0);
         }
 
         // Widgets

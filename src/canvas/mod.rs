@@ -258,8 +258,8 @@ impl<'a> Canvas<'a> {
 
     /// Add an axis-aligned scale to the current transform,
     /// scaling by the first argument in the horizontal direction and the second in the vertical direction. [...] 
-    pub fn scale(&mut self, sx: f32, sy: f32) {
-        self.ctx.scale(sx, sy)
+    pub fn scale(&mut self, scale: f32) {
+        self.ctx.scale(scale)
     }
 
     /// Add an axis-aligned skew to the current transform,

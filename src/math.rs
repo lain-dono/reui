@@ -57,7 +57,7 @@ impl crate::Context {
         let angle = euclid::Angle::radians(angle);
         self.pre_transform(Transform::create_rotation(angle));
     }
-    pub fn scale(&mut self, x: f32, y: f32) {
-        self.pre_transform(Transform::create_scale(x, y));
+    pub fn scale(&mut self, scale: f32) {
+        self.pre_transform(Transform::create_scale(scale, scale));
     }
 }
