@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Lain-dono <lain.dono@gmail.com>"]
 edition = "2018"
 
+[lib]
 
 [build-dependencies]
 gl_generator = "0.11"
@@ -15,10 +16,14 @@ bitflags = "^1.1"
 env_logger = "0.5"
 log = "0.4"
 arrayvec = "0.4"
-euclid = "^0.19"
+euclid = "^0.20.3"
 
-wgpu-native = "0.2"
-wgpu = "0.2"
+cgmath = "*"
+glsl-to-spirv = "*"
+
+#wgpu-native = "^0.2.3"
+#wgpu = { version = "0.2", git = "https://github.com/gfx-rs/wgpu-rs", rev = "5522c912f7e2f4f33a1167fb0c8ee4549f066dcf" }
+#wgpu_glyph = { version = "0.3.1", git = "https://github.com/hecrj/wgpu_glyph.git" }
 
 
 [dependencies.slotmap]
@@ -34,13 +39,13 @@ version = "*"
 default-features = false
 features = ["jpeg", "png_codec"]
 
-[features]
-default = []
-local = ["wgpu-native/local"]
-metal = ["wgpu/metal"]
-dx11 = ["wgpu/dx11"]
-dx12 = ["wgpu/dx12"]
-vulkan = ["wgpu/vulkan"]
+#[features]
+#default = []
+#local = ["wgpu-native/local"]
+#metal = ["wgpu/metal"]
+#dx11 = ["wgpu/dx11"]
+#dx12 = ["wgpu/dx12"]
+#vulkan = ["wgpu/vulkan"]
 
 [[example]]
 name = "demo"
