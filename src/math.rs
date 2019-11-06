@@ -48,15 +48,3 @@ pub fn vec2(x: f32, y: f32) -> Vector {
 pub fn point2(x: f32, y: f32) -> Point {
     euclid::point2(x, y)
 }
-
-#[inline(always)]
-pub fn transform_pt(pt: &mut [f32], t: &Transform) {
-    let p = t.transform_point(point2(pt[0], pt[1]));
-    pt[0] = p.x;
-    pt[1] = p.y;
-}
-
-#[inline(always)]
-pub fn transform_point(t: &Transform, x: f32, y: f32) -> [f32; 2] {
-    t.transform_point(point2(x, y)).to_array()
-}

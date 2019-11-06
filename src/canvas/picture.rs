@@ -4,11 +4,17 @@ use crate::{
         Point, Vector,
         point2, vec2,
         Rect,
-        transform_pt,
         ApproxEq,
     },
     cache::Winding,
 };
+
+#[inline(always)]
+fn transform_pt(pt: &mut [f32], t: &Transform) {
+    let p = t.transform_point(point2(pt[0], pt[1]));
+    pt[0] = p.x;
+    pt[1] = p.y;
+}
 
 fn dist_pt_seg(point: Vector, p: Vector, q: Vector) -> f32 {
     let pq = q - p;

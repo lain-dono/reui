@@ -25,7 +25,6 @@ use crate::{
         average_scale,
         str_start_end,
     },
-    math::transform_point,
 };
 
 use std::{
@@ -240,10 +239,10 @@ impl Context {
             if nverts+6 <= cverts {
                 // Transform corners.
                 let pts = (
-                    transform_point(&xform, q.x0*invscale, q.y0*invscale),
-                    transform_point(&xform, q.x1*invscale, q.y0*invscale),
-                    transform_point(&xform, q.x1*invscale, q.y1*invscale),
-                    transform_point(&xform, q.x0*invscale, q.y1*invscale),
+                    xform.apply([q.x0*invscale, q.y0*invscale]),
+                    xform.apply([q.x1*invscale, q.y0*invscale]),
+                    xform.apply([q.x1*invscale, q.y1*invscale]),
+                    xform.apply([q.x0*invscale, q.y1*invscale]),
                 );
 
                 verts[nverts    ].set(pts.0, [q.s0, q.t0]); // 01

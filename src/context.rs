@@ -15,7 +15,7 @@ const INIT_COMMANDS_SIZE: usize = 256;
 
 const INIT_FONTIMAGE_SIZE: usize = 512;
 pub const MAX_FONTIMAGE_SIZE: u32 = 2048;
-pub const MAX_FONTIMAGES: usize = 4;
+pub const MAX_FONTIMAGES: usize = 6;
 
 pub struct States {
     states: ArrayVec<[State; 32]>,
@@ -194,6 +194,9 @@ impl Context {
             }
         }
 
+        // wtf lol?
+        j = j.saturating_sub(1);
+
         // make current font image to first
         self.font_images[j] = self.font_images[0];
         self.font_images[0] = font_image;
@@ -229,6 +232,8 @@ impl Context {
 
             font_images: [
                 font_image,
+                Image::null(),
+                Image::null(),
                 Image::null(),
                 Image::null(),
                 Image::null(),
