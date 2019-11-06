@@ -1,7 +1,7 @@
 use crate::{
     math::{
         Transform,
-        Point, Vector,
+        Point, Offset,
         point2, vec2,
         Rect,
     },
@@ -15,7 +15,7 @@ fn transform_pt(pt: &mut [f32], t: &Transform) {
     pt[1] = p.y;
 }
 
-fn dist_pt_seg(point: Vector, p: Vector, q: Vector) -> f32 {
+fn dist_pt_seg(point: Offset, p: Offset, q: Offset) -> f32 {
     let pq = q - p;
 
     let len = pq.square_length();
@@ -208,7 +208,7 @@ impl Picture {
         let mut vals = [0f32; 3 + 5*7];
         let mut nvals = 0;
         let mut prev = point2(0.0, 0.0);
-        let mut prev_tan: Vector = vec2(0.0, 0.0);
+        let mut prev_tan: Offset = vec2(0.0, 0.0);
         for i in 0..=ndivs {
             let angle = a0 + da * (i as f32 / ndivs as f32);
             let (sn, cs) = angle.sin_cos();
@@ -250,7 +250,7 @@ impl Picture {
 
         // Handle degenerate cases.
         if radius < dist_tol || p0.approx_eq_eps(p1, tol) || p2.approx_eq_eps(p2, tol) ||
-            dist_pt_seg(p1.to_vector(), p0.to_vector(), p2.to_vector()) < tol2 {
+            dist_pt_seg(p1, p0, p2) < tol2 {
             self.line_to(p1);
             return;
         }

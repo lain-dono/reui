@@ -198,7 +198,7 @@ use oni2d::{
         Color,
         rect, Rect,
         point2, Point,
-        Vector,
+        Offset,
     },
 };
 
@@ -259,7 +259,7 @@ fn cp2utf8(cp: char, s: &mut [u8; 8]) -> &str {
 }
 
 pub fn render_demo(
-    vg: &mut Context, mouse: Point, wsize: Vector,
+    vg: &mut Context, mouse: Point, wsize: Offset,
     time: f32, blowup: bool, data: &DemoData,
 ) {
     let (width, height) = wsize.into();
@@ -328,9 +328,9 @@ pub fn render_demo(
         let mut ctx = Canvas::new(vg);
 
         ctx.draw_rect(rect(50.0, 50.0, 100.0, 100.0), Paint::fill(0xFF_000000));
-        ctx.draw_rrect(RRect::new([50.0, 50.0], [100.0, 100.0], 15.0), Paint::fill(0xFF_CC0000));
+        ctx.draw_rrect(RRect::new([50.0, 50.0].into(), [100.0, 100.0], 15.0), Paint::fill(0xFF_CC0000));
 
-        ctx.draw_line([60.0, 60.0], [140.0, 140.0], Paint::stroke(0xFF_00CCCC));
+        ctx.draw_line([60.0, 60.0].into(), [140.0, 140.0].into(), Paint::stroke(0xFF_00CCCC));
     }
 
     {
@@ -339,8 +339,6 @@ pub fn render_demo(
         sup::blendish::run(&mut ctx, time, rect(50.0, 50.0, 200.0, 200.0));
     }
 }
-
-
 
 fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
     let [x, mut y, width, _] = rr.to_xywh();
@@ -479,117 +477,3 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
 
     vg.restore();
 }
-
-
-/*
-fn free_demo_data(vg: &mut Context, data: &mut DemoData) {
-    for &m in &data.images {
-        vg.delete_image(m);
-    }
-}
-
-fn unpremultiply(image: &mut [u8], w: usize, h: usize, stride: usize) {
-    // Unpremultiply
-    for y in 0..h {
-        let mut row = &mut image[y*stride..];
-        for x in 0..w {
-            let r = row[0] as i32;
-            let g = row[1] as i32;
-            let b = row[2] as i32;
-            let a = row[3] as i32;
-            if a != 0 {
-                row[0] = mini(r*255 / a, 255) as u8;
-                row[1] = mini(g*255 / a, 255) as u8;
-                row[2] = mini(b*255 / a, 255) as u8;
-            }
-            row = &mut row[4..];
-        }
-    }
-
-    // Defringe
-    for y in 0..h {
-        let mut row = y*stride;
-        for x in 0..w {
-            let mut r = 0;
-            let mut g = 0;
-            let mut b = 0;
-            let mut a = image[row + 3];
-            let mut n = 0;
-            if a == 0 {
-                if x-1 > 0 && image[row - 1] != 0 {
-                    r += image[row - 4];
-                    g += image[row - 3];
-                    b += image[row - 2];
-                    n += 1;
-                }
-                if x+1 < w && image[row + 7] != 0 {
-                    r += image[row + 4];
-                    g += image[row + 5];
-                    b += image[row + 6];
-                    n += 1;
-                }
-                if y-1 > 0 && image[row-stride+3] != 0 {
-                    r += image[row-stride+0];
-                    g += image[row-stride+1];
-                    b += image[row-stride+2];
-                    n += 1;
-                }
-                if y+1 < h && image[row+stride+3] != 0 {
-                    r += image[row+stride+0];
-                    g += image[row+stride+1];
-                    b += image[row+stride+2];
-                    n += 1;
-                }
-                if n > 0 {
-                    image[row+0] = r/n;
-                    image[row+1] = g/n;
-                    image[row+2] = b/n;
-                }
-            }
-            row += 4;
-        }
-    }
-}
-
-fn set_alpha(image: &mut [u8], w: usize, h: usize, stride: usize, a: u8) {
-    for y in 0..h {
-        let row = &mut image[y*stride..];
-        for x in 0..w {
-            row[x*4+3] = a;
-        }
-    }
-}
-
-fn flip_horizontal(image: &mut [u8], w: usize, h: usize, stride: usize) {
-    let (mut i, mut j) = (0, h-1);
-    while i < j {
-        let ri = image[i * stride..].as_mut_ptr();
-        let rj = image[j * stride..].as_mut_ptr();
-        for k in 0..w*4 {
-            unsafe {
-                let t = ri.add(k).read();
-                ri.add(k).write(rj.add(k).read());
-                rj.add(k).write(t);
-            }
-        }
-        i += 1;
-        j -= 1;
-    }
-}
-
-fn save_screenshot(_w: usize, _h: usize, _premult: bool, _name: *const u8) {
-    println!("unimplemented: save_screen_shot")
-    unsigned char* image = (unsigned char*)malloc(w*h*4);
-    if (image == NULL)
-            return;
-    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, image);
-    if premult {
-        unpremultiplyAlpha(image, w, h, w*4);
-    } else {
-        setAlpha(image, w, h, w*4, 255);
-    }
-    flipHorizontal(image, w, h, w*4);
-    stbi_write_png(name, w, h, 4, image, w*4);
-    free(image);
-}
-*/

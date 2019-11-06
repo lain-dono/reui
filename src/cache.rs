@@ -5,7 +5,7 @@ use std::{
     slice::from_raw_parts_mut,
 };
 use crate::{
-    math::{Vector, vec2},
+    math::{Offset, vec2},
     vg::utils::{
         normalize,
         pt_eq,
@@ -24,7 +24,7 @@ const CLOSE: i32 = 3;
 const WINDING: i32 = 4;
 
 #[inline(always)]
-fn triarea2(a: Vector, b: Vector, c: Vector) -> f32 {
+fn triarea2(a: Offset, b: Offset, c: Offset) -> f32 {
     (c - a).cross(b - a)
 }
 
@@ -47,7 +47,7 @@ fn curve_divs(r: f32, arc: f32, tol: f32) -> usize {
 }
 
 #[inline]
-fn choose_bevel(bevel: bool, p0: &PathPoint, p1: &PathPoint, w: f32) -> [Vector; 2] {
+fn choose_bevel(bevel: bool, p0: &PathPoint, p1: &PathPoint, w: f32) -> [Offset; 2] {
     if bevel {[
         vec2(p1.pos.x + p0.dir.y * w, p1.pos.y - p0.dir.x * w),
         vec2(p1.pos.x + p1.dir.y * w, p1.pos.y - p1.dir.x * w),
@@ -109,11 +109,11 @@ bitflags::bitflags!(
 #[derive(Clone, Default)]
 struct PathPoint {
     // position
-    pos: Vector,
+    pos: Offset,
     // direction
-    dir: Vector,
+    dir: Offset,
     // extrusions
-    ext: Vector,
+    ext: Offset,
     len: f32,
     flags: PointFlags,
 }
@@ -534,7 +534,7 @@ impl PathCache {
         }
     }
 
-    fn tesselate_bezier<P: Into<Vector>>(
+    fn tesselate_bezier<P: Into<Offset>>(
         &mut self, p1: P, p2: P, p3: P, p4: P,
         level: i32, flags: PointFlags,
     ) {
@@ -542,7 +542,7 @@ impl PathCache {
     }
 
     fn tesselate_bezier_impl(
-        &mut self, p1: Vector, p2: Vector, p3: Vector, p4: Vector,
+        &mut self, p1: Offset, p2: Offset, p3: Offset, p4: Offset,
         level: i32, flags: PointFlags,
     ) {
         if level > 10 {
@@ -649,7 +649,7 @@ impl PathCache {
             if !looped {
                 // Add cap
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx]);
-                let d: Vector = (p1.pos - p0.pos).normalize();
+                let d: Offset = (p1.pos - p0.pos).normalize();
                 match line_cap {
                     LineCap::Butt => dst.butt_cap_start(p0, d.x, d.y, w, -aa*0.5, aa, u0, u1),
                     LineCap::Square => dst.butt_cap_start(p0, d.x, d.y, w, w-aa, aa, u0, u1),
@@ -683,7 +683,7 @@ impl PathCache {
             } else {
                 // Add cap
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx % pts.len()]); // XXX
-                let d: Vector = (p1.pos - p0.pos).normalize();
+                let d: Offset = (p1.pos - p0.pos).normalize();
                 match line_cap {
                     LineCap::Butt => dst.butt_cap_end(p1, d.x, d.y, w, -aa*0.5, aa, u0, u1),
                     LineCap::Square => dst.butt_cap_end(p1, d.x, d.y, w, w-aa, aa, u0, u1),
@@ -818,7 +818,7 @@ impl Verts {
     }
 
     #[inline(always)]
-    fn push(&mut self, pos: Vector, uv: [f32; 2]) {
+    fn push(&mut self, pos: Offset, uv: [f32; 2]) {
         unsafe {
             *self.start.add(self.count) = Vertex::new(pos.into(), uv);
             self.count += 1;

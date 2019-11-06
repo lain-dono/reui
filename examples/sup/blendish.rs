@@ -75,32 +75,30 @@ pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
     draw_window(ctx, bounds, &win_theme);
 
     let num = Rect::new(
-        bounds.min + Vector::new(10.0, 10.0),
-        Vector::new(160.0, 18.0),
+        bounds.min + Offset::new(10.0, 10.0),
+        Offset::new(160.0, 18.0),
     );
 
     draw_num(ctx, num, &num_theme, State::Normal, Gropped::StartVertical, "Normal");
-    let num = num.translate(Vector::new(0.0, 18.5));
+    let num = num.translate(Offset::new(0.0, 18.5));
     draw_num(ctx, num, &num_theme, State::Hovered, Gropped::Middle, "Hovered");
-    let num = num.translate(Vector::new(0.0, 18.5));
+    let num = num.translate(Offset::new(0.0, 18.5));
     draw_num(ctx, num, &num_theme, State::Active, Gropped::EndVertical, "Active");
 
-    let num = num.translate(Vector::new(0.0, 40.0));
+    let num = num.translate(Offset::new(0.0, 40.0));
 
     let opt = Rect::new(
         num.min,
-        Vector::new(13.0, 13.0),
+        Offset::new(13.0, 13.0),
     );
     draw_option(ctx, opt, &opt_theme, State::Normal, "Normal");
-    let opt = opt.translate(Vector::new(0.0, 20.0));
+    let opt = opt.translate(Offset::new(0.0, 20.0));
     draw_option(ctx, opt, &opt_theme, State::Hovered, "Hovered");
-    let opt = opt.translate(Vector::new(0.0, 20.0));
+    let opt = opt.translate(Offset::new(0.0, 20.0));
     draw_option(ctx, opt, &opt_theme, State::Active, "Hovered");
 
     {
-        use oni2d::math::transform::Transform;
-
-        let pos = bounds.center().to_vector();
+        let pos = bounds.center();
         let rect = Rect::from_size(4.0, 4.0).translate(pos);
 
         ctx.draw_rect(rect, Paint::fill(0xFF_CC0000));
@@ -116,7 +114,7 @@ pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {
     ctx.draw_rect(bounds, Paint::fill(theme.background));
 
     let rect = bounds.deflate(3.0);
-    let rrect = RRect::new(rect.min.into(), rect.size().into(), 2.5);
+    let rrect = RRect::new(rect.min, rect.size().into(), 2.5);
 
     let left_scroll = RRect {
         left: rrect.right - 5.0,
@@ -140,7 +138,7 @@ pub fn draw_option(
         State::Hovered => shade(theme.background, HOVER_SHADE),
         State::Active => theme.active,
     };
-    let rrect = RRect::new(bounds.min.into(), bounds.size().into(), theme.radius);
+    let rrect = RRect::new(bounds.min, bounds.size().into(), theme.radius);
     ctx.draw_rrect(rrect, Paint::fill(bg));
     let a = vec2(2.5, 6.0);
     let b = vec2(5.5, 9.0);
@@ -148,9 +146,9 @@ pub fn draw_option(
 
     if state == State::Active {
         ctx.draw_lines(&[
-            (bounds.min + a).into(),
-            (bounds.min + b).into(),
-            (bounds.min + c).into(),
+            bounds.min + a,
+            bounds.min + b,
+            bounds.min + c,
         ], Paint::fill(0xFF_E6E6E6).stroke_width(2.0))
     }
 
@@ -175,7 +173,7 @@ pub fn draw_num(
         State::Active => theme.active,
     };
 
-    let mut rrect = RRect::new(bounds.min.into(), bounds.size().into(), theme.radius);
+    let mut rrect = RRect::new(bounds.min, bounds.size().into(), theme.radius);
     match gropped {
         Gropped::None => (),
         Gropped::StartVertical => {
@@ -238,14 +236,14 @@ pub fn draw_num(
         let bb = vec2(1.5, 3.0);
 
         ctx.draw_lines(&[
-            (left + aa).into(),
-            (left - cc).into(),
-            (left + bb).into(),
+            left + aa,
+            left - cc,
+            left + bb,
         ], paint);
         ctx.draw_lines(&[
-            (right - aa).into(),
-            (right + cc).into(),
-            (right - bb).into(),
+            right - aa,
+            right + cc,
+            right - bb,
         ], paint);
     }
 
@@ -277,6 +275,6 @@ fn text_with_shadow(
         text_align,
     };
 
-    ctx.text((position + vec2(0.0, 0.5)).into(), text, text_style_back);
-    ctx.text(position.into(), text, text_style);
+    ctx.text(position + vec2(0.0, 0.5), text, text_style_back);
+    ctx.text(position, text, text_style);
 }

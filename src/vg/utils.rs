@@ -1,4 +1,4 @@
-use crate::math::{Transform, Vector, Point};
+use crate::math::{Transform, Offset, Point};
 
 pub fn slice_start_end(b: &[u8]) -> (*const u8, *const u8) {
     unsafe {
@@ -12,8 +12,8 @@ pub fn str_start_end(s: &str) -> (*const u8, *const u8) {
     slice_start_end(s.as_bytes())
 }
 
-pub fn vec_mul(lhs: Vector, rhs: Vector) -> Vector {
-    Vector::new(
+pub fn vec_mul(lhs: Offset, rhs: Offset) -> Offset {
+    Offset::new(
         lhs.x * rhs.x,
         lhs.y * rhs.y,
     )

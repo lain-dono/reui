@@ -12,7 +12,7 @@ pub use crate::{
     font::Align,
     Winding,
     math::{
-        Vector,
+        Offset,
         Point,
         Transform,
         Rect,
@@ -51,7 +51,6 @@ impl<'a> TextStyle<'a> {
     }
 }
 
-pub type Offset = [f32; 2];
 pub type Size = [f32; 2];
 pub type Radius = f32; // TODO: [f32; 2]
 
@@ -87,10 +86,10 @@ pub struct RRect {
 impl RRect {
     pub fn new(o: Offset, s: Size, radius: f32) -> Self {
         Self {
-            left: o[0],
-            top: o[1],
-            right: o[0] + s[0],
-            bottom: o[1] + s[1],
+            left: o.x,
+            top: o.y,
+            right: o.x + s[0],
+            bottom: o.y + s[1],
             radius: CornerRadius::all_same(radius),
         }
     }
@@ -213,7 +212,7 @@ impl<'a> Canvas<'a> {
         self.ctx.font_blur(style.font_blur);
         self.ctx.text_align(style.text_align);
         self.ctx.fill_color(style.color);
-        self.ctx.text(o[0], o[1], text);
+        self.ctx.text(o.x, o.y, text);
     }
 
     pub fn scissor(&mut self, r: Rect) {
@@ -312,7 +311,7 @@ impl<'a> Canvas<'a> {
     /// Whether the circle is filled or stroked (or both) is controlled by Paint.style. 
     pub fn draw_circle(&mut self, c: Offset, radius: f32, paint: Paint) {
         self.ctx.begin_path();
-        self.ctx.circle(c[0], c[1], radius);
+        self.ctx.circle(c.x, c.y, radius);
         self.fill_or_stroke(&paint);
     }
 
@@ -342,8 +341,8 @@ impl<'a> Canvas<'a> {
         self.sync_stroke(&paint);
 
         self.ctx.begin_path();
-        self.ctx.move_to(p1[0], p1[1]);
-        self.ctx.line_to(p2[0], p2[1]);
+        self.ctx.move_to(p1.x, p1.y);
+        self.ctx.line_to(p2.x, p2.y);
         self.ctx.stroke();
     }
 
@@ -353,9 +352,9 @@ impl<'a> Canvas<'a> {
         self.sync_stroke(&paint);
 
         self.ctx.begin_path();
-        self.ctx.move_to(points[0][0], points[0][1]);
+        self.ctx.move_to(points[0].x, points[0].y);
         for p in points.iter().skip(1) {
-            self.ctx.line_to(p[0], p[1]);
+            self.ctx.line_to(p.x, p.y);
         }
         self.ctx.stroke();
     }

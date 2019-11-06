@@ -18,7 +18,7 @@ pub fn draw_window(ctx: &mut Canvas, title: &str, rr: Rect) {
     let corner_radius = 3.0;
 
     // Window
-    let rrect = RRect::new(rr.min.into(), rr.size().into(), corner_radius);
+    let rrect = RRect::new(rr.min, rr.size().into(), corner_radius);
     ctx.draw_rrect(rrect, Paint::fill(0xC0_1C1E22));
     //vg.fill_color(0x80_000000);
 
@@ -38,12 +38,12 @@ pub fn draw_window(ctx: &mut Canvas, title: &str, rr: Rect) {
     // Header
     let header_paint = Paint::linear_gradient([x,y], [x,y+15.0], 0x08_FFFFFF, 0x10_000000);
 
-    let rrect = RRect::new([x+1.0,y+1.0], [w-2.0,30.0], corner_radius-1.0);
+    let rrect = RRect::new([x+1.0,y+1.0].into(), [w-2.0,30.0], corner_radius-1.0);
     ctx.draw_rrect(rrect, header_paint);
 
-    ctx.draw_line([x+0.5, y+0.5+30.0], [x+0.5+w-1.0, y+0.5+30.0], Paint::stroke(0x20_000000));
+    ctx.draw_line([x+0.5, y+0.5+30.0].into(), [x+0.5+w-1.0, y+0.5+30.0].into(), Paint::stroke(0x20_000000));
 
-    ctx.text([x+w/2.0,y+16.0+1.0], title, TextStyle {
+    ctx.text([x+w/2.0,y+16.0+1.0].into(), title, TextStyle {
         font_size: 18.0,
         font_face: b"sans-bold\0",
         font_blur: 2.0,
@@ -51,7 +51,7 @@ pub fn draw_window(ctx: &mut Canvas, title: &str, rr: Rect) {
         text_align: Align::CENTER|Align::MIDDLE,
     });
 
-    ctx.text([x+w/2.0,y+16.0], title, TextStyle {
+    ctx.text([x+w/2.0,y+16.0].into(), title, TextStyle {
         font_size: 18.0,
         font_face: b"sans-bold\0",
         font_blur: 0.0,
@@ -66,7 +66,7 @@ pub fn draw_search_box(ctx: &mut Canvas, text: &str, rr: Rect) {
     let corner_radius = h/2.0-1.0;
 
     // Edit
-    let rrect = RRect::new(rr.min.into(), rr.size().into(), corner_radius);
+    let rrect = RRect::new(rr.min, rr.size().into(), corner_radius);
     ctx.draw_rrect(rrect, Paint::gradient(Gradient::Box {
         rect: rect(x,y+1.5, rr.dx(), rr.dy()),
         radius: h/2.0, feather: 5.0,
@@ -74,7 +74,7 @@ pub fn draw_search_box(ctx: &mut Canvas, text: &str, rr: Rect) {
         outer_color: 0x60_000000,
     }));
 
-    ctx.text([x+h*1.05,y+h*0.5], text, TextStyle {
+    ctx.text([x+h*1.05,y+h*0.5].into(), text, TextStyle {
         font_size: 20.0,
         font_face: b"sans\0",
         font_blur: 0.0,
@@ -91,15 +91,15 @@ pub fn draw_search_box(ctx: &mut Canvas, text: &str, rr: Rect) {
     };
 
     let mut icon = [0u8; 8];
-    ctx.text([x+h*0.55, y+h*0.55], cp2utf8(ICON_SEARCH, &mut icon), style);
+    ctx.text([x+h*0.55, y+h*0.55].into(), cp2utf8(ICON_SEARCH, &mut icon), style);
     style.color = 0x20_FFFFFF;
-    ctx.text([x+w-h*0.55, y+h*0.55], cp2utf8(ICON_CIRCLED_CROSS, &mut icon), style);
+    ctx.text([x+w-h*0.55, y+h*0.55].into(), cp2utf8(ICON_CIRCLED_CROSS, &mut icon), style);
 }
 
 pub fn draw_label(ctx: &mut Canvas, text: &str, rr: Rect) {
     let mut origin = rr.min;
     origin.y += rr.dy() * 0.5;
-    ctx.text(origin.into(), text, TextStyle {
+    ctx.text(origin, text, TextStyle {
         font_size: 18.0,
         font_face: b"sans\0",
         font_blur: 0.0,
@@ -116,7 +116,7 @@ pub fn draw_button<I: Into<Option<char>>>(ctx: &mut Canvas, preicon: I, text: &s
     let col = Color::new(col);
     let alpha = if col.is_transparent_black() { 16 } else { 32 };
 
-    let rrect = RRect::new([x+1.0,y+1.0], [w-2.0,h-2.0], corner_radius-1.0);
+    let rrect = RRect::new([x+1.0,y+1.0].into(), [w-2.0,h-2.0], corner_radius-1.0);
     if !col.is_transparent_black() {
         ctx.draw_rrect(rrect, Paint::fill(col.to_bgra()));
     }
@@ -124,7 +124,7 @@ pub fn draw_button<I: Into<Option<char>>>(ctx: &mut Canvas, preicon: I, text: &s
     let outer_color = Color::rgba(0,0,0, alpha).to_bgra();
     ctx.draw_rrect(rrect, Paint::linear_gradient([x,y], [x,y+h], inner_color, outer_color));
 
-    let rrect = RRect::new([x+0.5,y+0.5], [w-1.0,h-1.0], corner_radius-0.5);
+    let rrect = RRect::new([x+0.5,y+0.5].into(), [w-1.0,h-1.0], corner_radius-0.5);
     ctx.draw_rrect(rrect, Paint::stroke(0x30_000000));
 
     let (tw, _) = ctx.text_bounds(text, 20.0, b"sans-bold\0");
@@ -135,7 +135,7 @@ pub fn draw_button<I: Into<Option<char>>>(ctx: &mut Canvas, preicon: I, text: &s
         iw = ctx.text_bounds(icon, h*1.3, b"icons\0").0;
         iw += h*0.15;
 
-        ctx.text([x+w*0.5-tw*0.5-iw*0.75, y+h*0.5], icon, TextStyle {
+        ctx.text([x+w*0.5-tw*0.5-iw*0.75, y+h*0.5].into(), icon, TextStyle {
             font_size: h*1.3,
             font_face: b"icons\0",
             font_blur: 0.0,
@@ -151,15 +151,15 @@ pub fn draw_button<I: Into<Option<char>>>(ctx: &mut Canvas, preicon: I, text: &s
         color: 0xA0_000000,
         text_align: Align::LEFT|Align::MIDDLE,
     };
-    ctx.text([x+w*0.5-tw*0.5+iw*0.25, y+h*0.5-1.0], text, style);
+    ctx.text([x+w*0.5-tw*0.5+iw*0.25, y+h*0.5-1.0].into(), text, style);
     style.color = 0xA0_FFFFFF;
-    ctx.text([x+w*0.5-tw*0.5+iw*0.25,y+h*0.5], text, style);
+    ctx.text([x+w*0.5-tw*0.5+iw*0.25,y+h*0.5].into(), text, style);
 }
 
 pub fn draw_checkbox(ctx: &mut Canvas, text: &str, rr: Rect) {
     let [x, y, _, h] = rr.to_xywh();
 
-    let rrect = RRect::new([x+1.0,y+(h*0.5).floor()-9.0], [18.0,18.0], 3.0);
+    let rrect = RRect::new([x+1.0,y+(h*0.5).floor()-9.0].into(), [18.0,18.0], 3.0);
     ctx.draw_rrect(rrect, Paint::gradient(Gradient::Box {
         rect: rect(x+1.0, y+(h*0.5).floor()-9.0+1.0, 18.0, 18.0),
         radius: 3.0, feather: 3.0,
@@ -168,14 +168,14 @@ pub fn draw_checkbox(ctx: &mut Canvas, text: &str, rr: Rect) {
     }));
 
     let mut icon = [0u8; 8];
-    ctx.text([x+9.0+2.0, y+h*0.5], cp2utf8(ICON_CHECK, &mut icon), TextStyle {
+    ctx.text([x+9.0+2.0, y+h*0.5].into(), cp2utf8(ICON_CHECK, &mut icon), TextStyle {
         font_size: 40.0,
         font_face: b"icons\0",
         font_blur: 0.0,
         color: 0x80_FFFFFF,
         text_align: Align::CENTER|Align::MIDDLE,
     });
-    ctx.text([x+28.0,y+h*0.5], text, TextStyle {
+    ctx.text([x+28.0,y+h*0.5].into(), text, TextStyle {
         font_size: 18.0,
         font_face: b"sans\0",
         font_blur: 0.0,
@@ -189,25 +189,25 @@ pub fn draw_drop_down(ctx: &mut Canvas, text: &str, bounds: Rect) {
 
     let corner_radius = 4.0;
 
-    let rrect = RRect::new([x+1.0,y+1.0], [w-2.0,h-2.0], corner_radius-1.0);
+    let rrect = RRect::new([x+1.0,y+1.0].into(), [w-2.0,h-2.0], corner_radius-1.0);
     ctx.draw_rrect(rrect, Paint::linear_gradient(
         bounds.min.into(), [x,y+h],
         0x10_FFFFFF,
         0x10_000000,
     ));
 
-    let rrect = RRect::new([x+0.5,y+0.5], [w-1.0,h-1.0], corner_radius-0.5);
+    let rrect = RRect::new([x+0.5,y+0.5].into(), [w-1.0,h-1.0].into(), corner_radius-0.5);
     ctx.draw_rrect(rrect, Paint::stroke(0x30_000000));
 
     let mut icon = [0u8; 8];
-    ctx.text([x+w-h*0.5, y+h*0.5], cp2utf8(ICON_SEARCH, &mut icon), TextStyle {
+    ctx.text([x+w-h*0.5, y+h*0.5].into(), cp2utf8(ICON_SEARCH, &mut icon), TextStyle {
         font_size: h*1.3,
         font_face: b"icons\0",
         font_blur: 0.0,
         color: 0x40_FFFFFF,
         text_align: Align::CENTER|Align::MIDDLE,
     });
-    ctx.text([x+h*0.3,y+h*0.5], text, TextStyle {
+    ctx.text([x+h*0.3,y+h*0.5].into(), text, TextStyle {
         font_size: 20.0,
         font_face: b"sans\0",
         font_blur: 0.0,
@@ -336,8 +336,8 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
     }
 
     for i in 0..6 {
-        ctx.draw_circle([sx[i], sy[i]], 4.0, Paint::fill(0xFF_00A0C0));
-        ctx.draw_circle([sx[i], sy[i]], 2.0, Paint::fill(0xFF_DCDCDC));
+        ctx.draw_circle([sx[i], sy[i]].into(), 4.0, Paint::fill(0xFF_00A0C0));
+        ctx.draw_circle([sx[i], sy[i]].into(), 2.0, Paint::fill(0xFF_DCDCDC));
     }
 }
 
@@ -372,7 +372,7 @@ pub fn draw_widths(ctx: &mut Canvas, x: f32, y: f32, width: f32) {
     let mut y = y;
     for i in 0..20 {
         let paint = paint.stroke_width(((i as f32)+0.5)*0.1);
-        ctx.draw_line([x, y], [x+width,y+width*0.3], paint);
+        ctx.draw_line([x, y].into(), [x+width,y+width*0.3].into(), paint);
         y += 10.0;
     }
 }
@@ -388,7 +388,7 @@ pub fn draw_caps(ctx: &mut Canvas, x: f32, y: f32, width: f32) {
 
     for (i, &cap) in caps.iter().enumerate() {
         let y = y + ((i*10) as f32) + 5.0;
-        ctx.draw_line([x, y], [x+width, y], paint.stroke_cap(cap))
+        ctx.draw_line([x, y].into(), [x+width, y].into(), paint.stroke_cap(cap))
     }
 }
 
@@ -447,15 +447,15 @@ fn draw_edit_box_base(ctx: &mut Canvas, rr: Rect) {
         outer_color: 0x20_202020,
     });
 
-    ctx.draw_rrect(RRect::new([x+1.0,y+1.0], [w-2.0,h-2.0], 4.0-1.0), bg);
-    ctx.draw_rrect(RRect::new([x+0.5,y+0.5], [w-1.0,h-1.0], 4.0-0.5), Paint::stroke(0x30_000000));
+    ctx.draw_rrect(RRect::new([x+1.0,y+1.0].into(), [w-2.0,h-2.0], 4.0-1.0), bg);
+    ctx.draw_rrect(RRect::new([x+0.5,y+0.5].into(), [w-1.0,h-1.0], 4.0-0.5), Paint::stroke(0x30_000000));
 }
 
 pub fn draw_edit_box(ctx: &mut Canvas, text: &str, rr: Rect) {
     let [x, y, _, h] = rr.to_xywh();
 
     draw_edit_box_base(ctx, rr);
-    ctx.text([x+h*0.3,y+h*0.5], text, TextStyle {
+    ctx.text([x+h*0.3,y+h*0.5].into(), text, TextStyle {
         font_size: 20.0,
         font_face: b"sans\0",
         font_blur: 0.0,
@@ -470,14 +470,14 @@ pub fn draw_edit_box_num(ctx: &mut Canvas, text: &str, units: &str, rr: Rect) {
     let [x, y, w, h] = rr.to_xywh();
     let (uw, _) = ctx.text_bounds(units, 18.0, b"sans\0");
 
-    ctx.text([x+w-h*0.3,y+h*0.5], units, TextStyle {
+    ctx.text([x+w-h*0.3,y+h*0.5].into(), units, TextStyle {
         font_size: 18.0,
         font_face: b"sans\0",
         font_blur: 0.0,
         color: 0x40_FFFFFF,
         text_align: Align::RIGHT|Align::MIDDLE,
     });
-    ctx.text([x+w-uw-h*0.5,y+h*0.5], text, TextStyle {
+    ctx.text([x+w-uw-h*0.5,y+h*0.5].into(), text, TextStyle {
         font_size: 20.0,
         font_face: b"sans\0",
         font_blur: 0.0,
@@ -495,7 +495,7 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, x: f32, y: f32, w: f32, h: f32) {
     // vg.clear_state();
 
     // Slot
-    ctx.draw_rrect(RRect::new([x,cy-2.0], [w,4.0], 2.0), Paint::gradient(Gradient::Box {
+    ctx.draw_rrect(RRect::new([x,cy-2.0].into(), [w,4.0], 2.0), Paint::gradient(Gradient::Box {
         rect: rect(x,cy-2.0+1.0, w,4.0),
         radius: 2.0,feather: 2.0,
         inner_color: 0x20_000000,
@@ -505,7 +505,7 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, x: f32, y: f32, w: f32, h: f32) {
     // Knob Shadow
     let mut path: Path<[_; 128]> = Path::new();
     path.add_rect(rect(x+(pos*w).floor()-kr-5.0,cy-kr-5.0, kr*2.0+5.0+5.0,kr*2.0+5.0+5.0+3.0));
-    path.add_circle([x+(pos*w).floor(),cy], kr);
+    path.add_circle([x+(pos*w).floor(),cy].into(), kr);
     path._path_winding(Winding::CW);
     ctx.draw_path(&mut path, Paint::gradient(Gradient::Radial {
         center: [x+(pos*w).floor(),cy+1.0],
@@ -521,7 +521,7 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, x: f32, y: f32, w: f32, h: f32) {
         outer_color: 0x10_000000,
     });
 
-    let center = [x+(pos*w).floor(),cy];
+    let center = [x+(pos*w).floor(),cy].into();
     ctx.draw_circle(center, kr-1.0, Paint::fill(0xFF_282B30));
     ctx.draw_circle(center, kr-1.0, knob);
     ctx.draw_circle(center, kr-0.5, Paint::stroke(0x5C_000000));
@@ -542,7 +542,7 @@ pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) 
     // Drop shadow
     let mut path: Path<[_; 128]> = Path::new();
     path.add_rect(rect(x-10.0,y-10.0, width+20.0,height+20.0));
-    path.add_rrect(RRect::new(rr.min.into(), rr.size().into(), corner_radius));
+    path.add_rrect(RRect::new(rr.min, rr.size().into(), corner_radius));
     path._path_winding(Winding::CW);
     path.close();
     ctx.draw_path(&mut path, Paint::gradient(Gradient::Box {
@@ -554,7 +554,7 @@ pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) 
 
     // Window
     path.clear();
-    path.add_rrect(RRect::new(rr.min.into(), rr.size().into(), corner_radius));
+    path.add_rrect(RRect::new(rr.min, rr.size().into(), corner_radius));
     path.move_to(x-10.0,y+arry);
     path.line_to(x+1.0,y+arry-11.0);
     path.line_to(x+1.0,y+arry+11.0);
@@ -594,11 +594,11 @@ pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) 
         }
 
         let paint = Paint::image_pattern([tx+ix, ty+iy], [iw,ih], image, a);
-        ctx.draw_rrect(RRect::new([tx,ty], [thumb,thumb], 5.0), paint);
+        ctx.draw_rrect(RRect::new([tx,ty].into(), [thumb,thumb], 5.0), paint);
 
         path.clear();
         path.add_rect(rect(tx-5.0,ty-5.0, thumb+10.0,thumb+10.0));
-        path.add_rrect(RRect::new([tx,ty], [thumb,thumb], 6.0));
+        path.add_rrect(RRect::new([tx,ty].into(), [thumb,thumb], 6.0));
         path._path_winding(Winding::CW);
         ctx.draw_path(&mut path, Paint::box_gradient(
             rect(tx-1.0,ty, thumb+2.0,thumb+2.0),
@@ -607,7 +607,7 @@ pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) 
             0x00_000000,
         ));
 
-        let rrect = RRect::new([tx+0.5,ty+0.5], [thumb-1.0,thumb-1.0], 4.0-0.5);
+        let rrect = RRect::new([tx+0.5,ty+0.5].into(), [thumb-1.0,thumb-1.0], 4.0-0.5);
         ctx.draw_rrect(rrect, Paint::stroke(0xC0_FFFFFF).stroke_width(1.0));
     }
     ctx.restore();
@@ -626,7 +626,7 @@ pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) 
     }));
 
     // Scroll bar
-    let rrect = RRect::new([x+width-12.0,y+4.0], [8.0,height-8.0], 3.0);
+    let rrect = RRect::new([x+width-12.0,y+4.0].into(), [8.0,height-8.0], 3.0);
     ctx.draw_rrect(rrect, Paint::box_gradient(
         rect(x+width-12.0+1.0,y+4.0+1.0, 8.0,height-8.0),
         3.0, 4.0,
@@ -635,7 +635,7 @@ pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) 
     ));
 
     let scrollh = (height/stackh) * (height-8.0);
-    let rrect = RRect::new([x+width-12.0+1.0,y+4.0+1.0 + (height-8.0-scrollh)*u1], [8.0-2.0,scrollh-2.0], 2.0);
+    let rrect = RRect::new([x+width-12.0+1.0,y+4.0+1.0 + (height-8.0-scrollh)*u1].into(), [8.0-2.0,scrollh-2.0], 2.0);
     let paint = Paint::box_gradient(
         rect(x+width-12.0-1.0,y+4.0+(height-8.0-scrollh)*u1-1.0, 8.0,scrollh),
         3.0, 4.0,
@@ -706,8 +706,8 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     }
 
     path.clear();
-    path.add_circle([cx,cy], r0-0.5);
-    path.add_circle([cx,cy], r1+0.5);
+    path.add_circle([cx,cy].into(), r0-0.5);
+    path.add_circle([cx,cy].into(), r1+0.5);
     ctx.draw_path(&mut path, Paint::stroke(0x40_000000));
 
     // Selector
@@ -759,12 +759,12 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     let ax = (120.0/180.0*PI).cos() * radius*0.3;
     let ay = (120.0/180.0*PI).sin() * radius*0.4;
     let paint = Paint::stroke(0xC0_FFFFFF).stroke_width(2.0);
-    ctx.draw_circle([ax, ay], 5.0, paint);
+    ctx.draw_circle([ax, ay].into(), 5.0, paint);
 
     let paint = Paint::radial_gradient([ax, ay], 7.0, 9.0, 0x40_000000, 0x00_000000);
     path.clear();
     path.add_rect(rect(ax-20.0,ay-20.0,40.0,40.0));
-    path.add_circle([ax,ay],7.0);
+    path.add_circle([ax,ay].into(),7.0);
     path._path_winding(Winding::CW);
     ctx.draw_path(&mut path, paint);
 
