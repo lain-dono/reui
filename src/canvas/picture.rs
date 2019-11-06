@@ -4,7 +4,6 @@ use crate::{
         Point, Vector,
         point2, vec2,
         Rect,
-        ApproxEq,
     },
     cache::Winding,
 };

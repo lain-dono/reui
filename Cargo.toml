@@ -16,7 +16,6 @@ bitflags = "^1.1"
 env_logger = "0.5"
 log = "0.4"
 arrayvec = "0.4"
-euclid = "^0.20.3"
 
 cgmath = "*"
 #glsl-to-spirv = "*"

@@ -1,4 +1,4 @@
-use crate::math::{Transform, Vector, Point, ApproxEq};
+use crate::math::{Transform, Vector, Point};
 
 pub fn slice_start_end(b: &[u8]) -> (*const u8, *const u8) {
     unsafe {

@@ -1,11 +1,3 @@
-pub use euclid::{
-    self,
-    Angle,
-    UnknownUnit,
-    approxeq::ApproxEq,
-};
-
-
 mod color;
 pub mod transform;
 
