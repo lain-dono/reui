@@ -104,7 +104,7 @@ impl Iterator for TextIter {
         if s == self.end {
             return None;
         }
-        let mut quad: Quad = unsafe { uninitialized() };
+        let mut quad = Quad::default();
         unsafe {
             while s != self.end {
                 if 0 == decutf8(&mut self.utf8state, &mut self.codepoint, u32::from(*s)) {

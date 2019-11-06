@@ -11,11 +11,66 @@ use crate::{
 };
 
 use super::{Image, ImageFlags, TEXTURE_RGBA};
-use super::gl::{self, types::GLuint};
-use super::utils::*;
+use super::gl::{self, types::{GLuint, GLint, GLsizei, GLsizeiptr}};
 use super::gl_shader::Shader;
 
 use slotmap::Key;
+
+fn gl_draw_strip(offset: usize, count: usize) {
+    unsafe {
+        gl::DrawArrays(gl::TRIANGLE_STRIP, offset as GLint, count as GLsizei);
+    }
+}
+
+fn gl_draw_triangles(offset: usize, count: usize) {
+    unsafe {
+        gl::DrawArrays(gl::TRIANGLES, offset as GLint, count as GLsizei);
+    }
+}
+
+struct Buffer(GLuint);
+
+impl Drop for Buffer {
+    fn drop(&mut self) {
+        if self.0 != 0 {
+            unsafe { gl::DeleteBuffers(1, &self.0); }
+            self.0 = 0;
+        }
+    }
+}
+
+impl Default for Buffer {
+    fn default() -> Self {
+        let mut buf = 0;
+        // Create dynamic vertex array
+        unsafe {
+            gl::GenBuffers(1, &mut buf);
+            gl::Finish();
+        }
+        Buffer(buf)
+    }
+}
+
+impl Buffer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn bind_and_upload<T: Sized>(&self, data: &[T]) {
+        let size = (data.len() * std::mem::size_of::<T>())  as GLsizeiptr;
+        let ptr = data.as_ptr() as *const libc::c_void;
+        unsafe {
+            gl::BindBuffer(gl::ARRAY_BUFFER, self.0);
+            gl::BufferData(gl::ARRAY_BUFFER, size as GLsizeiptr, ptr, gl::STREAM_DRAW);
+        }
+    }
+
+    pub fn unbind(&self) {
+        unsafe {
+            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
+        }
+    }
+}
 
 fn check_error(msg: &str) {
     if true {
@@ -28,9 +83,9 @@ fn check_error(msg: &str) {
 
 fn xform2mat3(t: Transform) -> [f32; 12] {
     [
-        t.m11, t.m12, 0.0, 0.0,
-        t.m21, t.m22, 0.0, 0.0,
-        t.m31, t.m32, 1.0, 0.0,
+        t.m11, t.m12, t.m31, t.m32,
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
     ]
 }
 
@@ -86,8 +141,8 @@ impl FragUniforms {
         self.array[28..32].copy_from_slice(&color)
     }
 
-    fn set_paint_mat(&mut self, mat: [f32; 12]) {
-        self.array[12..24].copy_from_slice(&mat);
+    fn set_paint_mat(&mut self, t: Transform) {
+        self.array[12..16].copy_from_slice(&[t.m11, t.m12, t.m31, t.m32]);
     }
 
     fn set_scissor(&mut self, mat: [f32; 12], ext: [f32; 2], scale: [f32; 2]) {
@@ -317,13 +372,12 @@ impl BackendGL {
             frag.set_scissor([0.0; 12], [1.0, 1.0], [1.0, 1.0]);
         } else {
             let xform = &scissor.xform;
+            let (re, im) = (xform.m11, xform.m12);
+            let scale = (re*re + im*im).sqrt() / fringe;
             frag.set_scissor(
                 xform2mat3(xform.inverse().unwrap_or_else(Transform::identity)),
                 scissor.extent,
-                [
-                    (xform.m11*xform.m11 + xform.m12*xform.m12).sqrt() / fringe,
-                    (xform.m21*xform.m21 + xform.m22*xform.m22).sqrt() / fringe,
-                ],
+                [scale, scale],
             );
         }
 
@@ -339,11 +393,11 @@ impl BackendGL {
             };
             frag.set_type(SHADER_FILLIMG);
 
-            if tex.kind == TEXTURE_RGBA {
-                frag.set_tex_type(if tex.flags.contains(ImageFlags::PREMULTIPLIED) { 0.0 } else { 1.0 });
+            frag.set_tex_type(if tex.kind == TEXTURE_RGBA {
+                if tex.flags.contains(ImageFlags::PREMULTIPLIED) { 0.0 } else { 1.0 }
             } else {
-                frag.set_tex_type(2.0);
-            }
+                2.0
+            });
 
             paint.xform.inverse().unwrap_or_else(Transform::identity)
         } else {
@@ -353,7 +407,7 @@ impl BackendGL {
             paint.xform.inverse().unwrap_or_else(Transform::identity)
         };
 
-        frag.set_paint_mat(xform2mat3(invxform));
+        frag.set_paint_mat(invxform);
 
         true
     }
@@ -505,7 +559,8 @@ impl BackendGL {
 
             //convertPaint(
             //  gl,
-            //  self.frag_uniform_mut(gl, uniform_offset + 1), paint, scissor, strokeWidth, fringe, 1.0f - 0.5f/255.0f);
+            //  self.frag_uniform_mut(gl, uniform_offset + 1), paint,
+            // scissor, strokeWidth, fringe, 1.0 - 0.5/255.0);
         } else {
             self.set_uniforms(data.uniform_offset, data.image);
             check_error("stroke fill");
@@ -714,7 +769,13 @@ impl BackendGL {
         // Set view and texture just once per frame.
         self.shader.bind_view(&self.view);
 
-        Blend::default().bind();
+        unsafe {
+            gl::BlendFuncSeparate(
+                gl::ONE, gl::ONE_MINUS_SRC_ALPHA,
+                gl::ONE, gl::ONE_MINUS_SRC_ALPHA,
+            );
+        }
+
         for call in &self.calls {
             match call.kind {
                 CallKind::FILL => self.fill(

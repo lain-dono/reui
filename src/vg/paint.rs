@@ -1,5 +1,4 @@
-use super::Color;
-use crate::{backend::Image, math::{Transform, Rect}};
+use crate::{backend::Image, math::{Transform, Rect, Color}};
 use slotmap::Key;
 
 #[derive(Clone, Copy)]

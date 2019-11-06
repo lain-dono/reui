@@ -36,12 +36,6 @@ pub fn pt_eq(x1: f32, y1: f32, x2: f32, y2: f32, tol: f32) -> bool {
     let p2 = Point::new(x2, y2);
     let tol = Point::new(tol, tol);
     p1.approx_eq_eps(&p2, &tol)
-
-    /*
-    let dx = x2 - x1;
-    let dy = y2 - y1;
-    dx*dx + dy*dy < tol*tol
-    */
 }
 
 

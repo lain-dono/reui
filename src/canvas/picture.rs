@@ -2,7 +2,7 @@ use crate::{
     math::{
         Transform,
         Point, Vector,
-        point2, size2, vec2,
+        point2, vec2,
         Rect,
         transform_pt,
         ApproxEq,
@@ -124,7 +124,7 @@ impl Picture {
     ) {
         let (x, y, w, h) = (rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
         if tl < 0.1 && tr < 0.1 && br < 0.1 && bl < 0.1 {
-            self.rect(Rect { origin: point2(x, y), size: size2(w, h) });
+            self.rect(rect);
         } else {
             let halfw = w.abs()*0.5;
             let halfh = h.abs()*0.5;

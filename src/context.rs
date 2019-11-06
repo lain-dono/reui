@@ -1,16 +1,15 @@
 use arrayvec::ArrayVec;
+use slotmap::Key;
+use std::ptr::null;
 
 use crate::{
-    backend::{BackendGL, Image, TEXTURE_ALPHA},
+    backend::{BackendGL, Image, ImageFlags, TEXTURE_ALPHA, TEXTURE_RGBA},
     cache::{PathCache, LineCap, LineJoin},
     vg::*,
     font::*,
-    math::{Point, Transform},
+    math::{Point, Transform, Color},
     canvas::Picture,
 };
-
-use std::ptr::null;
-use slotmap::Key;
 
 const INIT_COMMANDS_SIZE: usize = 256;
 
@@ -247,5 +246,100 @@ impl Context {
 
             font_image_idx: 0,
         }
+    }
+}
+
+impl Context {
+    pub fn transform(&mut self, m: [f32; 6]) {
+        self.pre_transform(Transform::from_row_major_array(m))
+    }
+
+    pub fn current_transform(&self) -> &Transform {
+        &self.states.last().xform
+    }
+    pub fn pre_transform(&mut self, m: Transform) {
+        let t = &mut self.states.last_mut().xform;
+        *t = t.pre_transform(&m);
+    }
+    pub fn post_transform(&mut self, m: Transform) {
+        let t = &mut self.states.last_mut().xform;
+        *t = t.post_transform(&m);
+    }
+    pub fn reset_transform(&mut self) {
+        self.states.last_mut().xform = Transform::identity();
+    }
+
+    pub fn translate(&mut self, x: f32, y: f32) {
+        self.pre_transform(Transform::create_translation(x, y));
+    }
+    pub fn rotate(&mut self, angle: f32) {
+        let angle = euclid::Angle::radians(angle);
+        self.pre_transform(Transform::create_rotation(angle));
+    }
+    pub fn scale(&mut self, scale: f32) {
+        self.pre_transform(Transform::create_scale(scale, scale));
+    }
+}
+
+/// Images
+///
+/// NanoVG allows you to load jpg, png, psd, tga, pic and gif files to be used for rendering.
+/// In addition you can upload your own image. The image loading is provided by stb_image.
+/// The parameter imageFlags is combination of flags defined in NVGimageFlags.
+impl Context {
+    /// Creates image by loading it from the disk from specified file name.
+    /// Returns handle to the image.
+    pub fn create_image(&mut self, name: &str, flags: ImageFlags) -> Image {
+        match image::open(name) {
+            Ok(m) => {
+                let m = m.to_rgba();
+                let (w, h) = m.dimensions();
+                let data = m.into_raw();
+                self.create_image_rgba(w, h, flags, data.as_ptr())
+            }
+            Err(err) => {
+                log::warn!("Failed to load image - {:?}", err);
+                Image::null()
+            }
+        }
+    }
+
+    /// Creates image by loading it from the specified chunk of memory.
+    /// Returns handle to the image.
+    pub fn create_image_mem(&mut self, flags: ImageFlags, data: &[u8]) -> Image {
+        match image::load_from_memory(data) {
+            Ok(m) => {
+                let m = m.to_rgba();
+                let (w, h) = m.dimensions();
+                let data = m.into_raw();
+                self.create_image_rgba(w, h, flags, data.as_ptr())
+            }
+            Err(err) => {
+                log::warn!("Failed to load image - {:?}", err);
+                Image::null()
+            }
+        }
+    }
+
+    /// Creates image from specified image data.
+    /// Returns handle to the image.
+    pub fn create_image_rgba(&mut self, w: u32, h: u32, flags: ImageFlags, data: *const u8) -> Image {
+        self.params.create_texture(TEXTURE_RGBA, w, h, flags, data)
+    }
+
+    /// Updates image data specified by image handle.
+    pub fn update_image(&mut self, image: Image, data: &[u8]) {
+        let (w, h) = self.params.texture_size(image).expect("update_image available");
+        self.params.update_texture(image, 0, 0, w, h, data.as_ptr());
+    }
+
+    /// Returns the dimensions of a created image.
+    pub fn image_size(&mut self, image: Image) -> Option<(u32, u32)> {
+        self.params.texture_size(image)
+    }
+
+    /// Deletes created image.
+    pub fn delete_image(&mut self, image: Image) {
+        self.params.delete_texture(image);
     }
 }

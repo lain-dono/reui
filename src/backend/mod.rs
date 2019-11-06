@@ -17,11 +17,10 @@ pub const TEXTURE_RGBA: i32 = 0x02;
 
 bitflags::bitflags!(
     #[derive(Default)]
-    pub struct ImageFlags: i32 {
+    pub struct ImageFlags: u32 {
         const GENERATE_MIPMAPS  = 1; // Generate mipmaps during creation of the image.
         const REPEATX           = 1<<1; // Repeat image in X direction.
         const REPEATY           = 1<<2; // Repeat image in Y direction.
-        //const FLIPY             = 1<<3; // Flips (inverses) image in Y direction when rendered.
         const PREMULTIPLIED     = 1<<4; // Image data has premultiplied alpha.
         const NEAREST           = 1<<5; // Image interpolation is Nearest instead Linear
 

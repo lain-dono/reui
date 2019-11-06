@@ -107,8 +107,7 @@ pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
 
         ctx.draw_rect(rect, Paint::fill(0xFF_CC0000));
 
-        let (sn, cs) = time.sin_cos();
-        let tr = Transform::new(sn, cs, 0.0, 0.0);
+        let tr = Transform::rotation(time);
         let pos = tr.apply([20.0, 0.0]);
 
         ctx.draw_rect(rect.translate(pos.into()), Paint::fill(0x99_CC0000));
@@ -118,7 +117,7 @@ pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
 pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {
     ctx.draw_rect(bounds, Paint::fill(theme.background));
 
-    let rect = bounds.inner_rect(euclid::SideOffsets2D::new_all_same(3.0));
+    let rect = bounds.inner_rect(SideOffsets::new_all_same(3.0));
     let rrect = RRect::new(rect.origin.into(), rect.size.into(), 2.5);
 
     let left_scroll = RRect {
@@ -182,26 +181,26 @@ pub fn draw_num(
     match gropped {
         Gropped::None => (),
         Gropped::StartVertical => {
-            rrect.bl_radius = 0.0;
-            rrect.br_radius = 0.0;
+            rrect.radius.bl = 0.0;
+            rrect.radius.br = 0.0;
         },
         Gropped::StartHorizontal => {
-            rrect.br_radius = 0.0;
-            rrect.tr_radius = 0.0;
+            rrect.radius.br = 0.0;
+            rrect.radius.tr = 0.0;
         },
         Gropped::Middle => {
-            rrect.bl_radius = 0.0;
-            rrect.br_radius = 0.0;
-            rrect.tl_radius = 0.0;
-            rrect.tr_radius = 0.0;
+            rrect.radius.bl = 0.0;
+            rrect.radius.br = 0.0;
+            rrect.radius.tl = 0.0;
+            rrect.radius.tr = 0.0;
         },
         Gropped::EndVertical => {
-            rrect.tl_radius = 0.0;
-            rrect.tr_radius = 0.0;
+            rrect.radius.tl = 0.0;
+            rrect.radius.tr = 0.0;
         },
         Gropped::EndHorizontal => {
-            rrect.tl_radius = 0.0;
-            rrect.bl_radius = 0.0;
+            rrect.radius.tl = 0.0;
+            rrect.radius.bl = 0.0;
         },
     }
     ctx.draw_rrect(rrect, Paint::fill(bg));
@@ -210,14 +209,20 @@ pub fn draw_num(
         let arr = 13.0;
         let left = RRect {
             right: rrect.left + arr,
-            tr_radius: 0.0,
-            br_radius: 0.0,
+            radius: CornerRadius {
+                tr: 0.0,
+                br: 0.0,
+                .. rrect.radius
+            },
             .. rrect
         };
         let right = RRect {
             left: rrect.right - arr,
-            tl_radius: 0.0,
-            bl_radius: 0.0,
+            radius: CornerRadius {
+                tl: 0.0,
+                bl: 0.0,
+                .. rrect.radius
+            },
             .. rrect
         };
 

@@ -2,7 +2,7 @@ pub use crate::cache::{
     LineCap as StrokeCap,
     LineJoin as StrokeJoin,
 };
-pub use crate::vg::Color;
+pub use crate::math::Color;
 pub use crate::backend::Image;
 
 #[derive(Clone, Copy, PartialEq, Eq)]

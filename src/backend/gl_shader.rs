@@ -115,8 +115,8 @@ varying vec2 fpos;
 //#define scissorMat mat3(frag[0].xyz, frag[1].xyz, frag[2].xyz)
 //#define paintMat mat3(frag[3].xyz, frag[4].xyz, frag[5].xyz)
 
-#define scissorTransform vec4(frag[0].x, frag[0].y, frag[2].x, frag[2].y)
-#define paintTransform vec4(frag[3].x, frag[3].y, frag[5].x, frag[5].y)
+#define scissorTransform frag[0]
+#define paintTransform frag[3]
 
 #define innerCol frag[6]
 #define outerCol frag[7]
@@ -144,9 +144,8 @@ vec2 applyTransform(vec4 transform, vec2 pt) {
 
 // Scissoring
 float scissorMask(vec2 p) {
-    //vec2 sc = (abs((scissorMat * vec3(p,1.0)).xy) - scissorExt);
-    vec2 sc = (abs(applyTransform(scissorTransform, p)) - scissorExt);
-    sc = vec2(0.5,0.5) - sc * scissorScale;
+    vec2 sc = vec2(0.5,0.5) -
+        (abs(applyTransform(scissorTransform, p)) - scissorExt) * scissorScale;
     return clamp(sc.x,0.0,1.0) * clamp(sc.y,0.0,1.0);
 }
 

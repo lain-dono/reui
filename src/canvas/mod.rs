@@ -2,6 +2,8 @@ mod path;
 mod paint;
 mod picture;
 
+mod geom;
+
 pub use slotmap::Key;
 
 pub use crate::{
@@ -54,11 +56,22 @@ pub type Size = [f32; 2];
 pub type Radius = f32; // TODO: [f32; 2]
 
 #[derive(Clone, Copy, Default)]
-pub struct Corners {
+pub struct CornerRadius {
     pub tl: f32,
     pub tr: f32,
     pub br: f32,
     pub bl: f32,
+}
+
+impl CornerRadius {
+    pub fn all_same(radius: f32) -> Self {
+        Self {
+            tr: radius,
+            tl: radius,
+            br: radius,
+            bl: radius,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Default)]
@@ -68,10 +81,7 @@ pub struct RRect {
     pub right: f32,
     pub bottom: f32,
 
-    pub tl_radius: Radius,
-    pub tr_radius: Radius,
-    pub br_radius: Radius,
-    pub bl_radius: Radius,
+    pub radius: CornerRadius,
 }
 
 impl RRect {
@@ -81,11 +91,7 @@ impl RRect {
             top: o[1],
             right: o[0] + s[0],
             bottom: o[1] + s[1],
-
-            tr_radius: radius,
-            tl_radius: radius,
-            br_radius: radius,
-            bl_radius: radius,
+            radius: CornerRadius::all_same(radius),
         }
     }
 
@@ -416,11 +422,11 @@ impl<'a> Canvas<'a> {
     pub fn draw_rrect(&mut self, rrect: RRect, paint: Paint) {
         self.ctx.begin_path();
         self.ctx.rrect_varying(
-            rect(rrect.left, rrect.top, rrect.width(), rrect.height()),
-            rrect.tl_radius,
-            rrect.tr_radius,
-            rrect.br_radius,
-            rrect.bl_radius,
+            rrect.rect(),
+            rrect.radius.tl,
+            rrect.radius.tr,
+            rrect.radius.br,
+            rrect.radius.bl,
         );
         self.fill_or_stroke(&paint);
     }
@@ -428,7 +434,5 @@ impl<'a> Canvas<'a> {
     /*
     /// Draws a shadow for a Path representing the given material elevation. [...] 
     pub fn draw_shadow(&mut self, Path path, Color color, double elevation, bool transparentOccluder) -> void
-
-    pub fn draw_vertices(&mut self, Vertices vertices, BlendMode blendMode, Paint paint) -> void
     */
 }

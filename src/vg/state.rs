@@ -2,7 +2,7 @@ use crate::{
     cache::{LineCap, LineJoin},
     vg::*,
     font::Align,
-    math::{rect, Rect, Transform},
+    math::{rect, Rect, Transform, Color},
 };
 
 #[derive(Clone)]
@@ -84,6 +84,7 @@ impl State {
 
         let ex = self.scissor.extent[0];
         let ey = self.scissor.extent[1];
+
         let tex = ex*xform.m11.abs() + ey*xform.m21.abs();
         let tey = ex*xform.m12.abs() + ey*xform.m22.abs();
 

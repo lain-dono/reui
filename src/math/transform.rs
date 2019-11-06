@@ -1,136 +1,133 @@
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Transform {
-    pub re: f32, // cos + scale
-    pub im: f32, // sin + scale
+    pub re: f32,
+    pub im: f32,
     pub tx: f32,
     pub ty: f32,
 }
 
-impl Default for Transform {
+impl std::ops::Mul<Self> for Transform {
+    type Output = Self;
     #[inline]
-    fn default() -> Self { Self::IDENTITY }
+    fn mul(self, other: Self) -> Self {
+        Self {
+            re: other.re * self.re - other.im * self.im,
+            im: other.re * self.im + other.im * self.re,
+            
+            tx: other.tx * self.re - other.ty * self.im + self.tx,
+            ty: other.tx * self.im + other.ty * self.re + self.ty,
+        }
+    }
+}
+
+impl std::ops::MulAssign<Self> for Transform {
+    #[inline]
+    fn mul_assign(&mut self, other: Self) {
+        *self = Self {
+            re: other.re * self.re - other.im * self.im,
+            im: other.re * self.im + other.im * self.re,
+            
+            tx: other.tx * self.re - other.ty * self.im + self.tx,
+            ty: other.tx * self.im + other.ty * self.re + self.ty,
+        };
+    }
 }
 
 impl Transform {
-    pub const IDENTITY: Self = Self { re: 1.0, im: 0.0, tx: 0.0, ty: 0.0 };
+    pub const IDENTITY: Self = Self {
+        re: 1.0,
+        im: 0.0,
+        tx: 0.0,
+        ty: 0.0,
+    };
 
     #[inline]
-    pub const fn identity() -> Self { Self::IDENTITY }
-
-    #[inline]
-    pub const fn new(re: f32, im: f32, tx: f32, ty: f32) -> Self {
-        Self { re, im, tx, ty }
+    pub fn identity() -> Self {
+        Self::IDENTITY
     }
 
     #[inline]
-    pub const fn from_sin_cos(im: f32, re: f32) -> Self {
-        Self { re, im, .. Self::IDENTITY }
+    pub fn new(x: f32, y: f32, rotation: f32, scale: f32) -> Self {
+        Self {
+            re: rotation.cos() * scale,
+            im: rotation.sin() * scale,
+            tx: x,
+            ty: y,
+        }
     }
 
     #[inline]
-    pub const fn translation(tx: f32, ty: f32) -> Self {
-        Self { tx, ty, .. Self::IDENTITY }
+    pub fn translation(tx: f32, ty: f32) -> Self {
+        Self { re: 1.0, im: 0.0, tx, ty }
     }
 
     #[inline]
-    pub const fn scale(scale: f32) -> Self {
-        Self { im: scale, .. Self::IDENTITY }
+    pub fn rotation(theta: f32) -> Self {
+        let (sin, cos) = theta.sin_cos();
+        Self { re: cos, im: sin, tx: 0.0, ty: 0.0 }
     }
 
     #[inline]
-    pub fn rotation(angle: f32) -> Self {
-        let (im, re) = angle.sin_cos();
-        Self { re, im, .. Self::IDENTITY }
-    }
-
-    #[inline]
-    #[doc(hidden)]
-    pub const fn create_translation(tx: f32, ty: f32) -> Self {
-        Self { tx, ty, .. Self::IDENTITY }
-    }
-
-    /*
-    pub fn compose_simple<T: Into<[f32; 2]> + Copy>(
-        rotation: f32,
-        translate: T,
-    ) -> Self {
-        Self::compose(rotation, 1.0, translate, [0.0, 0.0])
-    }
-
-    pub fn compose<A: Into<[f32; 2]>, T: Into<[f32; 2]>>(
-        rotation: f32,
-        scale: f32,
-        anchor: A,
-        translate: T,
-    ) -> Self {
-        let [anchor_x, anchor_y] = anchor.into();
-        let [translate_x, translate_y] = translate.into();
-
-        let (sn, cs) = rotation.sin_cos();
-
-        let re = sn * scale;
-        let im = cs * scale;
-        let tx = translate_x + -im * anchor_x + re * anchor_y;
-        let ty = translate_y + -re * anchor_x - im * anchor_y;
-
-        Self { im, re, tx, ty }
-    }
-    */
-
-    #[inline]
-    pub fn angle(&self) -> f32 {
-        self.im.atan2(self.re)
-    }
-
-    #[inline]
-    pub fn scaling(&self) -> f32 {
-        (self.im * self.im + self.re * self.re).sqrt()
+    pub fn scale(factor: f32) -> Self {
+        Self { re: factor, im: 0.0, tx: 0.0, ty: 0.0 }
     }
 
     #[inline]
     pub fn apply(&self, [x, y]: [f32; 2]) -> [f32; 2] {
-        let Self { re: cos, im: sin, tx, ty } = self;
         [
-            tx + (x * cos) - (y * sin),
-            ty + (x * sin) + (y * cos),
+            self.re * x - self.im * y + self.tx,
+            self.im * x + self.re * y + self.ty,
         ]
     }
 
     #[inline]
-    pub fn cast_apply<T: From<[f32; 2]> + Into<[f32; 2]>>(&self, p: T) -> T {
-        self.apply(p.into()).into()
-    }
-
-    #[inline]
-    pub fn to_matrix2(&self) -> [f32; 4] {
-        let r = self.re;
-        let i = self.im;
-        [r, -i, i, r]
-    }
-
-    #[inline]
-    pub fn to_gl(&self) -> [f32; 12] {
-        let Self { re, im, tx, ty} = *self;
+    pub fn apply_vector(&self, [x, y]: [f32; 2]) -> [f32; 2] {
         [
-            re, -im, 0.0, 0.0,
-            im, re, 0.0, 0.0,
-            tx, ty, 1.0, 0.0,
+            self.re * x - self.im * y,
+            self.im * x + self.re * y,
         ]
     }
 
     #[inline]
-    pub fn append(&self, m: &Self) -> Self {
-        let re = (self.re * m.re - self.im * m.im).sqrt();
-        let im = (self.re * m.im + self.im * m.re).sqrt();
+    pub fn apply_inv(&self, [x, y]: [f32; 2]) -> [f32; 2] {
+        let id = (self.re * self.re + self.im * self.im).recip();
+        let [re, im] = [self.re * id, self.im * id];
+        let [dx, dy] = [x - self.tx, y - self.ty];
+        [
+            re * dx + im * dy,
+            re * dy - im * dx,
+        ]
+    }
+
+    #[inline]
+    pub fn apply_inv_vector(&self, [x, y]: [f32; 2]) -> [f32; 2] {
+        let id = (self.re * self.re + self.im * self.im).recip();
+        let [re, im] = [self.re * id, self.im * id];
+        [
+            re * x + im * y,
+            re * y - im * x,
+        ]
+    }
+
+    #[inline]
+    pub fn inverse(&self) -> Self {
+        let id = -(self.re * self.re + self.im * self.im).recip();
         Self {
-            re, im,
-
-            //tx: m.tx * self.im - m.ty * self.re + self.tx,
-            //ty: m.tx * self.re + m.ty * self.im + self.ty,
-
-            tx: m.tx * self.re - m.ty * self.im + self.tx,
-            ty: m.tx * self.im + m.ty * self.re + self.ty,
+            re: -self.re * id,
+            im: self.im * id,
+            tx: (self.im * self.ty + self.re * self.tx) * id,
+            ty: (self.re * self.ty - self.im * self.tx) * id,
         }
+    }
+
+    #[inline]
+    pub fn prepend(self, lhs: Self) -> Self {
+        lhs * self
+    }
+
+    #[inline]
+    pub fn append(self, rhs: Self) -> Self {
+        self * rhs
     }
 }
 
@@ -144,13 +141,6 @@ fn rotation() {
         let eps = 1e-5;
         assert!(a[0].approx_eq_eps(&b[0], &eps) && a[1].approx_eq_eps(&b[1], &eps))
     }
-
-    let angle: f32 = 0.032;
-    let (sn, cs) = angle.sin_cos();
-    let tr = Transform::from_sin_cos(sn, cs);
-
-    assert_eq!(tr.angle(), angle);
-    assert_eq!(tr.scaling(), 1.0);
 
     use std::f32::consts::{PI, FRAC_PI_2};
 
@@ -179,15 +169,15 @@ fn translation() {
     let tr = Transform::translation(1.0, 2.0);
     assert_eq!(tr.apply([0.0, 0.0]), [1.0, 2.0]);
 
-    let tr = Transform::translation(1.0, 2.0).append(&Transform::IDENTITY);
+    let tr = Transform::translation(1.0, 2.0).append(Transform::IDENTITY);
     assert_eq!(tr.apply([0.0, 0.0]), [1.0, 2.0]);
 
-    let tr = Transform::IDENTITY.append(&Transform::translation(1.0, 2.0));
+    let tr = Transform::IDENTITY.append(Transform::translation(1.0, 2.0));
     assert_eq!(tr.apply([0.0, 0.0]), [1.0, 2.0]);
 
-    let tr = Transform::translation(1.0, 0.0).append(&Transform::translation(0.0, 2.0));
+    let tr = Transform::translation(1.0, 0.0).append(Transform::translation(0.0, 2.0));
     assert_eq!(tr.apply([0.0, 0.0]), [1.0, 2.0]);
 
-    let tr = Transform::translation(0.0, 2.0).append(&Transform::translation(1.0, 0.0));
+    let tr = Transform::translation(0.0, 2.0).append(Transform::translation(1.0, 0.0));
     assert_eq!(tr.apply([0.0, 0.0]), [1.0, 2.0]);
 }
