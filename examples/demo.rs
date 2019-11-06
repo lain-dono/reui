@@ -83,7 +83,7 @@ fn main() {
             render_demo(
                 &mut vg,
                 point2(mx as f32, my as f32) / scale,
-                size2(win_w as f32, win_h as f32) / scale,
+                (win_w as f32 / scale, win_h as f32 / scale).into(),
                 time as f32, BLOWUP != 0, &data,
             );
             fps.render(&mut vg, 5.0, 5.0);
@@ -187,7 +187,6 @@ use std::f32::consts::PI;
 
 use oni2d::{
     Image, ImageFlags,
-    Color,
     Context, Align,
     TextRow, GlyphPosition,
 
@@ -196,9 +195,10 @@ use oni2d::{
     utils::slice_start_end,
 
     math::{
+        Color,
         rect, Rect,
-        size2, Size,
         point2, Point,
+        Vector,
     },
 };
 
@@ -259,7 +259,7 @@ fn cp2utf8(cp: char, s: &mut [u8; 8]) -> &str {
 }
 
 pub fn render_demo(
-    vg: &mut Context, mouse: Point, wsize: Size,
+    vg: &mut Context, mouse: Point, wsize: Vector,
     time: f32, blowup: bool, data: &DemoData,
 ) {
     let (width, height) = wsize.into();
@@ -333,11 +333,13 @@ pub fn render_demo(
         ctx.draw_line([60.0, 60.0], [140.0, 140.0], Paint::stroke(0xFF_00CCCC));
     }
 
+    /*
     {
         use oni2d::canvas::*;
         let mut ctx = Canvas::new(vg);
         sup::blendish::run(&mut ctx, time, rect(50.0, 50.0, 200.0, 200.0));
     }
+    */
 
 }
 
