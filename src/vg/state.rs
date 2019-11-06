@@ -59,12 +59,9 @@ impl Default for State {
 
 impl State {
     pub fn set_scissor(&mut self, rect: Rect) {
-        let (x, y) = rect.origin.into();
-        let w = rect.size.width.max(0.0);
-        let h = rect.size.height.max(0.0);
+        let [x, y, w, h] = rect.to_xywh();
 
-        self.scissor.xform = Transform::translation(x+w*0.5, y+h*0.5)
-            .post_transform(&self.xform);
+        self.scissor.xform = self.xform.append(Transform::translation(x+w*0.5, y+h*0.5));
 
         self.scissor.extent[0] = w*0.5;
         self.scissor.extent[1] = h*0.5;
@@ -80,7 +77,7 @@ impl State {
         // Transform the current scissor rect into current transform space.
         // If there is difference in rotation, this will be approximation.
         let inv = self.xform.inverse();
-        let xform = self.scissor.xform.post_transform(&inv);
+        let xform = self.scissor.xform.prepend(inv);
 
         let ex = self.scissor.extent[0];
         let ey = self.scissor.extent[1];
@@ -89,8 +86,8 @@ impl State {
         let tey = ex*xform.im.abs() + ey*xform.re.abs();
 
         // Intersect rects.
-        let (ax, ay) = (r.origin.x, r.origin.y);
-        let (aw, ah) = (r.size.width, r.size.height);
+        let (ax, ay) = (r.min_x(), r.min_y());
+        let (aw, ah) = (r.dx(), r.dy());
 
         let (bx, by) = (xform.tx-tex,xform.ty-tey);
         let (bw, bh) = (tex*2.0,tey*2.0);

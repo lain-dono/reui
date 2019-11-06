@@ -13,12 +13,12 @@ pub const ICON_TRASH: char = '\u{E729}';
 use crate::cp2utf8;
 
 pub fn draw_window(ctx: &mut Canvas, title: &str, rr: Rect) {
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+    let [x, y, w, h] = rr.to_xywh();
 
     let corner_radius = 3.0;
 
     // Window
-    let rrect = RRect::new(rr.origin.into(), rr.size.into(), corner_radius);
+    let rrect = RRect::new(rr.min().into(), rr.size().into(), corner_radius);
     ctx.draw_rrect(rrect, Paint::fill(0xC0_1C1E22));
     //vg.fill_color(0x80_000000);
 
@@ -28,7 +28,7 @@ pub fn draw_window(ctx: &mut Canvas, title: &str, rr: Rect) {
     path.add_rrect(rrect);
     path._path_winding(Winding::CW);
     ctx.draw_path(&mut path, Paint::gradient(Gradient::Box {
-        rect: Rect::new([x, y+2.0].into(), rr.size),
+        rect: Rect::new([x, y+2.0].into(), rr.size()),
         radius: corner_radius*2.0,
         feather: 10.0,
         inner_color: 0x80_000000,
@@ -61,14 +61,14 @@ pub fn draw_window(ctx: &mut Canvas, title: &str, rr: Rect) {
 }
 
 pub fn draw_search_box(ctx: &mut Canvas, text: &str, rr: Rect) {
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+    let [x, y, w, h] = rr.to_xywh();
 
     let corner_radius = h/2.0-1.0;
 
     // Edit
-    let rrect = RRect::new(rr.origin.into(), rr.size.into(), corner_radius);
+    let rrect = RRect::new(rr.min().into(), rr.size().into(), corner_radius);
     ctx.draw_rrect(rrect, Paint::gradient(Gradient::Box {
-        rect: rect(x,y+1.5, rr.size.width, rr.size.height),
+        rect: rect(x,y+1.5, rr.dx(), rr.dy()),
         radius: h/2.0, feather: 5.0,
         inner_color: 0x10_000000,
         outer_color: 0x60_000000,
@@ -97,8 +97,8 @@ pub fn draw_search_box(ctx: &mut Canvas, text: &str, rr: Rect) {
 }
 
 pub fn draw_label(ctx: &mut Canvas, text: &str, rr: Rect) {
-    let mut origin = rr.origin;
-    origin.y += rr.size.height * 0.5;
+    let mut origin = rr.min();
+    origin.y += rr.dy() * 0.5;
     ctx.text(origin.into(), text, TextStyle {
         font_size: 18.0,
         font_face: b"sans\0",
@@ -109,7 +109,7 @@ pub fn draw_label(ctx: &mut Canvas, text: &str, rr: Rect) {
 }
 
 pub fn draw_button<I: Into<Option<char>>>(ctx: &mut Canvas, preicon: I, text: &str, rr: Rect, col: u32) {
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+    let [x, y, w, h] = rr.to_xywh();
 
     let corner_radius = 4.0;
 
@@ -157,7 +157,7 @@ pub fn draw_button<I: Into<Option<char>>>(ctx: &mut Canvas, preicon: I, text: &s
 }
 
 pub fn draw_checkbox(ctx: &mut Canvas, text: &str, rr: Rect) {
-    let (x, y, _, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+    let [x, y, _, h] = rr.to_xywh();
 
     let rrect = RRect::new([x+1.0,y+(h*0.5).floor()-9.0], [18.0,18.0], 3.0);
     ctx.draw_rrect(rrect, Paint::gradient(Gradient::Box {
@@ -185,16 +185,13 @@ pub fn draw_checkbox(ctx: &mut Canvas, text: &str, rr: Rect) {
 }
 
 pub fn draw_drop_down(ctx: &mut Canvas, text: &str, bounds: Rect) {
-    let (x, y, w, h) = (
-        bounds.origin.x, bounds.origin.y,
-        bounds.size.width, bounds.size.height,
-    );
+    let [x, y, w, h] = bounds.to_xywh();
 
     let corner_radius = 4.0;
 
     let rrect = RRect::new([x+1.0,y+1.0], [w-2.0,h-2.0], corner_radius-1.0);
     ctx.draw_rrect(rrect, Paint::linear_gradient(
-        bounds.origin.into(), [x,y+h],
+        bounds.min().into(), [x,y+h],
         0x10_FFFFFF,
         0x10_000000,
     ));
@@ -220,7 +217,7 @@ pub fn draw_drop_down(ctx: &mut Canvas, text: &str, bounds: Rect) {
 }
 
 pub fn draw_eyes(ctx: &mut Canvas, rr: Rect, mouse: Point, time: f32) {
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+    let [x, y, w, h] = rr.to_xywh();
 
     let (mx, my) = mouse.into();
 
@@ -440,7 +437,7 @@ pub fn draw_lines(ctx: &mut Canvas, x: f32, y: f32, w: f32, _h: f32, t: f32) {
 }
 
 fn draw_edit_box_base(ctx: &mut Canvas, rr: Rect) {
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+    let [x, y, w, h] = rr.to_xywh();
 
     let bg = Paint::gradient(Gradient::Box {
         rect: rect(x+1.0,y+1.0+1.5, w-2.0,h-2.0),
@@ -455,7 +452,7 @@ fn draw_edit_box_base(ctx: &mut Canvas, rr: Rect) {
 }
 
 pub fn draw_edit_box(ctx: &mut Canvas, text: &str, rr: Rect) {
-    let (x, y, _, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+    let [x, y, _, h] = rr.to_xywh();
 
     draw_edit_box_base(ctx, rr);
     ctx.text([x+h*0.3,y+h*0.5], text, TextStyle {
@@ -470,7 +467,7 @@ pub fn draw_edit_box(ctx: &mut Canvas, text: &str, rr: Rect) {
 pub fn draw_edit_box_num(ctx: &mut Canvas, text: &str, units: &str, rr: Rect) {
     draw_edit_box_base(ctx, rr);
 
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+    let [x, y, w, h] = rr.to_xywh();
     let (uw, _) = ctx.text_bounds(units, 18.0, b"sans\0");
 
     ctx.text([x+w-h*0.3,y+h*0.5], units, TextStyle {
@@ -531,7 +528,7 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, x: f32, y: f32, w: f32, h: f32) {
 }
 
 pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) {
-    let (x, y, width, height) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+    let [x, y, width, height] = rr.to_xywh();
 
     let corner_radius = 3.0;
     let thumb = 60.0;
@@ -545,7 +542,7 @@ pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) 
     // Drop shadow
     let mut path: Path<[_; 128]> = Path::new();
     path.add_rect(rect(x-10.0,y-10.0, width+20.0,height+20.0));
-    path.add_rrect(RRect::new(rr.origin.into(), rr.size.into(), corner_radius));
+    path.add_rrect(RRect::new(rr.min().into(), rr.size().into(), corner_radius));
     path._path_winding(Winding::CW);
     path.close();
     ctx.draw_path(&mut path, Paint::gradient(Gradient::Box {
@@ -557,7 +554,7 @@ pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) 
 
     // Window
     path.clear();
-    path.add_rrect(RRect::new(rr.origin.into(), rr.size.into(), corner_radius));
+    path.add_rrect(RRect::new(rr.min().into(), rr.size().into(), corner_radius));
     path.move_to(x-10.0,y+arry);
     path.line_to(x+1.0,y+arry-11.0);
     path.line_to(x+1.0,y+arry+11.0);
@@ -678,7 +675,7 @@ pub fn draw_scissor(ctx: &mut Canvas, x: f32, y: f32, t: f32) {
 }
 
 pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
-    let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+    let [x, y, w, h] = rr.to_xywh();
     let hue = (time * 0.12).sin();
 
     let cx = x + w*0.5;

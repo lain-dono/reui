@@ -333,20 +333,17 @@ pub fn render_demo(
         ctx.draw_line([60.0, 60.0], [140.0, 140.0], Paint::stroke(0xFF_00CCCC));
     }
 
-    /*
     {
         use oni2d::canvas::*;
         let mut ctx = Canvas::new(vg);
         sup::blendish::run(&mut ctx, time, rect(50.0, 50.0, 200.0, 200.0));
     }
-    */
-
 }
 
 
 
 fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
-    let (x, mut y, width, _) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+    let [x, mut y, width, _] = rr.to_xywh();
 
     let (mx, my) = mouse.into();
     let text = "This is longer chunk of text.\n  \n  Would have used lorem ipsum but she    was busy jumping over the lazy dog with the fox and all the men who came to the aid of the party.🎉".as_bytes();

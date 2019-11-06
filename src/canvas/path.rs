@@ -81,8 +81,8 @@ impl<A: Array<Item = f32>> Path<A> {
 
     /// Adds a new sub-path that consists of a curve that forms the ellipse that fills the given rectangle. [...] 
     pub fn add_oval(&mut self, oval: Rect) {
-        let [cx, cy] = [oval.origin.x, oval.origin.y];
-        let [rx, ry] = [oval.size.width, oval.size.height];
+        let [cx, cy] = [oval.min_x(), oval.min_y()];
+        let [rx, ry] = [oval.dx(), oval.dy()];
         self.commands.extend_from_slice(&[
             MOVETO as f32, cx-rx, cy,
             BEZIERTO as f32, cx-rx, cy+ry*KAPPA90, cx-rx*KAPPA90, cy+ry, cx, cy+ry,

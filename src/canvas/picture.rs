@@ -109,13 +109,13 @@ impl Picture {
         self.bezier_to(p0 + (c - p0) * FIX, p1 + (c - p1) * FIX, p1);
     }
 
-    pub fn rect(&mut self, rr: Rect) {
-        let (x, y, w, h) = (rr.origin.x, rr.origin.y, rr.size.width, rr.size.height);
+    pub fn rect(&mut self, r: Rect) {
+        let [x, y, w, h] = r.to_xywh();
         self.append_commands(&mut [
-            MOVETO as f32, x,y,
-            LINETO as f32, x,y+h,
-            LINETO as f32, x+w,y+h,
-            LINETO as f32, x+w,y,
+            MOVETO as f32, r.min_x(), r.min_y(),
+            LINETO as f32, r.min_x(), r.max_y(),
+            LINETO as f32, r.max_x(), r.max_y(),
+            LINETO as f32, r.max_x(), r.min_y(),
             CLOSE as f32
         ]);
     }
@@ -128,7 +128,7 @@ impl Picture {
         br: f32,
         bl: f32,
     ) {
-        let (x, y, w, h) = (rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
+        let [x, y, w, h] = rect.to_xywh();
         if tl < 0.1 && tr < 0.1 && br < 0.1 && bl < 0.1 {
             self.rect(rect);
         } else {

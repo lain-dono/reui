@@ -94,12 +94,10 @@ impl Paint {
         inner_color: Color,
         outer_color: Color,
     ) -> Self {
+        let center = rect.center();
         Self {
-            xform: Transform::translation(
-                rect.origin.x + rect.size.width*0.5,
-                rect.origin.y + rect.size.height*0.5,
-            ),
-            extent: [rect.size.width*0.5, rect.size.height*0.5],
+            xform: Transform::translation(center.x, center.y),
+            extent: [rect.dx()*0.5, rect.dy()*0.5],
             radius,
             feather: feather.max(1.0),
             inner_color,

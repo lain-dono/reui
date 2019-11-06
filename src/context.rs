@@ -116,14 +116,12 @@ impl Context {
     pub fn stroke_paint(&mut self, paint: Paint) {
         let state = self.states.last_mut();
         state.stroke = paint;
-        state.stroke.xform = state.stroke.xform.post_transform(&state.xform);
-        //state.stroke.xform = state.stroke.xform.append(&state.xform);
+        state.stroke.xform.prepend_mut(state.xform);
     }
     pub fn fill_paint(&mut self, paint: Paint) {
         let state = self.states.last_mut();
         state.fill = paint;
-        state.fill.xform = state.fill.xform.post_transform(&state.xform);
-        //state.fill.xform = state.fill.xform.append(&state.xform);
+        state.fill.xform.prepend_mut(state.xform);
     }
 
     pub fn font_size(&mut self, size: f32) {
@@ -259,12 +257,10 @@ impl Context {
         &self.states.last().xform
     }
     pub fn pre_transform(&mut self, m: Transform) {
-        let t = &mut self.states.last_mut().xform;
-        *t = t.pre_transform(&m);
+        self.states.last_mut().xform.append_mut(m);
     }
     pub fn post_transform(&mut self, m: Transform) {
-        let t = &mut self.states.last_mut().xform;
-        *t = t.post_transform(&m);
+        self.states.last_mut().xform.prepend_mut(m);
     }
     pub fn reset_transform(&mut self) {
         self.states.last_mut().xform = Transform::identity();

@@ -364,7 +364,7 @@ impl<'a> Canvas<'a> {
     /// Whether the oval is filled or stroked (or both) is controlled by Paint.style. 
     pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
         self.ctx.begin_path();
-        self.ctx.ellipse(rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
+        self.ctx.ellipse(rect.min_x(), rect.min_y(), rect.dx(), rect.dy());
         self.fill_or_stroke(&paint);
     }
 

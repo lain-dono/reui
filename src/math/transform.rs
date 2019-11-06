@@ -129,4 +129,14 @@ impl Transform {
     pub fn append(self, rhs: Self) -> Self {
         self * rhs
     }
+
+    #[inline]
+    pub fn prepend_mut(&mut self, lhs: Self) {
+        *self = lhs * *self;
+    }
+
+    #[inline]
+    pub fn append_mut(&mut self, rhs: Self) {
+        *self = *self * rhs;
+    }
 }
