@@ -73,9 +73,9 @@ impl Shader {
         }
     }
 
-    pub fn bind_frag(&self, array: &[f32; 11*4 + 1]) {
+    pub fn bind_frag(&self, array: &[f32; 7*4 + 1]) {
         unsafe {
-            gl::Uniform4fv(self.loc_frag, 11, &(array[0]));
+            gl::Uniform4fv(self.loc_frag, 7, &(array[0]));
         }
     }
 
@@ -103,7 +103,7 @@ void main(void) {
 \0";
 
 static FRAG: &[u8] = b"
-#define UNIFORMARRAY_SIZE 11
+#define UNIFORMARRAY_SIZE 7
 
 //precision highp float;
 
@@ -112,23 +112,20 @@ uniform sampler2D tex;
 varying vec2 ftcoord;
 varying vec2 fpos;
 
-//#define scissorMat mat3(frag[0].xyz, frag[1].xyz, frag[2].xyz)
-//#define paintMat mat3(frag[3].xyz, frag[4].xyz, frag[5].xyz)
-
 #define scissorTransform frag[0]
-#define paintTransform frag[3]
+#define paintTransform frag[1]
 
-#define innerCol frag[6]
-#define outerCol frag[7]
-#define scissorExt frag[8].xy
-#define scissorScale frag[8].zw
-#define extent frag[9].xy
-#define radius frag[9].z
-#define feather frag[9].w
-#define strokeMult frag[10].x
-#define strokeThr frag[10].y
-#define texType int(frag[10].z)
-#define type int(frag[10].w)
+#define innerCol frag[2]
+#define outerCol frag[3]
+#define scissorExt frag[4].xy
+#define scissorScale frag[4].zw
+#define extent frag[5].xy
+#define radius frag[5].z
+#define feather frag[5].w
+#define strokeMult frag[6].x
+#define strokeThr frag[6].y
+#define texType int(frag[6].z)
+#define type int(frag[6].w)
 
 float sdroundrect(vec2 pt, vec2 ext, float rad) {
     vec2 ext2 = ext - vec2(rad,rad);

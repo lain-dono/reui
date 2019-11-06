@@ -81,12 +81,9 @@ fn check_error(msg: &str) {
     }
 }
 
-fn xform2mat3(t: Transform) -> [f32; 12] {
-    [
-        t.m11, t.m12, t.m31, t.m32,
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-    ]
+#[inline]
+fn xform2mat3(t: Transform) -> [f32; 4] {
+    [t.m11, t.m12, t.m31, t.m32]
 }
 
 fn copy_verts(dst: &mut [Vertex], offset: usize, count: usize, src: &[Vertex]) {
@@ -123,55 +120,55 @@ const SHADER_IMG: f32 = 3.0;
 
 #[repr(C, align(4))]
 struct FragUniforms {
-    array: [f32; 11 * 4 + 1],
+    array: [f32; 7 * 4 + 1],
 }
 
 impl Default for FragUniforms {
     fn default() -> Self {
-        Self { array: [0f32; 11 * 4 + 1] }
+        Self { array: [0.0; 7 * 4 + 1] }
     }
 }
 
 impl FragUniforms {
+    fn set_paint_mat(&mut self, t: Transform) {
+        self.array[4..8].copy_from_slice(&[t.m11, t.m12, t.m31, t.m32]);
+    }
+
     fn set_inner_col(&mut self, color: [f32; 4]) {
-        self.array[24..28].copy_from_slice(&color)
+        self.array[8..12].copy_from_slice(&color)
     }
 
     fn set_outer_col(&mut self, color: [f32; 4]) {
-        self.array[28..32].copy_from_slice(&color)
+        self.array[12..16].copy_from_slice(&color)
     }
 
-    fn set_paint_mat(&mut self, t: Transform) {
-        self.array[12..16].copy_from_slice(&[t.m11, t.m12, t.m31, t.m32]);
-    }
-
-    fn set_scissor(&mut self, mat: [f32; 12], ext: [f32; 2], scale: [f32; 2]) {
-        self.array[0..12].copy_from_slice(&mat);
-        self.array[32..34].copy_from_slice(&ext);
-        self.array[34..36].copy_from_slice(&scale);
+    fn set_scissor(&mut self, mat: [f32; 4], ext: [f32; 2], scale: [f32; 2]) {
+        self.array[0..4].copy_from_slice(&mat);
+        self.array[16..18].copy_from_slice(&ext);
+        self.array[18..20].copy_from_slice(&scale);
     }
 
     fn set_extent(&mut self, ext: [f32; 2]) {
-        self.array[36..38].copy_from_slice(&ext);
+        self.array[20..22].copy_from_slice(&ext);
     }
 
     fn set_radius(&mut self, radius: f32) {
-        self.array[38] = radius;
+        self.array[22] = radius;
     }
     fn set_feather(&mut self, feather: f32) {
-        self.array[39] = feather;
+        self.array[23] = feather;
     }
     fn set_stroke_mul(&mut self, mul: f32) {
-        self.array[40] = mul;
+        self.array[24] = mul;
     }
     fn set_stroke_thr(&mut self, thr: f32) {
-        self.array[41] = thr;
+        self.array[25] = thr;
     }
     fn set_tex_type(&mut self, t: f32) {
-        self.array[42] = t;
+        self.array[26] = t;
     }
     fn set_type(&mut self, t: f32) {
-        self.array[43] = t;
+        self.array[27] = t;
     }
 }
 
@@ -369,7 +366,7 @@ impl BackendGL {
         frag.set_outer_col(paint.outer_color.premul());
 
         if scissor.extent[0] < -0.5 || scissor.extent[1] < -0.5 {
-            frag.set_scissor([0.0; 12], [1.0, 1.0], [1.0, 1.0]);
+            frag.set_scissor([0.0; 4], [1.0, 1.0], [1.0, 1.0]);
         } else {
             let xform = &scissor.xform;
             let (re, im) = (xform.m11, xform.m12);
