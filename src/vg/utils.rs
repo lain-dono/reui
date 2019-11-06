@@ -1,4 +1,4 @@
-use crate::math::{Transform, Offset, Point};
+use crate::math::{Transform, Offset};
 
 pub fn slice_start_end(b: &[u8]) -> (*const u8, *const u8) {
     unsafe {
@@ -31,12 +31,13 @@ pub fn normalize(x: &mut f32, y: &mut f32) -> f32 {
     d
 }
 
+/*
 pub fn pt_eq(x1: f32, y1: f32, x2: f32, y2: f32, tol: f32) -> bool {
     let p1 = Point::new(x1, y1);
     let p2 = Point::new(x2, y2);
     p1.approx_eq_eps(p2, tol)
 }
-
+*/
 
 pub fn average_scale(t: &Transform) -> f32 {
     (t.re*t.re+ t.im*t.im)

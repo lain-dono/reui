@@ -46,7 +46,7 @@ fn main() {
 
         let data = DemoData::new(&mut vg);
 
-        glfwSwapInterval(0);;
+        glfwSwapInterval(0);
 
         glfwSetTime(0.0);
         let mut prevt = glfwGetTime();
@@ -197,8 +197,7 @@ use oni2d::{
     math::{
         Color,
         rect, Rect,
-        point2, Point,
-        Offset,
+        point2, Offset,
     },
 };
 
@@ -259,7 +258,7 @@ fn cp2utf8(cp: char, s: &mut [u8; 8]) -> &str {
 }
 
 pub fn render_demo(
-    vg: &mut Context, mouse: Point, wsize: Offset,
+    vg: &mut Context, mouse: Offset, wsize: Offset,
     time: f32, blowup: bool, data: &DemoData,
 ) {
     let (width, height) = wsize.into();
@@ -328,7 +327,7 @@ pub fn render_demo(
         let mut ctx = Canvas::new(vg);
 
         ctx.draw_rect(rect(50.0, 50.0, 100.0, 100.0), Paint::fill(0xFF_000000));
-        ctx.draw_rrect(RRect::new([50.0, 50.0].into(), [100.0, 100.0], 15.0), Paint::fill(0xFF_CC0000));
+        ctx.draw_rrect(RRect::new([50.0, 50.0].into(), [100.0, 100.0].into(), 15.0), Paint::fill(0xFF_CC0000));
 
         ctx.draw_line([60.0, 60.0].into(), [140.0, 140.0].into(), Paint::stroke(0xFF_00CCCC));
     }
@@ -340,7 +339,7 @@ pub fn render_demo(
     }
 }
 
-fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Point) {
+fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Offset) {
     let [x, mut y, width, _] = rr.to_xywh();
 
     let (mx, my) = mouse.into();

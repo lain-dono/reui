@@ -7,7 +7,7 @@ use crate::{
     cache::{PathCache, LineCap, LineJoin},
     vg::*,
     font::*,
-    math::{Point, Transform, Color},
+    math::{Offset, Transform, Color},
     canvas::Picture,
 };
 
@@ -241,7 +241,7 @@ impl Context {
 
             picture: Picture {
                 commands: Vec::with_capacity(INIT_COMMANDS_SIZE),
-                cmd: Point::zero(),
+                cmd: Offset::zero(),
                 xform: Transform::identity(),
             },
 

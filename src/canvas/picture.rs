@@ -1,7 +1,7 @@
 use crate::{
     math::{
         Transform,
-        Point, Offset,
+        Offset,
         point2, vec2,
         Rect,
     },
@@ -62,7 +62,7 @@ const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
 
 pub struct Picture {
     pub commands: Vec<f32>,
-    pub cmd: Point,
+    pub cmd: Offset,
     pub xform: Transform,
 }
 
@@ -85,24 +85,24 @@ impl Picture {
         self.commands.extend_from_slice(&[ WINDING as f32, dir ]);
     }
 
-    pub fn move_to(&mut self, p: Point) {
-        let Point { x, y, .. } = self.xform.transform_point(p);
+    pub fn move_to(&mut self, p: Offset) {
+        let Offset { x, y, .. } = self.xform.transform_point(p);
         self.commands.extend_from_slice(&[ MOVETO as f32, x, y ]);
     }
 
-    pub fn line_to(&mut self, p: Point) {
-        let Point { x, y, .. } = self.xform.transform_point(p);
+    pub fn line_to(&mut self, p: Offset) {
+        let Offset { x, y, .. } = self.xform.transform_point(p);
         self.commands.extend_from_slice(&[ LINETO as f32, x, y ]);
     }
 
-    pub fn bezier_to(&mut self, p1: Point, p2: Point, p3: Point) {
-        let Point { x: x1, y: y1, .. } = self.xform.transform_point(p1);
-        let Point { x: x2, y: y2, .. } = self.xform.transform_point(p2);
-        let Point { x: x3, y: y3, .. } = self.xform.transform_point(p3);
+    pub fn bezier_to(&mut self, p1: Offset, p2: Offset, p3: Offset) {
+        let Offset { x: x1, y: y1, .. } = self.xform.transform_point(p1);
+        let Offset { x: x2, y: y2, .. } = self.xform.transform_point(p2);
+        let Offset { x: x3, y: y3, .. } = self.xform.transform_point(p3);
         self.commands.extend_from_slice(&[ BEZIERTO as f32, x1, y1, x2, y2, x3, y3 ]);
     }
 
-    pub fn quad_to(&mut self, c: Point, p1: Point) {
+    pub fn quad_to(&mut self, c: Offset, p1: Offset) {
         const FIX: f32 = 2.0/3.0;
         let p0 = self.cmd;
         self.bezier_to(p0 + (c - p0) * FIX, p1 + (c - p1) * FIX, p1);
@@ -176,7 +176,7 @@ impl Picture {
         self.ellipse(cx, cy, r, r);
     }
 
-    pub fn arc(&mut self, c: Point, r: f32, a0: f32, a1: f32, dir: Winding) {
+    pub fn arc(&mut self, c: Offset, r: f32, a0: f32, a1: f32, dir: Winding) {
         use std::f32::consts::PI;
 
         let mov = if !self.commands.is_empty() { LINETO } else { MOVETO };
@@ -239,7 +239,7 @@ impl Picture {
     }
 
 
-    pub fn arc_to(&mut self, p1: Point, p2: Point, radius: f32, dist_tol: f32) {
+    pub fn arc_to(&mut self, p1: Offset, p2: Offset, radius: f32, dist_tol: f32) {
         let p0 = self.cmd;
         let tol = dist_tol;
         let tol2 = dist_tol * dist_tol;

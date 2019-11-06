@@ -8,7 +8,6 @@ use crate::{
     math::{Offset, vec2},
     vg::utils::{
         normalize,
-        pt_eq,
         vec_mul,
     },
 };
@@ -342,7 +341,7 @@ impl PathCache {
 
         if path.count as usize > 0 && !self.points.is_empty() {
             let pt = self.points.last_mut().expect("last point");
-            if pt_eq(pt.pos.x,pt.pos.y, x,y, dist_tol) {
+            if pt.pos.approx_eq_eps(vec2(x,y), dist_tol) {
                 pt.flags |= flags;
                 return;
             }
@@ -496,7 +495,7 @@ impl PathCache {
             let mut p1: *mut PathPoint = &mut pts[0];
 
             unsafe {
-                if pt_eq((*p0).pos.x,(*p0).pos.y, (*p1).pos.x,(*p1).pos.y, self.dist_tol) {
+                if (*p0).pos.approx_eq_eps((*p1).pos, self.dist_tol) {
                     path.count -= 1;
                     p0 = pts.get_unchecked_mut((path.count-1) as usize);
                     path.closed = true;

@@ -2,8 +2,6 @@ mod path;
 mod paint;
 mod picture;
 
-mod geom;
-
 pub use slotmap::Key;
 
 pub use crate::{
@@ -13,10 +11,10 @@ pub use crate::{
     Winding,
     math::{
         Offset,
-        Point,
         Transform,
         Rect,
         rect,
+        Corners,
     },
 };
 
@@ -51,65 +49,41 @@ impl<'a> TextStyle<'a> {
     }
 }
 
-pub type Size = [f32; 2];
 pub type Radius = f32; // TODO: [f32; 2]
 
-#[derive(Clone, Copy, Default)]
-pub struct CornerRadius {
-    pub tl: f32,
-    pub tr: f32,
-    pub br: f32,
-    pub bl: f32,
-}
-
-impl CornerRadius {
-    pub fn all_same(radius: f32) -> Self {
-        Self {
-            tr: radius,
-            tl: radius,
-            br: radius,
-            bl: radius,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 pub struct RRect {
-    pub left: f32,
-    pub top: f32,
-    pub right: f32,
-    pub bottom: f32,
-
-    pub radius: CornerRadius,
+    pub rect: Rect,
+    pub radius: Corners,
 }
 
 impl RRect {
-    pub fn new(o: Offset, s: Size, radius: f32) -> Self {
-        Self {
-            left: o.x,
-            top: o.y,
-            right: o.x + s[0],
-            bottom: o.y + s[1],
-            radius: CornerRadius::all_same(radius),
-        }
+    pub fn from_rect_and_radius(rect: Rect, radius: f32) -> Self {
+        Self { rect, radius: Corners::all_same(radius) }
+    }
+
+    pub fn new(o: Offset, s: Offset, radius: f32) -> Self {
+        Self::from_rect_and_radius(Rect::from_points(o, o+s), radius)
     }
 
     pub fn rect(&self) -> Rect {
-        let origin = [self.left, self.top].into();
-        let size = [self.width(), self.height()].into();
-        Rect::new(origin, size)
+        self.rect
     }
 
-    pub fn width(&self) -> f32 { self.right - self.left }
-    pub fn height(&self) -> f32 { self.bottom - self.top }
+    pub fn width(&self) -> f32 { self.rect.dx() }
+    pub fn height(&self) -> f32 { self.rect.dy() }
 
-    pub fn add(self, v: f32) -> Self {
+    pub fn inflate(self, v: f32) -> Self {
         Self {
-            left: self.left - v,
-            top: self.left - v,
-            bottom: self.left + v,
-            right: self.left + v,
-            .. self
+            rect: self.rect.inflate(v),
+            radius: self.radius,
+        }
+    }
+
+    pub fn deflate(self, v: f32) -> Self {
+        Self {
+            rect: self.rect.deflate(v),
+            radius: self.radius,
         }
     }
 }

@@ -94,7 +94,7 @@ impl<A: Array<Item = f32>> Path<A> {
     }
 
     pub fn add_circle(&mut self, c: Offset, r: f32) {
-        self.add_oval(Rect::new(c.into(), [r, r].into()));
+        self.add_oval(Rect::from_ltwh(c.x, c.y, r, r));
     }
 
     /*
@@ -116,9 +116,9 @@ impl<A: Array<Item = f32>> Path<A> {
     }
     /// Adds a new sub-path that consists of the straight lines and curves needed to form the rounded rectangle described by the argument. 
     pub fn add_rrect(&mut self, rr: RRect) {
-        let (x, y, w, h) = (rr.left, rr.top, rr.width(), rr.height());
+        let (x, y, w, h) = (rr.rect.min.x, rr.rect.min.y, rr.width(), rr.height());
         if rr.radius.tl < 0.1 && rr.radius.tr < 0.1 && rr.radius.br < 0.1 && rr.radius.bl < 0.1 {
-            self.add_rect(Rect::new([x, y].into(), [w, h].into()));
+            self.add_rect(rr.rect);
         } else {
             let halfw = w.abs()*0.5;
             let halfh = h.abs()*0.5;
