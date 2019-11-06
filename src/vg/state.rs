@@ -86,7 +86,7 @@ impl State {
         let tey = ex*xform.im.abs() + ey*xform.re.abs();
 
         // Intersect rects.
-        let (ax, ay) = (r.min_x(), r.min_y());
+        let (ax, ay) = (r.min.x, r.min.y);
         let (aw, ah) = (r.dx(), r.dy());
 
         let (bx, by) = (xform.tx-tex,xform.ty-tey);

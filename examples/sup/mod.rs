@@ -18,7 +18,7 @@ pub fn draw_window(ctx: &mut Canvas, title: &str, rr: Rect) {
     let corner_radius = 3.0;
 
     // Window
-    let rrect = RRect::new(rr.min().into(), rr.size().into(), corner_radius);
+    let rrect = RRect::new(rr.min.into(), rr.size().into(), corner_radius);
     ctx.draw_rrect(rrect, Paint::fill(0xC0_1C1E22));
     //vg.fill_color(0x80_000000);
 
@@ -66,7 +66,7 @@ pub fn draw_search_box(ctx: &mut Canvas, text: &str, rr: Rect) {
     let corner_radius = h/2.0-1.0;
 
     // Edit
-    let rrect = RRect::new(rr.min().into(), rr.size().into(), corner_radius);
+    let rrect = RRect::new(rr.min.into(), rr.size().into(), corner_radius);
     ctx.draw_rrect(rrect, Paint::gradient(Gradient::Box {
         rect: rect(x,y+1.5, rr.dx(), rr.dy()),
         radius: h/2.0, feather: 5.0,
@@ -97,7 +97,7 @@ pub fn draw_search_box(ctx: &mut Canvas, text: &str, rr: Rect) {
 }
 
 pub fn draw_label(ctx: &mut Canvas, text: &str, rr: Rect) {
-    let mut origin = rr.min();
+    let mut origin = rr.min;
     origin.y += rr.dy() * 0.5;
     ctx.text(origin.into(), text, TextStyle {
         font_size: 18.0,
@@ -191,7 +191,7 @@ pub fn draw_drop_down(ctx: &mut Canvas, text: &str, bounds: Rect) {
 
     let rrect = RRect::new([x+1.0,y+1.0], [w-2.0,h-2.0], corner_radius-1.0);
     ctx.draw_rrect(rrect, Paint::linear_gradient(
-        bounds.min().into(), [x,y+h],
+        bounds.min.into(), [x,y+h],
         0x10_FFFFFF,
         0x10_000000,
     ));
@@ -542,7 +542,7 @@ pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) 
     // Drop shadow
     let mut path: Path<[_; 128]> = Path::new();
     path.add_rect(rect(x-10.0,y-10.0, width+20.0,height+20.0));
-    path.add_rrect(RRect::new(rr.min().into(), rr.size().into(), corner_radius));
+    path.add_rrect(RRect::new(rr.min.into(), rr.size().into(), corner_radius));
     path._path_winding(Winding::CW);
     path.close();
     ctx.draw_path(&mut path, Paint::gradient(Gradient::Box {
@@ -554,7 +554,7 @@ pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) 
 
     // Window
     path.clear();
-    path.add_rrect(RRect::new(rr.min().into(), rr.size().into(), corner_radius));
+    path.add_rrect(RRect::new(rr.min.into(), rr.size().into(), corner_radius));
     path.move_to(x-10.0,y+arry);
     path.line_to(x+1.0,y+arry-11.0);
     path.line_to(x+1.0,y+arry+11.0);

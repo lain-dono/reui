@@ -110,12 +110,11 @@ impl Picture {
     }
 
     pub fn rect(&mut self, r: Rect) {
-        let [x, y, w, h] = r.to_xywh();
         self.append_commands(&mut [
-            MOVETO as f32, r.min_x(), r.min_y(),
-            LINETO as f32, r.min_x(), r.max_y(),
-            LINETO as f32, r.max_x(), r.max_y(),
-            LINETO as f32, r.max_x(), r.min_y(),
+            MOVETO as f32, r.min.x, r.min.y,
+            LINETO as f32, r.min.x, r.max.y,
+            LINETO as f32, r.max.x, r.max.y,
+            LINETO as f32, r.max.x, r.min.y,
             CLOSE as f32
         ]);
     }

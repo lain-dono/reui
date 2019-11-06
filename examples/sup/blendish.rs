@@ -75,7 +75,7 @@ pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
     draw_window(ctx, bounds, &win_theme);
 
     let mut num = Rect::new(
-        bounds.min() + Vector::new(10.0, 10.0),
+        bounds.min + Vector::new(10.0, 10.0),
         euclid::Size2D::new(160.0, 18.0),
     );
 
@@ -88,7 +88,7 @@ pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
     let num = num.translate(Vector::new(0.0, 40.0));
 
     let mut opt = Rect::new(
-        num.min(),
+        num.min,
         euclid::Size2D::new(13.0, 13.0),
     );
     draw_option(ctx, opt, &opt_theme, State::Normal, "Normal");
@@ -118,7 +118,7 @@ pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {
     ctx.draw_rect(bounds, Paint::fill(theme.background));
 
     let rect = bounds.deflate(3.0);
-    let rrect = RRect::new(rect.min().into(), rect.size().into(), 2.5);
+    let rrect = RRect::new(rect.min.into(), rect.size().into(), 2.5);
 
     let left_scroll = RRect {
         left: rrect.right - 5.0,
@@ -142,7 +142,7 @@ pub fn draw_option(
         State::Hovered => shade(theme.background, HOVER_SHADE),
         State::Active => theme.active,
     };
-    let rrect = RRect::new(bounds.min().into(), bounds.size().into(), theme.radius);
+    let rrect = RRect::new(bounds.min.into(), bounds.size().into(), theme.radius);
     ctx.draw_rrect(rrect, Paint::fill(bg));
     let a = vec2(2.5, 6.0);
     let b = vec2(5.5, 9.0);
@@ -150,15 +150,15 @@ pub fn draw_option(
 
     if state == State::Active {
         ctx.draw_lines(&[
-            (bounds.min() + a).into(),
-            (bounds.min() + b).into(),
-            (bounds.min() + c).into(),
+            (bounds.min + a).into(),
+            (bounds.min + b).into(),
+            (bounds.min + c).into(),
         ], Paint::fill(0xFF_E6E6E6).stroke_width(2.0))
     }
 
     ctx.draw_rrect(rrect.add(1.0), Paint::stroke(theme.outline).stroke_width(0.5));
 
-    let p = point2(bounds.min_x() + bounds.dx() * 1.375, bounds.min_y() + bounds.dy() / 2.0);
+    let p = point2(bounds.min.x + bounds.dx() * 1.375, bounds.min.y + bounds.dy() / 2.0);
 
     text_with_shadow(ctx, p, theme.color, Align::LEFT|Align::MIDDLE, label);
 }
@@ -177,7 +177,7 @@ pub fn draw_num(
         State::Active => theme.active,
     };
 
-    let mut rrect = RRect::new(bounds.min().into(), bounds.size().into(), theme.radius);
+    let mut rrect = RRect::new(bounds.min.into(), bounds.size().into(), theme.radius);
     match gropped {
         Gropped::None => (),
         Gropped::StartVertical => {

@@ -81,7 +81,7 @@ impl<A: Array<Item = f32>> Path<A> {
 
     /// Adds a new sub-path that consists of a curve that forms the ellipse that fills the given rectangle. [...] 
     pub fn add_oval(&mut self, oval: Rect) {
-        let [cx, cy] = [oval.min_x(), oval.min_y()];
+        let [cx, cy] = [oval.min.x, oval.min.y];
         let [rx, ry] = [oval.dx(), oval.dy()];
         self.commands.extend_from_slice(&[
             MOVETO as f32, cx-rx, cy,
@@ -107,10 +107,10 @@ impl<A: Array<Item = f32>> Path<A> {
     /// Adds a new sub-path that consists of four lines that outline the given rectangle. 
     pub fn add_rect(&mut self, rect: Rect) {
         self.commands.extend_from_slice(&[
-            MOVETO as f32, rect.min_x(), rect.min_y(),
-            LINETO as f32, rect.min_x(), rect.max_y(),
-            LINETO as f32, rect.max_x(), rect.max_y(),
-            LINETO as f32, rect.max_x(), rect.min_y(),
+            MOVETO as f32, rect.min.x, rect.min.y,
+            LINETO as f32, rect.min.x, rect.max.y,
+            LINETO as f32, rect.max.x, rect.max.y,
+            LINETO as f32, rect.max.x, rect.min.y,
             CLOSE as f32
         ]);
     }
