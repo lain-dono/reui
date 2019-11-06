@@ -63,7 +63,7 @@ impl State {
         let w = rect.size.width.max(0.0);
         let h = rect.size.height.max(0.0);
 
-        self.scissor.xform = Transform::create_translation(x+w*0.5, y+h*0.5)
+        self.scissor.xform = Transform::translation(x+w*0.5, y+h*0.5)
             .post_transform(&self.xform);
 
         self.scissor.extent[0] = w*0.5;
@@ -79,20 +79,20 @@ impl State {
 
         // Transform the current scissor rect into current transform space.
         // If there is difference in rotation, this will be approximation.
-        let inv = self.xform.inverse().unwrap_or_else(Transform::identity);
+        let inv = self.xform.inverse();
         let xform = self.scissor.xform.post_transform(&inv);
 
         let ex = self.scissor.extent[0];
         let ey = self.scissor.extent[1];
 
-        let tex = ex*xform.m11.abs() + ey*xform.m21.abs();
-        let tey = ex*xform.m12.abs() + ey*xform.m22.abs();
+        let tex = ex*xform.re.abs() + ey*xform.im.abs();
+        let tey = ex*xform.im.abs() + ey*xform.re.abs();
 
         // Intersect rects.
         let (ax, ay) = (r.origin.x, r.origin.y);
         let (aw, ah) = (r.size.width, r.size.height);
 
-        let (bx, by) = (xform.m31-tex,xform.m32-tey);
+        let (bx, by) = (xform.tx-tex,xform.ty-tey);
         let (bw, bh) = (tex*2.0,tey*2.0);
 
         //let r1 = rect(bx, by, bw, bh);

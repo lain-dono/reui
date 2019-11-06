@@ -250,10 +250,6 @@ impl Context {
 }
 
 impl Context {
-    pub fn transform(&mut self, m: [f32; 6]) {
-        self.pre_transform(Transform::from_row_major_array(m))
-    }
-
     pub fn current_transform(&self) -> &Transform {
         &self.states.last().xform
     }
@@ -270,14 +266,13 @@ impl Context {
     }
 
     pub fn translate(&mut self, x: f32, y: f32) {
-        self.pre_transform(Transform::create_translation(x, y));
+        self.pre_transform(Transform::translation(x, y));
     }
     pub fn rotate(&mut self, angle: f32) {
-        let angle = euclid::Angle::radians(angle);
-        self.pre_transform(Transform::create_rotation(angle));
+        self.pre_transform(Transform::rotation(angle));
     }
     pub fn scale(&mut self, scale: f32) {
-        self.pre_transform(Transform::create_scale(scale, scale));
+        self.pre_transform(Transform::scale(scale));
     }
 }
 

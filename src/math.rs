@@ -7,7 +7,7 @@ pub use euclid::{
 
 pub use self::{
     color::Color,
-    //transform::Transform,
+    transform::Transform,
 };
 
 impl self::transform::Transform {
@@ -15,25 +15,12 @@ impl self::transform::Transform {
         self.apply(p.into()).into()
     }
 
-    pub fn create_translation(x: f32, y: f32) -> Self {
-        Self::translation(x, y)
-    }
-
-    pub fn create_rotation(theta: euclid::Angle<f32>) -> Self {
-        Self::rotation(theta.get())
-    }
-
-    pub fn create_scale(x: f32, y: f32) -> Self {
-        assert_eq!(x, y);
-        Self::scale(x)
-    }
-
     pub fn post_transform(&self, other: &Self) -> Self {
-        *self * *other
+        *other * *self
     }
 
     pub fn pre_transform(&self, other: &Self) -> Self {
-        *other * *self
+        *self * *other
     }
 }
 
@@ -41,8 +28,6 @@ mod color;
 pub mod offset;
 pub mod size;
 pub mod transform;
-
-pub type Transform = euclid::Transform2D<f32, UnknownUnit, UnknownUnit>;
 
 pub type Point = euclid::Point2D<f32, UnknownUnit>;
 pub type Vector = euclid::Vector2D<f32, UnknownUnit>;

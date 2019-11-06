@@ -564,7 +564,7 @@ pub fn draw_thumbnails(ctx: &mut Canvas, rr: Rect, images: &[Image], time: f32) 
     ctx.draw_path(&mut path, Paint::fill(0xFF_C8C8C8));
 
     ctx.save();
-    ctx.scissor(Rect::new(rr.origin.into(), rr.size.into()));
+    ctx.scissor(rr);
     ctx.translate(0.0, -(stackh - height)*u1);
 
     let dv = 1.0 / (images.len()-1) as f32;

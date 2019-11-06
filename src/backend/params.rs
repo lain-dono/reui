@@ -83,7 +83,7 @@ fn check_error(msg: &str) {
 
 #[inline]
 fn xform2mat3(t: Transform) -> [f32; 4] {
-    [t.m11, t.m12, t.m31, t.m32]
+    [t.re, t.im, t.tx, t.ty]
 }
 
 fn copy_verts(dst: &mut [Vertex], offset: usize, count: usize, src: &[Vertex]) {
@@ -131,7 +131,7 @@ impl Default for FragUniforms {
 
 impl FragUniforms {
     fn set_paint_mat(&mut self, t: Transform) {
-        self.array[4..8].copy_from_slice(&[t.m11, t.m12, t.m31, t.m32]);
+        self.array[4..8].copy_from_slice(&[t.re, t.im, t.tx, t.ty]);
     }
 
     fn set_inner_col(&mut self, color: [f32; 4]) {
@@ -369,10 +369,10 @@ impl BackendGL {
             frag.set_scissor([0.0; 4], [1.0, 1.0], [1.0, 1.0]);
         } else {
             let xform = &scissor.xform;
-            let (re, im) = (xform.m11, xform.m12);
+            let (re, im) = (xform.re, xform.im);
             let scale = (re*re + im*im).sqrt() / fringe;
             frag.set_scissor(
-                xform2mat3(xform.inverse().unwrap_or_else(Transform::identity)),
+                xform2mat3(xform.inverse()),
                 scissor.extent,
                 [scale, scale],
             );
@@ -383,7 +383,7 @@ impl BackendGL {
         frag.set_stroke_mul((width*0.5 + fringe*0.5) / fringe);
         frag.set_stroke_thr(stroke_thr);
 
-        let invxform = if !paint.image.is_null() {
+        if !paint.image.is_null() {
             let tex = match self.find_texture(paint.image) {
                 Some(tex) => tex,
                 None => return false,
@@ -395,16 +395,13 @@ impl BackendGL {
             } else {
                 2.0
             });
-
-            paint.xform.inverse().unwrap_or_else(Transform::identity)
         } else {
             frag.set_type(SHADER_FILLGRAD);
             frag.set_radius(paint.radius);
             frag.set_feather(paint.feather);
-            paint.xform.inverse().unwrap_or_else(Transform::identity)
         };
 
-        frag.set_paint_mat(invxform);
+        frag.set_paint_mat(paint.xform.inverse());
 
         true
     }

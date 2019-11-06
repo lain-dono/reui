@@ -40,9 +40,7 @@ pub fn pt_eq(x1: f32, y1: f32, x2: f32, y2: f32, tol: f32) -> bool {
 
 
 pub fn average_scale(t: &Transform) -> f32 {
-    let sx = (t.m11*t.m11 + t.m12*t.m12).sqrt();
-    let sy = (t.m21*t.m21 + t.m22*t.m22).sqrt();
-    (sx + sy) * 0.5
+    (t.re*t.re+ t.im*t.im)
 }
 
 #[inline(always)]

@@ -50,7 +50,7 @@ impl Transform {
     pub fn new(x: f32, y: f32, rotation: f32, scale: f32) -> Self {
         Self {
             re: rotation.cos() * scale,
-            im: rotation.sin() * scale,
+            im: -rotation.sin() * scale,
             tx: x,
             ty: y,
         }
@@ -64,7 +64,7 @@ impl Transform {
     #[inline]
     pub fn rotation(theta: f32) -> Self {
         let (sin, cos) = theta.sin_cos();
-        Self { re: cos, im: sin, tx: 0.0, ty: 0.0 }
+        Self { re: cos, im: -sin, tx: 0.0, ty: 0.0 }
     }
 
     #[inline]
@@ -129,55 +129,4 @@ impl Transform {
     pub fn append(self, rhs: Self) -> Self {
         self * rhs
     }
-}
-
-#[test]
-fn rotation() {
-    #![allow(clippy::float_cmp)]
-
-    fn eq(a: [f32; 2], b: [f32; 2]) {
-        use euclid::approxeq::ApproxEq;
-        println!("\teq {:?} {:?}", a, b);
-        let eps = 1e-5;
-        assert!(a[0].approx_eq_eps(&b[0], &eps) && a[1].approx_eq_eps(&b[1], &eps))
-    }
-
-    use std::f32::consts::{PI, FRAC_PI_2};
-
-    let tr = Transform::rotation(FRAC_PI_2);
-    println!("1: {:?}", tr);
-    eq(tr.apply([0.0, 0.0]), [0.0, 0.0]);
-    eq(tr.apply([1.0, 0.0]), [0.0, 1.0]);
-
-    let tr = Transform::rotation(-FRAC_PI_2);
-    println!("3: {:?}", tr);
-    eq(tr.apply([1.0, 0.0]), [0.0, -1.0]);
-
-    let tr = Transform::rotation(PI);
-    println!("4: {:?}", tr);
-    eq(tr.apply([1.0, 0.0]), [-1.0, 0.0]);
-
-    let tr = Transform::rotation(PI*2.0);
-    println!("4: {:?}", tr);
-    eq(tr.apply([1.0, 0.0]), [1.0, 0.0]);
-}
-
-#[test]
-fn translation() {
-    #![allow(clippy::float_cmp)]
-
-    let tr = Transform::translation(1.0, 2.0);
-    assert_eq!(tr.apply([0.0, 0.0]), [1.0, 2.0]);
-
-    let tr = Transform::translation(1.0, 2.0).append(Transform::IDENTITY);
-    assert_eq!(tr.apply([0.0, 0.0]), [1.0, 2.0]);
-
-    let tr = Transform::IDENTITY.append(Transform::translation(1.0, 2.0));
-    assert_eq!(tr.apply([0.0, 0.0]), [1.0, 2.0]);
-
-    let tr = Transform::translation(1.0, 0.0).append(Transform::translation(0.0, 2.0));
-    assert_eq!(tr.apply([0.0, 0.0]), [1.0, 2.0]);
-
-    let tr = Transform::translation(0.0, 2.0).append(Transform::translation(1.0, 0.0));
-    assert_eq!(tr.apply([0.0, 0.0]), [1.0, 2.0]);
 }

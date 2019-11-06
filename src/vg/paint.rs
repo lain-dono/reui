@@ -42,19 +42,12 @@ impl Paint {
         };
 
         Self {
-            xform: Transform::row_major(
-                dy, -dx,
-                dx, dy,
-                sx - dx*large,
-                sy - dy*large,
-            ),
-            /*
-            xform: Transform::new(
-                dy, -dx,
-                sx - dx*large,
-                sy - dy*large,
-            ),
-            */
+            xform: Transform {
+                re: dy,
+                im: -dx,
+                tx: sx - dx*large,
+                ty: sy - dy*large,
+            },
             extent: [large, large + d * 0.5],
             radius: 0.0,
             feather: d.max(1.0),
@@ -77,7 +70,7 @@ impl Paint {
         let f = outr-inr;
 
         Self {
-            xform: Transform::create_translation(cx, cy),
+            xform: Transform::translation(cx, cy),
             extent: [r, r],
             radius: r,
             feather: f.max(1.0),
@@ -102,7 +95,7 @@ impl Paint {
         outer_color: Color,
     ) -> Self {
         Self {
-            xform: Transform::create_translation(
+            xform: Transform::translation(
                 rect.origin.x + rect.size.width*0.5,
                 rect.origin.y + rect.size.height*0.5,
             ),
@@ -127,7 +120,7 @@ impl Paint {
     ) -> Self {
         let white = Color::rgbaf(1.0, 1.0, 1.0, alpha);
         Self {
-            xform: Transform::create_translation(cx, cy),
+            xform: Transform::translation(cx, cy),
             extent: [w, h],
             radius: 0.0,
             feather: 0.0,
