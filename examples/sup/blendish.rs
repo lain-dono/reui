@@ -74,9 +74,9 @@ pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
     ctx.scissor(bounds);
     draw_window(ctx, bounds, &win_theme);
 
-    let mut num = Rect::new(
+    let num = Rect::new(
         bounds.min + Vector::new(10.0, 10.0),
-        euclid::Size2D::new(160.0, 18.0),
+        Vector::new(160.0, 18.0),
     );
 
     draw_num(ctx, num, &num_theme, State::Normal, Gropped::StartVertical, "Normal");
@@ -87,23 +87,21 @@ pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
 
     let num = num.translate(Vector::new(0.0, 40.0));
 
-    let mut opt = Rect::new(
+    let opt = Rect::new(
         num.min,
-        euclid::Size2D::new(13.0, 13.0),
+        Vector::new(13.0, 13.0),
     );
     draw_option(ctx, opt, &opt_theme, State::Normal, "Normal");
     let opt = opt.translate(Vector::new(0.0, 20.0));
     draw_option(ctx, opt, &opt_theme, State::Hovered, "Hovered");
     let opt = opt.translate(Vector::new(0.0, 20.0));
     draw_option(ctx, opt, &opt_theme, State::Active, "Hovered");
-    let opt = opt.translate(Vector::new(0.0, 20.0));
 
     {
         use oni2d::math::transform::Transform;
 
         let pos = bounds.center().to_vector();
-        let rect = Rect::from_size(euclid::size2(4.0, 4.0))
-            .translate(pos);
+        let rect = Rect::from_size(4.0, 4.0).translate(pos);
 
         ctx.draw_rect(rect, Paint::fill(0xFF_CC0000));
 

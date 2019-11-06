@@ -82,7 +82,7 @@ fn main() {
 
             render_demo(
                 &mut vg,
-                point2(mx as f32, my as f32) / scale,
+                point2(mx as f32 / scale, my as f32 / scale),
                 (win_w as f32 / scale, win_h as f32 / scale).into(),
                 time as f32, BLOWUP != 0, &data,
             );

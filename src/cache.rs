@@ -396,7 +396,9 @@ impl PathCache {
                 p1.ext = (dl0 + dl1) * 0.5;
                 let dmr2 = p1.ext.square_length();
                 if dmr2 > 0.000_001 {
-                    p1.ext *= f32::min(1.0 / dmr2, 600.0);
+                    let v = f32::min(1.0 / dmr2, 600.0);
+                    p1.ext.x *= v;
+                    p1.ext.y *= v;
                 }
 
                 // Clear flags, but keep the corner.

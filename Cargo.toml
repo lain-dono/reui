@@ -19,7 +19,7 @@ arrayvec = "0.4"
 euclid = "^0.20.3"
 
 cgmath = "*"
-glsl-to-spirv = "*"
+#glsl-to-spirv = "*"
 
 #wgpu-native = "^0.2.3"
 #wgpu = { version = "0.2", git = "https://github.com/gfx-rs/wgpu-rs", rev = "5522c912f7e2f4f33a1167fb0c8ee4549f066dcf" }
@@ -27,7 +27,7 @@ glsl-to-spirv = "*"
 
 
 [dependencies.slotmap]
-version = "0.3"
+version = "0.4"
 features = ["unstable"]
 
 [dependencies.smallvec]

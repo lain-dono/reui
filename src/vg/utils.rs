@@ -34,8 +34,7 @@ pub fn normalize(x: &mut f32, y: &mut f32) -> f32 {
 pub fn pt_eq(x1: f32, y1: f32, x2: f32, y2: f32, tol: f32) -> bool {
     let p1 = Point::new(x1, y1);
     let p2 = Point::new(x2, y2);
-    let tol = Point::new(tol, tol);
-    p1.approx_eq_eps(&p2, &tol)
+    p1.approx_eq_eps(p2, tol)
 }
 
 

@@ -242,7 +242,7 @@ impl Picture {
 
     pub fn arc_to(&mut self, p1: Point, p2: Point, radius: f32, dist_tol: f32) {
         let p0 = self.cmd;
-        let tol = point2(dist_tol, dist_tol);
+        let tol = dist_tol;
         let tol2 = dist_tol * dist_tol;
 
         if self.commands.is_empty() {
@@ -250,7 +250,7 @@ impl Picture {
         }
 
         // Handle degenerate cases.
-        if radius < dist_tol || p0.approx_eq_eps(&p1, &tol) || p2.approx_eq_eps(&p2, &tol) ||
+        if radius < dist_tol || p0.approx_eq_eps(p1, tol) || p2.approx_eq_eps(p2, tol) ||
             dist_pt_seg(p1.to_vector(), p0.to_vector(), p2.to_vector()) < tol2 {
             self.line_to(p1);
             return;
