@@ -1,6 +1,5 @@
 mod gl_shader;
 mod params;
-mod utils;
 
 pub mod gl {
     include!(concat!(env!("OUT_DIR"), "/gl_bindings.rs"));
@@ -19,11 +18,8 @@ bitflags::bitflags!(
     #[derive(Default)]
     pub struct ImageFlags: u32 {
         const GENERATE_MIPMAPS  = 1; // Generate mipmaps during creation of the image.
-        const REPEATX           = 1<<1; // Repeat image in X direction.
-        const REPEATY           = 1<<2; // Repeat image in Y direction.
+        const REPEAT            = 1<<1; // Repeat image in X direction.
         const PREMULTIPLIED     = 1<<4; // Image data has premultiplied alpha.
         const NEAREST           = 1<<5; // Image interpolation is Nearest instead Linear
-
-        const NODELETE          = 1<<16;// Do not delete GL texture handle.
     }
 );

@@ -51,12 +51,12 @@ impl FontInfo {
         while l <= r {
             let m = (l + r) >> 1;
             let straw = read_u32(data.offset(18).offset((m * 6) as isize));
-            if needle < straw {
-                r = m - 1
-            } else if needle > straw {
-                l = m + 1
-            } else {
-                return read_i16(data.offset(22).offset((m * 6) as isize)) as i32;
+            match needle.cmp(&straw) {
+                std::cmp::Ordering::Less => r = m - 1,
+                std::cmp::Ordering::Greater => l = m + 1,
+                std::cmp::Ordering::Equal => {
+                    return read_i16(data.offset(22).offset((m * 6) as isize)) as i32;
+                }
             }
         }
         0

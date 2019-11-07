@@ -193,7 +193,7 @@ struct Texture {
 
 impl Drop for Texture {
     fn drop(&mut self) {
-        if self.tex != 0 && !self.flags.contains(ImageFlags::NODELETE) {
+        if self.tex != 0 {
             unsafe { gl::DeleteTextures(1, &self.tex); }
             self.tex = 0;
         }
@@ -879,8 +879,7 @@ impl BackendGL {
         } else { gl::LINEAR };
 
         let mag = if flags.contains(ImageFlags::NEAREST) { gl::NEAREST } else { gl::LINEAR };
-        let wrap_s = if flags.contains(ImageFlags::REPEATX) { gl::REPEAT } else { gl::CLAMP_TO_EDGE };
-        let wrap_t = if flags.contains(ImageFlags::REPEATY) { gl::REPEAT } else { gl::CLAMP_TO_EDGE };
+        let wrap = if flags.contains(ImageFlags::REPEAT) { gl::REPEAT } else { gl::CLAMP_TO_EDGE };
 
         let mut tex = 0;
         unsafe {
@@ -898,8 +897,8 @@ impl BackendGL {
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, min as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, mag as i32);
 
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, wrap_s as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, wrap_t as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, wrap as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, wrap as i32);
 
             gl::PixelStorei(gl::UNPACK_ALIGNMENT, 4);
 
