@@ -149,7 +149,7 @@ pub struct Font {
     pub data: Vec<u8>,
 
     pub font: FontInfo,
-    pub name: [u8; 64],
+    pub name: arrayvec::ArrayString<[u8; 64]>,
 
     pub ascender: f32,
     pub descender: f32,
@@ -510,12 +510,7 @@ impl Stash {
         let stash: *mut Self = self;
         let font = &mut self.fonts[idx as usize];
         unsafe {
-            let name = name.as_bytes();
-            for i in 0..64 {
-                if i >= name.len() { break }
-                font.name[i] = name[i];
-            }
-            font.name[64 - 1] = 0;
+            font.name.push_str(name);
 
             for i in 0..256 {
                 font.lut[i] = -1;

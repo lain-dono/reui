@@ -109,7 +109,7 @@ impl PerfGraph {
         vg.fill_color(0x80_FFC000);
         vg.fill();
 
-        vg.font_face(b"sans\0");
+        vg.font_face("sans");
 
         vg.font_size(14.0);
         vg.text_align(Align::LEFT|Align::TOP);

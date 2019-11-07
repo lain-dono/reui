@@ -45,7 +45,7 @@ pub fn draw_window(ctx: &mut Canvas, title: &str, rr: Rect) {
 
     ctx.text([x+w/2.0,y+16.0+1.0].into(), title, TextStyle {
         font_size: 18.0,
-        font_face: b"sans-bold\0",
+        font_face: "sans-bold",
         font_blur: 2.0,
         color: 0x80_000000,
         text_align: Align::CENTER|Align::MIDDLE,
@@ -53,7 +53,7 @@ pub fn draw_window(ctx: &mut Canvas, title: &str, rr: Rect) {
 
     ctx.text([x+w/2.0,y+16.0].into(), title, TextStyle {
         font_size: 18.0,
-        font_face: b"sans-bold\0",
+        font_face: "sans-bold",
         font_blur: 0.0,
         color: 0x3C_DCDCDC,
         text_align: Align::CENTER|Align::MIDDLE,
@@ -76,7 +76,7 @@ pub fn draw_search_box(ctx: &mut Canvas, text: &str, rr: Rect) {
 
     ctx.text([x+h*1.05,y+h*0.5].into(), text, TextStyle {
         font_size: 20.0,
-        font_face: b"sans\0",
+        font_face: "sans",
         font_blur: 0.0,
         color: 0x20_FFFFFF,
         text_align: Align::LEFT|Align::MIDDLE,
@@ -84,7 +84,7 @@ pub fn draw_search_box(ctx: &mut Canvas, text: &str, rr: Rect) {
 
     let mut style = TextStyle {
         font_size: h*1.3,
-        font_face: b"icons\0",
+        font_face: "icons",
         font_blur: 0.0,
         color: 0x40_FFFFFF,
         text_align: Align::CENTER|Align::MIDDLE,
@@ -101,7 +101,7 @@ pub fn draw_label(ctx: &mut Canvas, text: &str, rr: Rect) {
     origin.y += rr.dy() * 0.5;
     ctx.text(origin, text, TextStyle {
         font_size: 18.0,
-        font_face: b"sans\0",
+        font_face: "sans",
         font_blur: 0.0,
         text_align: Align::LEFT|Align::MIDDLE,
         color: 0x40_FFFFFF,
@@ -127,17 +127,17 @@ pub fn draw_button<I: Into<Option<char>>>(ctx: &mut Canvas, preicon: I, text: &s
     let rrect = RRect::new([x+0.5,y+0.5].into(), [w-1.0,h-1.0].into(), corner_radius-0.5);
     ctx.draw_rrect(rrect, Paint::stroke(0x30_000000));
 
-    let (tw, _) = ctx.text_bounds(text, 20.0, b"sans-bold\0");
+    let (tw, _) = ctx.text_bounds(text, 20.0, "sans-bold");
     let mut iw = 0.0;
     if let Some(preicon) = preicon.into() {
         let mut icon = [0u8; 8];
         let icon = cp2utf8(preicon, &mut icon);
-        iw = ctx.text_bounds(icon, h*1.3, b"icons\0").0;
+        iw = ctx.text_bounds(icon, h*1.3, "icons").0;
         iw += h*0.15;
 
         ctx.text([x+w*0.5-tw*0.5-iw*0.75, y+h*0.5].into(), icon, TextStyle {
             font_size: h*1.3,
-            font_face: b"icons\0",
+            font_face: "icons",
             font_blur: 0.0,
             color: 0x60_FFFFFF,
             text_align: Align::LEFT|Align::MIDDLE,
@@ -146,7 +146,7 @@ pub fn draw_button<I: Into<Option<char>>>(ctx: &mut Canvas, preicon: I, text: &s
 
     let mut style =  TextStyle {
         font_size: 20.0,
-        font_face: b"sans-bold\0",
+        font_face: "sans-bold",
         font_blur: 0.0,
         color: 0xA0_000000,
         text_align: Align::LEFT|Align::MIDDLE,
@@ -170,14 +170,14 @@ pub fn draw_checkbox(ctx: &mut Canvas, text: &str, rr: Rect) {
     let mut icon = [0u8; 8];
     ctx.text([x+9.0+2.0, y+h*0.5].into(), cp2utf8(ICON_CHECK, &mut icon), TextStyle {
         font_size: 40.0,
-        font_face: b"icons\0",
+        font_face: "icons",
         font_blur: 0.0,
         color: 0x80_FFFFFF,
         text_align: Align::CENTER|Align::MIDDLE,
     });
     ctx.text([x+28.0,y+h*0.5].into(), text, TextStyle {
         font_size: 18.0,
-        font_face: b"sans\0",
+        font_face: "sans",
         font_blur: 0.0,
         color: 0xA0_FFFFFF,
         text_align: Align::LEFT|Align::MIDDLE,
@@ -202,14 +202,14 @@ pub fn draw_drop_down(ctx: &mut Canvas, text: &str, bounds: Rect) {
     let mut icon = [0u8; 8];
     ctx.text([x+w-h*0.5, y+h*0.5].into(), cp2utf8(ICON_SEARCH, &mut icon), TextStyle {
         font_size: h*1.3,
-        font_face: b"icons\0",
+        font_face: "icons",
         font_blur: 0.0,
         color: 0x40_FFFFFF,
         text_align: Align::CENTER|Align::MIDDLE,
     });
     ctx.text([x+h*0.3,y+h*0.5].into(), text, TextStyle {
         font_size: 20.0,
-        font_face: b"sans\0",
+        font_face: "sans",
         font_blur: 0.0,
         color: 0xA0_FFFFFF,
         text_align: Align::LEFT|Align::MIDDLE,
@@ -457,7 +457,7 @@ pub fn draw_edit_box(ctx: &mut Canvas, text: &str, rr: Rect) {
     draw_edit_box_base(ctx, rr);
     ctx.text([x+h*0.3,y+h*0.5].into(), text, TextStyle {
         font_size: 20.0,
-        font_face: b"sans\0",
+        font_face: "sans",
         font_blur: 0.0,
         color: 0x40_FFFFFF,
         text_align: Align::LEFT|Align::MIDDLE,
@@ -468,18 +468,18 @@ pub fn draw_edit_box_num(ctx: &mut Canvas, text: &str, units: &str, rr: Rect) {
     draw_edit_box_base(ctx, rr);
 
     let [x, y, w, h] = rr.to_xywh();
-    let (uw, _) = ctx.text_bounds(units, 18.0, b"sans\0");
+    let (uw, _) = ctx.text_bounds(units, 18.0, "sans");
 
     ctx.text([x+w-h*0.3,y+h*0.5].into(), units, TextStyle {
         font_size: 18.0,
-        font_face: b"sans\0",
+        font_face: "sans",
         font_blur: 0.0,
         color: 0x40_FFFFFF,
         text_align: Align::RIGHT|Align::MIDDLE,
     });
     ctx.text([x+w-uw-h*0.5,y+h*0.5].into(), text, TextStyle {
         font_size: 20.0,
-        font_face: b"sans\0",
+        font_face: "sans",
         font_blur: 0.0,
         color: 0x80_FFFFFF,
         text_align: Align::RIGHT|Align::MIDDLE,

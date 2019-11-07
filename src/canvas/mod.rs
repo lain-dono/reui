@@ -34,7 +34,7 @@ pub use self::{
 #[derive(Clone, Copy)]
 pub struct TextStyle<'a> {
     pub font_size: f32,
-    pub font_face: &'a [u8],
+    pub font_face: &'a str,
     pub font_blur: f32,
     pub color: u32,
     pub text_align: Align,
@@ -174,7 +174,7 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    pub fn text_bounds(&mut self, text: &str, font_size: f32, font_face: &[u8]) -> (f32, [f32; 4]) {
+    pub fn text_bounds(&mut self, text: &str, font_size: f32, font_face: &str) -> (f32, [f32; 4]) {
         self.ctx.font_size(font_size);
         self.ctx.font_face(font_face);
         self.ctx.text_bounds(0.0, 0.0, text)

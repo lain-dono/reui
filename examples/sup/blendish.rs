@@ -248,7 +248,7 @@ fn text_with_shadow(
 ) {
     let text_style = TextStyle {
         font_size: 14.0,
-        font_face: b"sans\0",
+        font_face: "sans",
         font_blur: 0.0,
         color,
         text_align,
@@ -256,7 +256,7 @@ fn text_with_shadow(
 
     let text_style_back = TextStyle {
         font_size: 14.0,
-        font_face: b"sans\0",
+        font_face: "sans",
         font_blur: 1.0,
         color: 0xFF_000000,
         text_align,

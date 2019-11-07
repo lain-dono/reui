@@ -348,7 +348,7 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Offset) {
     vg.save();
 
     vg.font_size(18.0);
-    vg.font_face(b"sans\0");
+    vg.font_face("sans");
     vg.text_align(Align::LEFT|Align::TOP);
     let lineh = vg.text_metrics().unwrap().line_gap;
 

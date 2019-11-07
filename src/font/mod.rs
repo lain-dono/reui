@@ -118,8 +118,8 @@ impl Context {
         }
     }
 
-    pub fn font_face(&mut self, name: &[u8]) {
-        self.states.last_mut().font_id = self.fs.font_by_name(name.as_ptr());
+    pub fn font_face(&mut self, name: &str) {
+        self.states.last_mut().font_id = self.fs.font_by_name(name);
     }
 
     fn flush_text_texture(&mut self) {
