@@ -4,6 +4,17 @@ pub struct Offset {
     pub y: f32,
 }
 
+impl std::ops::Neg for Offset {
+    type Output = Self;
+    #[inline]
+    fn neg(self) -> Self {
+        Self {
+            x: -self.x,
+            y: -self.y,
+        }
+    }
+}
+
 impl std::ops::Add<Self> for Offset {
     type Output = Self;
     #[inline]
@@ -45,6 +56,38 @@ impl std::ops::Div<f32> for Offset {
             x: self.x / f,
             y: self.y / f,
         }
+    }
+}
+
+impl std::ops::AddAssign<Self> for Offset {
+    #[inline]
+    fn add_assign(&mut self, v: Self) {
+        self.x += v.x;
+        self.y += v.y;
+    }
+}
+
+impl std::ops::SubAssign<Self> for Offset {
+    #[inline]
+    fn sub_assign(&mut self, v: Self) {
+        self.x -= v.x;
+        self.y -= v.y;
+    }
+}
+
+impl std::ops::MulAssign<f32> for Offset {
+    #[inline]
+    fn mul_assign(&mut self, f: f32) {
+        self.x *= f;
+        self.y *= f;
+    }
+}
+
+impl std::ops::DivAssign<f32> for Offset {
+    #[inline]
+    fn div_assign(&mut self, f: f32) {
+        self.x /= f;
+        self.y /= f;
     }
 }
 

@@ -8,7 +8,6 @@ use crate::{
     math::{Offset, vec2},
     vg::utils::{
         normalize,
-        vec_mul,
     },
 };
 
@@ -325,15 +324,7 @@ impl PathCache {
         self.paths.clear();
     }
 
-    pub(crate) fn add_path(&mut self) {
-        self.paths.push(Path {
-            winding: Winding::CCW,
-            first: self.points.len(),
-            .. Default::default()
-        });
-    }
-
-    pub(crate) fn add_point(&mut self, x: f32, y: f32, dist_tol: f32, flags: PointFlags) {
+    fn add_point(&mut self, x: f32, y: f32, dist_tol: f32, flags: PointFlags) {
         let path = match self.paths.last_mut() {
             Some(p) => p,
             None => return,
@@ -355,18 +346,6 @@ impl PathCache {
     pub(crate) fn temp_verts(&mut self, count: usize) -> &mut [Vertex] {
         self.verts.resize_with(count, Default::default);
         &mut self.verts[..count]
-    }
-
-    pub(crate) fn close_path(&mut self) {
-        if let Some(path) = self.paths.last_mut() {
-            path.closed = true;
-        }
-    }
-
-    pub(crate) fn path_winding(&mut self, winding: Winding) {
-        if let Some(path) = self.paths.last_mut() {
-            path.winding = winding;
-        }
     }
 
     fn calculate_joins(&mut self, w: f32, line_join: LineJoin, miter_limit: f32) {
@@ -395,17 +374,14 @@ impl PathCache {
                 p1.ext = (dl0 + dl1) * 0.5;
                 let dmr2 = p1.ext.square_length();
                 if dmr2 > 0.000_001 {
-                    let v = f32::min(1.0 / dmr2, 600.0);
-                    p1.ext.x *= v;
-                    p1.ext.y *= v;
+                    p1.ext *= f32::min(1.0 / dmr2, 600.0);
                 }
 
                 // Clear flags, but keep the corner.
                 p1.flags = if p1.is_corner() { PointFlags::CORNER } else { PointFlags::empty() };
 
                 // Keep track of left turns.
-                let cross = p1.dir.x * p0.dir.y - p0.dir.x * p1.dir.y;
-                if cross > 0.0 {
+                if p1.dir.cross(p0.dir) > 0.0 {
                     nleft += 1;
                     p1.flags |= PointFlags::LEFT;
                 }
@@ -442,7 +418,12 @@ impl PathCache {
             let kind = cmd[0] as i32;
             match kind {
             MOVETO => {
-                self.add_path();
+                self.paths.push(Path {
+                    winding: Winding::CCW,
+                    first: self.points.len(),
+                    .. Default::default()
+                });
+
                 let [x, y] = [cmd[1], cmd[2]];
                 self.add_point(x, y, self.dist_tol, PointFlags::CORNER);
                 i += 3;
@@ -453,29 +434,31 @@ impl PathCache {
                 i += 3;
             }
             BEZIERTO => {
-                if let Some(last) = self.points.last() {
-                    let p1 = [last.pos.x, last.pos.y];
-                    let p2 = [cmd[1], cmd[2]];
-                    let p3 = [cmd[3], cmd[4]];
-                    let p4 = [cmd[5], cmd[6]];
-
+                if let Some(last) = self.points.last().map(|p| p.pos) {
                     self.tesselate_bezier(
-                        p1, p2, p3, p4,
-                        0, PointFlags::CORNER,
+                        last,
+                        [cmd[1], cmd[2]].into(),
+                        [cmd[3], cmd[4]].into(),
+                        [cmd[5], cmd[6]].into(),
+                        PointFlags::CORNER,
                     );
                 }
                 i += 7;
             }
             CLOSE => {
-                self.close_path();
+                if let Some(path) = self.paths.last_mut() {
+                    path.closed = true;
+                }
                 i += 1;
             }
             WINDING => {
-                self.path_winding(match cmd[1] as i32 {
-                    1 => Winding::CCW,
-                    2 => Winding::CW,
-                    _ => unreachable!(),
-                });
+                if let Some(path) = self.paths.last_mut() {
+                    path.winding = match cmd[1] as i32 {
+                        1 => Winding::CCW,
+                        2 => Winding::CW,
+                        _ => unreachable!(),
+                    };
+                }
                 i += 2;
             }
             //_ => { i += 1 }
@@ -533,55 +516,73 @@ impl PathCache {
         }
     }
 
-    fn tesselate_bezier<P: Into<Offset>>(
-        &mut self, p1: P, p2: P, p3: P, p4: P,
-        level: i32, flags: PointFlags,
+    // Adaptive forward differencing for bezier tesselation.
+    // See Lien, Sheue-Ling, Michael Shantz, and Vaughan Pratt.
+    // "Adaptive forward differencing for rendering curves and surfaces."
+    // ACM SIGGRAPH Computer Graphics. Vol. 21. No. 4. ACM, 1987.
+    fn tesselate_bezier(
+        &mut self,
+        p1: Offset,
+        p2: Offset,
+        p3: Offset,
+        p4: Offset,
+        kind: PointFlags,
     ) {
-        self.tesselate_bezier_impl(p1.into(), p2.into(), p3.into(), p4.into(), level, flags)
-    }
+        const AFD_ONE: i32 = (1<<10);
 
-    fn tesselate_bezier_impl(
-        &mut self, p1: Offset, p2: Offset, p3: Offset, p4: Offset,
-        level: i32, flags: PointFlags,
-    ) {
-        if level > 10 {
-            return;
+        // Power basis.
+        let a = p2*3.0 - p1 - p3*3.0 + p4;
+        let b = p1*3.0 - p2*6.0 + p3*3.0;
+        let c = p2*3.0 - p1 * 3.0;
+        // Transform to forward difference basis (stepsize 1)
+        let mut d0 = p1;
+        let mut d1 = a + b + c;
+        let mut d2 = a * 6.0 + b * 2.0;
+        let mut d3 = a * 6.0;
+        let mut times: i32 = 0;
+        let mut stepsize: i32 = AFD_ONE;
+        let tol = self.tess_tol * 4.0;
+        while times < AFD_ONE {
+            // Flatness measure.
+            let mut flatness = d2.square_length() + d3.square_length();
+            // Go to higher resolution if we're moving a lot
+            // or overshooting the end.
+            while flatness > tol && stepsize > 1 || times+stepsize > AFD_ONE {
+                // Apply L to the curve. Increase curve resolution.
+                d1 = d1 * 0.50 - d2 * 0.125 + d3 * 0.0625;
+                d2 = d2 * 0.25 - d3 * 0.125;
+                d3 *= 0.125;
+
+                stepsize /= 2;
+                flatness = d2.square_length() + d3.square_length();
+            }
+            // Go to lower resolution if we're really flat
+            // and we aren't going to overshoot the end.
+            // XXX: tol/32 is just a guess for when we are too flat.
+            while flatness > 0.0 && flatness < tol/32.0 && stepsize < AFD_ONE && times+2*stepsize <= AFD_ONE {
+                // Apply L^(-1) to the curve. Decrease curve resolution.
+                d1 = d1 * 2.0 + d2;
+                d2 = d2 * 4.0 + d3 * 4.0;
+                d3 *= 8.0;
+
+                stepsize *= 2;
+                flatness = d2.square_length() + d3.square_length();
+            }
+            // Forward differencing.
+            d0 += d1;
+            d1 += d2;
+            d2 += d3;
+            // Output a point.
+            self.add_point(d0.x, d0.y, self.dist_tol, if times > 0 {
+                kind
+            } else {
+                PointFlags::empty()
+            });
+            // Advance along the curve.
+            times += stepsize;
+            // Ensure we don't overshoot.
+            assert!(times <= AFD_ONE);
         }
-
-        let dp = (p4 - p1).yx();
-
-        let d2 = vec_mul(p2 - p4, dp);
-        let d2 = (d2.x - d2.y).abs();
-
-        let d3 = vec_mul(p3 - p4, dp);
-        let d3 = (d3.x - d3.y).abs();
-
-        if (d2 + d3)*(d2 + d3) < self.tess_tol * dp.square_length() {
-            self.add_point(p4.x, p4.y, self.dist_tol, flags);
-            return;
-        }
-
-        /*
-        if false &&
-            (p1.x+p3.x-p2.x-p2.x).abs() +
-            (p1.y+p3.y-p2.y-p2.y).abs() +
-            (p2.x+p4.x-p3.x-p3.x).abs() +
-            (p2.y+p4.y-p3.y-p3.y).abs() < self.tess_tol {
-            self.add_point(p4.x, p4.y, self.dist_tol, flags);
-            return;
-        }
-        */
-
-        let p12 = (p1 + p2) * 0.5;
-        let p23 = (p2 + p3) * 0.5;
-        let p34 = (p3 + p4) * 0.5;
-
-        let p123 = (p12 + p23) * 0.5;
-        let p234 = (p23 + p34) * 0.5;
-        let p1234 = (p123 + p234) * 0.5;
-
-        self.tesselate_bezier_impl(p1, p12, p123, p1234, level+1, PointFlags::empty());
-        self.tesselate_bezier_impl(p1234, p234, p34, p4, level+1, flags);
     }
 
     pub fn expand_stroke(
@@ -687,7 +688,7 @@ impl PathCache {
                     LineCap::Butt => dst.butt_cap_end(p1, d.x, d.y, w, -aa*0.5, aa, u0, u1),
                     LineCap::Square => dst.butt_cap_end(p1, d.x, d.y, w, w-aa, aa, u0, u1),
                     LineCap::Round => dst.round_cap_end(p1, d.x, d.y, w, ncap as i32, aa, u0, u1),
-                };
+                }
             }
 
             path.stroke = Some(dst.raw_parts_mut());
@@ -816,7 +817,7 @@ impl Verts {
         unsafe { from_raw_parts_mut(self.start, self.count) }
     }
 
-    #[inline(always)]
+    #[inline]
     fn push(&mut self, pos: Offset, uv: [f32; 2]) {
         unsafe {
             *self.start.add(self.count) = Vertex::new(pos.into(), uv);
@@ -857,9 +858,9 @@ impl Verts {
             self.push(p1.pos - dl1*rw, [ru,1.0]);
         } else {
             let [r0, r1] = choose_bevel(p1.is_innerbevel(), p0, p1, -rw);
-            let     a0 = (dl0.y).atan2(dl0.x);
-            let mut a1 = (dl1.y).atan2(dl1.x);
-            if a1 < a0 { a1 += PI*2.0; }
+            let a0 = (dl0.y).atan2(dl0.x);
+            let a1 = (dl1.y).atan2(dl1.x);
+            let a1 = if a1 < a0 { a1 + PI*2.0 } else { a1 };
 
             self.push(p1.pos + dl0*rw, [lu,1.0]);
             self.push(r0, [ru,1.0]);
@@ -949,12 +950,13 @@ impl Verts {
         aa: f32, u0: f32, u1: f32,
     ) {
         let dd = vec2(dx, dy);
-        let p = p.pos - dd * d;
+        let p1 = p.pos - dd * d;
+        let p0 = p1 - dd * aa;
         let dl = vec2(dy, -dx) * w;
-        self.push(p + dl - dd*aa, [u0,0.0]);
-        self.push(p - dl - dd*aa, [u1,0.0]);
-        self.push(p + dl, [u0,1.0]);
-        self.push(p - dl, [u1,1.0]);
+        self.push(p0 + dl, [u0,0.0]);
+        self.push(p0 - dl, [u1,0.0]);
+        self.push(p1 + dl, [u0,1.0]);
+        self.push(p1 - dl, [u1,1.0]);
     }
 
     fn butt_cap_end(
@@ -963,12 +965,13 @@ impl Verts {
         aa: f32, u0: f32, u1: f32,
     ) {
         let dd = vec2(dx, dy);
-        let p = p.pos + dd * d;
+        let p1 = p.pos + dd * d;
+        let p0 = p1 + dd * aa;
         let dl = vec2(dy, -dx) * w;
-        self.push(p + dl, [u0,1.0]);
-        self.push(p - dl, [u1,1.0]);
-        self.push(p + dl + dd * aa, [u0,0.0]);
-        self.push(p - dl + dd * aa, [u1,0.0]);
+        self.push(p1 + dl, [u0,1.0]);
+        self.push(p1 - dl, [u1,1.0]);
+        self.push(p0 + dl, [u0,0.0]);
+        self.push(p0 - dl, [u1,0.0]);
     }
 
     fn round_cap_start(
@@ -977,11 +980,11 @@ impl Verts {
         _aa: f32, u0: f32, u1: f32,
     ) {
         let dl = vec2(dy, -dx);
+        let (a, b) = (dl * w, vec2(dx, dy) * w);
         for i in 0..ncap {
-            let a = (i as f32) / ((ncap-1) as f32) * PI;
-            let ax = a.cos() * w;
-            let ay = a.sin() * w;
-            self.push(p.pos - dl*ax - vec2(dx*ay, dy*ay), [u0,1.0]);
+            let angle = (i as f32) / ((ncap-1) as f32) * PI;
+            let (sin, cos) = angle.sin_cos();
+            self.push(p.pos - a * cos - b * sin, [u0,1.0]);
             self.push(p.pos, [0.5,1.0]);
         }
         self.push(p.pos + dl*w, [u0,1.0]);
@@ -996,13 +999,12 @@ impl Verts {
         let dl = vec2(dy, -dx);
         self.push(p.pos + dl*w, [u0,1.0]);
         self.push(p.pos - dl*w, [u1,1.0]);
+        let (a, b) = (dl * w, vec2(dx, dy) * w);
         for i in 0..ncap {
-            let a = (i as f32) / ((ncap-1) as f32) * PI;
-            let (sn, cs) = a.sin_cos();
-            let ax = cs * w;
-            let ay = sn * w;
+            let angle = (i as f32) / ((ncap-1) as f32) * PI;
+            let (sin, cos) = angle.sin_cos();
             self.push(p.pos, [0.5,1.0]);
-            self.push(p.pos - dl*ax + vec2(dx*ay, dy*ay), [u0,1.0]);
+            self.push(p.pos - a * cos + b * sin, [u0,1.0]);
         }
     }
 }

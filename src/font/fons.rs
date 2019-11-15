@@ -30,8 +30,8 @@ impl Stash {
     }
 
     // Pull texture changes
-    pub fn texture_data(&mut self) -> (i32, i32, *const u8) {
-        (self.width, self.height, self.tex_data)
+    pub fn texture_data(&mut self) -> (i32, i32, &[u8]) {
+        (self.width, self.height, &self.tex_data)
     }
 
     pub fn validate_texture(&mut self) -> Option<[i32; 4]> {

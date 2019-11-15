@@ -817,7 +817,7 @@ impl BackendGL {
         self.find_texture(image).map(|t| (t.width, t.height))
     }
 
-    pub fn update_texture(&mut self, image: Image, _x: i32, y: i32, _w: u32, h: u32, data: *const u8) -> bool {
+    pub fn update_texture(&mut self, image: Image, _x: i32, y: i32, _w: u32, h: u32, data: &[u8]) -> bool {
         let tex = if let Some(tex) = self.find_texture(image) {
             tex
         } else {
@@ -832,7 +832,7 @@ impl BackendGL {
         };
 
         let stride = y * stride as i32;
-        let data = unsafe { data.add(stride as usize) };
+        let data = &data[stride as usize..];
 
         let x = 0;
         let w = tex.width;
@@ -841,7 +841,12 @@ impl BackendGL {
             gl::BindTexture(gl::TEXTURE_2D, tex.tex);
             gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
 
-            gl::TexSubImage2D(gl::TEXTURE_2D, 0, x,y, w as i32,h as i32, kind, gl::UNSIGNED_BYTE, data as *const libc::c_void);
+            gl::TexSubImage2D(
+                gl::TEXTURE_2D,
+                0, x,y,
+                w as i32,h as i32,
+                kind, gl::UNSIGNED_BYTE,
+                data.as_ptr() as *const libc::c_void);
 
             gl::PixelStorei(gl::UNPACK_ALIGNMENT, 4);
             gl::BindTexture(gl::TEXTURE_2D, 0);

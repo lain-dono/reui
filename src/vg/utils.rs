@@ -12,13 +12,6 @@ pub fn str_start_end(s: &str) -> (*const u8, *const u8) {
     slice_start_end(s.as_bytes())
 }
 
-pub fn vec_mul(lhs: Offset, rhs: Offset) -> Offset {
-    Offset::new(
-        lhs.x * rhs.x,
-        lhs.y * rhs.y,
-    )
-}
-
 pub fn normalize(x: &mut f32, y: &mut f32) -> f32 {
     let xx = (*x) * (*x);
     let yy = (*y) * (*y);

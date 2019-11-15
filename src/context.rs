@@ -326,7 +326,7 @@ impl Context {
     /// Updates image data specified by image handle.
     pub fn update_image(&mut self, image: Image, data: &[u8]) {
         let (w, h) = self.params.texture_size(image).expect("update_image available");
-        self.params.update_texture(image, 0, 0, w, h, data.as_ptr());
+        self.params.update_texture(image, 0, 0, w, h, data);
     }
 
     /// Returns the dimensions of a created image.

@@ -45,7 +45,7 @@ pub unsafe fn decutf8(state: *mut u32, codep: *mut u32, byte: u32) -> u32 {
 }
 
 // Based on Exponential blur, Jani Huhtanen, 2006
-pub unsafe fn blur(dst: *mut u8, w: i32, h: i32, stride: i32, blur: i32) {
+pub fn blur(dst: &mut [u8], w: i32, h: i32, stride: i32, blur: i32) {
     if blur < 1 {
         return;
     }
@@ -60,58 +60,58 @@ pub unsafe fn blur(dst: *mut u8, w: i32, h: i32, stride: i32, blur: i32) {
 }
 
 
-unsafe fn blur_cols(mut dst: *mut u8, width: i32, height: i32, stride: i32, alpha: i32) {
+fn blur_cols(mut dst: &mut [u8], width: i32, height: i32, stride: i32, alpha: i32) {
     let mut y = 0;
     while y < height {
         let mut z = 0;
         let mut x = 1;
         while x < width {
-            let p = i32::from(*dst.add(x as usize));
+            let p = i32::from(dst[x as usize]);
             z += (alpha * ((p << 7) - z)) >> 16;
-            *dst.add(x as usize) = (z >> 7) as u8;
+            dst[x as usize] = (z >> 7) as u8;
             x += 1;
         }
-        *dst.add((width - 1) as usize) = 0;
+        dst[(width - 1) as usize] = 0;
 
         let mut z = 0;
         let mut x = width - 2;
         while x >= 0 {
-            let p = i32::from(*dst.add(x as usize));
+            let p = i32::from(dst[x as usize]);
             z += (alpha * ((p << 7) - z)) >> 16;
-            *dst.offset(x as isize) = (z >> 7) as u8;
+            dst[x as usize] = (z >> 7) as u8;
             x -= 1;
         }
 
-        *dst.add(0) = 0;
-        dst = dst.add(stride as usize);
+        dst[0] = 0;
+        dst = &mut dst[stride as usize..];
         y += 1
     }
 }
 
-unsafe fn blur_rows(mut dst: *mut u8, width: i32, height: i32, stride: i32, alpha: i32) {
+fn blur_rows(mut dst: &mut [u8], width: i32, height: i32, stride: i32, alpha: i32) {
     let mut x = 0;
     while x < width {
         let mut z = 0;
         let mut y = stride;
         while y < height * stride {
-            let p = i32::from(*dst.add(y as usize));
+            let p = i32::from(dst[y as usize]);
             z += (alpha * ((p << 7) - z)) >> 16;
-            *dst.add(y as usize) = (z >> 7) as u8;
+            dst[y as usize] = (z >> 7) as u8;
             y += stride
         }
-        *dst.add(((height - 1) * stride) as usize) = 0;
+        dst[((height - 1) * stride) as usize] = 0;
 
         let mut z = 0;
         let mut y = (height - 2) * stride;
         while y >= 0 {
-            let p = i32::from(*dst.add(y as usize));
+            let p = i32::from(dst[y as usize]);
             z += (alpha * ((p << 7) - z)) >> 16;
-            *dst.add(y as usize) = (z >> 7) as u8;
+            dst[y as usize] = (z >> 7) as u8;
             y -= stride
         }
 
-        *dst.add(0) = 0;
-        dst = dst.add(1);
+        dst[0] = 0;
+        dst = &mut dst[1..];
         x += 1
     }
 }

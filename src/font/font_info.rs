@@ -127,20 +127,22 @@ impl FontInfo {
         advance_width: &mut i32,
         left_side_bearing: &mut i32,
     ) {
-        let num_of_long_hor_metrics = read_u16(self.data.offset(self.hhea as isize + 34));
+        let glyph_index = glyph_index as usize;
+        let num_of_long_hor_metrics =
+            read_u16(self.data.add(self.hhea as usize + 34)) as usize;
+        let hmtx = self.hmtx as usize;
         let (a, b);
-        if glyph_index < num_of_long_hor_metrics as i32 {
-            a = self.hmtx as isize + (4 * glyph_index) as isize;
-            b = self.hmtx as isize + (4 * glyph_index) as isize + 2;
+        if glyph_index < num_of_long_hor_metrics {
+            a = hmtx + 4 * glyph_index;
+            b = hmtx + 4 * glyph_index + 2;
         } else {
-            a = self.hmtx as isize + (4 * (num_of_long_hor_metrics as i32 - 1)) as isize;
-            b = self.hmtx as isize
-                        + (4 * num_of_long_hor_metrics as i32) as isize
-                        + (2 * (glyph_index - num_of_long_hor_metrics as i32)) as isize;
+            a = hmtx + 4 * (num_of_long_hor_metrics - 1);
+            b = hmtx + 4 * num_of_long_hor_metrics
+                     + 2 * (glyph_index - num_of_long_hor_metrics);
         }
 
-        *advance_width = read_i16(self.data.offset(a)) as i32;
-        *left_side_bearing = read_i16(self.data.offset(b)) as i32;
+        *advance_width = read_i16(self.data.add(a)) as i32;
+        *left_side_bearing = read_i16(self.data.add(b)) as i32;
     }
 
     pub unsafe fn glyph_index(&self, unicode_codepoint: i32) -> i32 {
@@ -204,7 +206,7 @@ impl FontInfo {
                 }
                 entry_selector = entry_selector.wrapping_sub(1)
             }
-            search = (search as u32).wrapping_add(2 as u32) as u32 as u32;
+            search = (search as u32).wrapping_add(2) as u32;
             let offset;
             let start;
             let item: u16 = (search.wrapping_sub(end_count) >> 1) as u16;
@@ -302,8 +304,8 @@ impl FontInfo {
         let shift_y = 0.0;
         let [scale_x, scale_y] = scale;
 
-        let mut vertices: *mut Vertex = 0 as *mut Vertex;
-        let num_verts = stbtt_GetGlyphShape(self, glyph, &mut vertices);
+        let mut vertices: *mut Vertex = std::ptr::null_mut();
+        let num_verts = self.glyph_shape(glyph, &mut vertices);
         let [ix0, iy0, _, _] = self.glyph_bitmap_box_subpixel(
             glyph,
             scale_x,
@@ -336,4 +338,339 @@ impl FontInfo {
             );
         }
     }
+
+    pub unsafe fn glyph_shape(
+        &self,
+        glyph_index: i32,
+        pvertices: *mut *mut Vertex,
+    ) -> i32 {
+        let data: *mut u8 = self.data;
+        let mut vertices: *mut Vertex = std::ptr::null_mut();
+        let mut num_vertices: i32 = 0;
+        *pvertices = std::ptr::null_mut();
+
+        let g = match self.glyf_offset(glyph_index) {
+            Some(g) => g as isize,
+            None => return 0,
+        };
+
+        let num_contours = read_i16(data.offset(g)) as isize;
+        if num_contours > 0 {
+            let mut j = 0;
+            let mut was_off = 0;
+            let mut start_off = 0;
+
+            let end_pts_of_contours = data.offset(g + 10);
+            let ins = read_u16(data.offset(g + 10 + num_contours * 2)) as isize;
+
+            let mut points = data
+                .offset(g + 10 + num_contours * 2 + 2 + ins);
+
+            let n = 1 + read_u16(end_pts_of_contours.offset(num_contours * 2 - 2)) as i32;
+
+            let m = n + 2 * num_contours as i32;
+            vertices = (*self.userdata).calloc(m as usize);
+            if vertices.is_null() {
+                return 0;
+            }
+
+            let mut next_move = 0;
+            let mut flagcount = 0;
+            let off = m - n;
+
+            let mut flags = 0;
+            for i in 0..n {
+                if flagcount == 0 {
+                    flags = *points;
+                    points = points.offset(1);
+                    if 0 != flags & 8 {
+                        flagcount = *points;
+                        points = points.offset(1);
+                    }
+                } else {
+                    flagcount = flagcount.wrapping_sub(1)
+                }
+                (*vertices.offset((off + i) as isize)).type_0 = flags;
+            }
+
+            let mut x = 0;
+            for i in 0..n {
+                let flags = (*vertices.offset((off + i) as isize)).type_0;
+                if 0 != flags & 2 {
+                    let dx = *points as i32;
+                    points = points.offset(1);
+                    x += if 0 != flags & 16 { dx } else { -dx };
+                } else if 0 == flags & 16 {
+                    x += *points.offset(0) as i32 * 256 + *points.offset(1) as i32;
+                    points = points.offset(2)
+                }
+                (*vertices.offset((off + i) as isize)).x = x as i16;
+            }
+
+            let mut y = 0;
+            for i in 0..n {
+                let flags = (*vertices.offset((off + i) as isize)).type_0;
+                if 0 != flags & 4 {
+                    let dy = *points as i32;
+                    points = points.offset(1);
+                    y += if 0 != flags & 32 { dy } else { -dy }
+                } else if 0 == flags & 32 {
+                    y += *points.offset(0) as i32 * 256 + *points.offset(1) as i32;
+                    points = points.offset(2)
+                }
+                (*vertices.offset((off + i) as isize)).y = y as i16;
+            }
+
+            num_vertices = 0;
+            let mut scy = 0;
+            let mut scx = 0;
+            let mut cy = 0;
+            let mut cx = 0;
+            let mut sy = 0;
+            let mut sx = 0;
+            let mut i = 0;
+            while i < n {
+                let flags = (*vertices.offset((off + i) as isize)).type_0;
+                x = (*vertices.offset((off + i) as isize)).x as i32;
+                y = (*vertices.offset((off + i) as isize)).y as i32;
+                if next_move == i {
+                    if i != 0 {
+                        num_vertices = close_shape(
+                            vertices,
+                            num_vertices,
+                            was_off,
+                            start_off,
+                            sx,
+                            sy,
+                            scx,
+                            scy,
+                            cx,
+                            cy,
+                        )
+                    }
+                    start_off = (0 == flags as i32 & 1) as i32;
+                    if 0 != start_off {
+                        scx = x;
+                        scy = y;
+                        if 0 == (*vertices.offset((off + i + 1) as isize)).type_0 as i32 & 1 {
+                            sx = (x + (*vertices.offset((off + i + 1) as isize)).x as i32) >> 1;
+                            sy = (y + (*vertices.offset((off + i + 1) as isize)).y as i32) >> 1;
+                        } else {
+                            sx = (*vertices.offset((off + i + 1) as isize)).x as i32;
+                            sy = (*vertices.offset((off + i + 1) as isize)).y as i32;
+                            i += 1
+                        }
+                    } else {
+                        sx = x;
+                        sy = y;
+                    }
+                    setvertex(
+                        &mut *vertices.offset(num_vertices as isize),
+                        VMOVE as i32 as u8,
+                        sx, sy, 0, 0,
+                    );
+                    num_vertices += 1;
+                    was_off = 0;
+                    next_move = 1 + read_u16(end_pts_of_contours.offset((j * 2) as isize)) as i32;
+                    j += 1
+                } else if 0 == flags as i32 & 1 {
+                    if 0 != was_off {
+                        setvertex(
+                            &mut *vertices.offset(num_vertices as isize),
+                            VCURVE as i32 as u8,
+                            (cx + x) >> 1,
+                            (cy + y) >> 1,
+                            cx, cy,
+                        );
+                        num_vertices += 1;
+                    }
+                    cx = x;
+                    cy = y;
+                    was_off = 1
+                } else {
+                    if 0 != was_off {
+                        setvertex(
+                            &mut *vertices.offset(num_vertices as isize),
+                            VCURVE as i32 as u8,
+                            x, y, cx, cy,
+                        );
+                        num_vertices += 1;
+                    } else {
+                        setvertex(
+                            &mut *vertices.offset(num_vertices as isize),
+                            VLINE as i32 as u8,
+                            x, y, 0, 0,
+                        );
+                        num_vertices += 1;
+                    }
+                    was_off = 0
+                }
+                i += 1
+            }
+            num_vertices = close_shape(
+                vertices,
+                num_vertices,
+                was_off,
+                start_off,
+                sx,
+                sy,
+                scx,
+                scy,
+                cx,
+                cy,
+            )
+        } else if num_contours == -1 {
+            return self.bad_contour(data, pvertices, g);
+        } else if num_contours < 0 {
+            unimplemented!();
+        }
+
+        *pvertices = vertices;
+        num_vertices
+    }
+
+    unsafe fn bad_contour(
+        &self,
+        data: *mut u8,
+        pvertices: *mut *mut Vertex,
+        g: isize,
+    ) -> i32 {
+        let mut more: i32 = 1;
+        let mut comp: *mut u8 = data.offset(g).offset(10);
+        let mut num_vertices = 0;
+        let mut vertices = std::ptr::null_mut();
+        while 0 != more {
+            let mut mtx: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+            let flags_0 = read_i16(comp) as u16;
+            comp = comp.offset(2);
+            let gidx = read_i16(comp) as u16;
+            comp = comp.offset(2);
+
+            assert!(0 != flags_0 & 2);
+            if 0 != flags_0 as i32 & 1 {
+                mtx[4] = read_i16(comp) as f32;
+                comp = comp.offset(2);
+                mtx[5] = read_i16(comp) as f32;
+                comp = comp.offset(2)
+            } else {
+                mtx[4] = *(comp as *mut i8) as f32;
+                comp = comp.offset(1);
+                mtx[5] = *(comp as *mut i8) as f32;
+                comp = comp.offset(1)
+            }
+
+            if 0 != flags_0 & 1 << 3 {
+                mtx[0] = read_i16(comp) as f32 / 16384.0;
+                comp = comp.offset(2);
+                mtx[1] = 0.0;
+                mtx[2] = 0.0;
+                mtx[3] = mtx[0];
+            } else if 0 != flags_0 & 1 << 6 {
+                mtx[0] = read_i16(comp) as f32 / 16384.0;
+                comp = comp.offset(2);
+                mtx[1] = 0.0;
+                mtx[2] = 0.0;
+                mtx[3] = read_i16(comp) as f32 / 16384.0;
+                comp = comp.offset(2)
+            } else if 0 != flags_0 as i32 & 1 << 7 {
+                mtx[0] = read_i16(comp) as f32 / 16384.0;
+                comp = comp.offset(2);
+                mtx[1] = read_i16(comp) as f32 / 16384.0;
+                comp = comp.offset(2);
+                mtx[2] = read_i16(comp) as f32 / 16384.0;
+                comp = comp.offset(2);
+                mtx[3] = read_i16(comp) as f32 / 16384.0;
+                comp = comp.offset(2)
+            }
+
+            let m_0 = (mtx[0] * mtx[0] + mtx[1] * mtx[1]).sqrt();
+            let n_0 = (mtx[2] * mtx[2] + mtx[3] * mtx[3]).sqrt();
+            let mut comp_verts = std::ptr::null_mut();
+            let comp_num_verts = self.glyph_shape(gidx as i32, &mut comp_verts);
+            if comp_num_verts > 0 {
+                for i_0 in 0..comp_num_verts {
+                    let mut v = &mut *comp_verts.offset(i_0 as isize);
+                    let x = v.x as f32;
+                    let y = v.y as f32;
+                    v.x = (m_0 * (mtx[0] * x + mtx[2] * y + mtx[4])) as i16;
+                    v.y = (n_0 * (mtx[1] * x + mtx[3] * y + mtx[5])) as i16;
+                    let x = v.cx as f32;
+                    let y = v.cy as f32;
+                    v.cx = (m_0 * (mtx[0] * x + mtx[2] * y + mtx[4])) as i16;
+                    v.cy = (n_0 * (mtx[1] * x + mtx[3] * y + mtx[5])) as i16;
+                }
+                let tmp: *mut Vertex = (*self.userdata).calloc((num_vertices + comp_num_verts) as usize);
+                if tmp.is_null() {
+                    return 0;
+                }
+                if num_vertices > 0 {
+                    std::ptr::copy(vertices, tmp, num_vertices as usize);
+                }
+                std::ptr::copy(comp_verts, tmp.offset(num_vertices as isize), comp_num_verts as usize);
+                vertices = tmp;
+                num_vertices += comp_num_verts
+            }
+            more = flags_0 as i32 & 1 << 5
+        }
+
+        *pvertices = vertices;
+        num_vertices
+    }
+
+}
+
+unsafe fn close_shape(
+    vertices: *mut Vertex,
+    mut num_vertices: i32,
+    was_off: i32,
+    start_off: i32,
+    sx: i32,
+    sy: i32,
+    scx: i32,
+    scy: i32,
+    cx: i32,
+    cy: i32,
+) -> i32 {
+    if 0 != start_off {
+        if 0 != was_off {
+            setvertex(
+                &mut *vertices.offset(num_vertices as isize),
+                VCURVE as u8,
+                (cx + scx) >> 1,
+                (cy + scy) >> 1,
+                cx, cy,
+            );
+            num_vertices += 1;
+        }
+        setvertex(
+            &mut *vertices.offset(num_vertices as isize),
+            VCURVE as u8,
+            sx, sy,
+            scx, scy,
+        );
+    } else if 0 != was_off {
+        setvertex(
+            &mut *vertices.offset(num_vertices as isize),
+            VCURVE as u8,
+            sx, sy,
+            cx, cy,
+        );
+    } else {
+        setvertex(
+            &mut *vertices.offset(num_vertices as isize),
+            VLINE as u8,
+            sx, sy,
+            0, 0,
+        );
+    }
+    num_vertices + 1
+}
+
+#[inline(always)]
+unsafe fn setvertex(mut v: *mut Vertex, type_0: u8, x: i32, y: i32, cx: i32, cy: i32) {
+    (*v).type_0 = type_0;
+    (*v).x = x as i16;
+    (*v).y = y as i16;
+    (*v).cx = cx as i16;
+    (*v).cy = cy as i16;
 }

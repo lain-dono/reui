@@ -225,7 +225,7 @@ impl DemoData {
         
         for (i, image) in images.iter_mut().enumerate() {
             let file = format!("assets/images/image{}.jpg", i+1);
-            let m = vg.create_image(&file, ImageFlags::REPEATX | ImageFlags::REPEATY);
+            let m = vg.create_image(&file, ImageFlags::REPEAT);
             assert!(!m.is_null(), "Could not load {}.", file);
             *image = m;
         }

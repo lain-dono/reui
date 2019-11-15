@@ -111,8 +111,7 @@ impl Iterator for TextIter {
                     s = s.offset(1);
                     self.x = self.nextx;
                     self.y = self.nexty;
-                    let glyph = fons__getGlyph(
-                        self.fs,
+                    let glyph = (*self.fs).get_glyph(
                         self.font,
                         self.codepoint,
                         self.isize_0,
@@ -190,7 +189,7 @@ pub struct Stash {
 
     pub itw: f32,
     pub ith: f32,
-    pub tex_data: *mut u8,
+    pub tex_data: Vec<u8>,
     pub dirty_rect: [i32; 4],
 
     pub atlas: Atlas,
@@ -233,9 +232,9 @@ pub struct Vertex {
     pub padding: u8,
 }
 
-const VLINE: u32 = 2;
-const VCURVE: u32 = 3;
-const VMOVE: u32 = 1;
+pub const VMOVE: u32 = 1;
+pub const VLINE: u32 = 2;
+pub const VCURVE: u32 = 3;
 
 // @TODO: don't expose this structure
 #[derive(Copy, Clone)]
@@ -339,14 +338,6 @@ pub struct ActiveEdge {
 
 impl Stash {
     pub fn new(width: i32, height: i32) -> Box<Stash> {
-        let tex_data = unsafe {
-            use std::alloc::{alloc, Layout};
-            let size = width * height;
-            let layout = Layout::from_size_align(size as usize, 1).unwrap();
-            alloc(layout)
-        };
-        assert!(!tex_data.is_null());
-
         let mut stash = Box::new(Stash {
             width,
             height,
@@ -360,7 +351,7 @@ impl Stash {
             itw: 1.0 / width as f32,
             ith: 1.0 / height as f32,
 
-            tex_data,
+            tex_data: vec![0; (width * height) as usize],
 
             dirty_rect: [width, height, 0, 0],
 
@@ -409,33 +400,31 @@ impl Stash {
 
 
     fn add_white_rect(&mut self, w: i32, h: i32) {
-        unsafe {
-            let (gx, gy) = if let Some(p) = self.atlas.add_rect(w, h) {
-                p
-            } else {
-                return;
-            };
+        let (gx, gy) = if let Some(p) = self.atlas.add_rect(w, h) {
+            p
+        } else {
+            return;
+        };
 
-            let mut dst = self.tex_data.offset((gx + gy * self.width) as isize) as *mut u8;
+        let mut dst = &mut self.tex_data[(gx + gy * self.width) as usize..];
 
-            let mut y = 0;
-            while y < h {
-                let mut x = 0;
-                while x < w {
-                    *dst.offset(x as isize) = 0xff;
-                    x += 1
-                }
-                dst = dst.offset(self.width as isize);
-                y += 1
+        let mut y = 0;
+        while y < h {
+            let mut x = 0;
+            while x < w {
+                dst[x as usize] = 0xff;
+                x += 1
             }
-
-            self.dirty_rect = [
-                min(self.dirty_rect[0], gx),
-                min(self.dirty_rect[1], gy),
-                max(self.dirty_rect[2], gx + w),
-                max(self.dirty_rect[3], gy + h),
-            ];
+            dst = &mut dst[self.width as usize..];
+            y += 1
         }
+
+        self.dirty_rect = [
+            min(self.dirty_rect[0], gx),
+            min(self.dirty_rect[1], gy),
+            max(self.dirty_rect[2], gx + w),
+            max(self.dirty_rect[3], gy + h),
+        ];
     }
 
     fn flush(&mut self) {
@@ -450,26 +439,14 @@ impl Stash {
 
     /// Resets the whole stash.
     pub fn reset_atlas(&mut self, width: u32, height: u32) -> bool {
-        let old_size = self.width * self.height;
         let (width, height) = (width as i32, height as i32);
 
         self.flush();
 
         self.atlas.reset(width, height);
-        self.tex_data = unsafe {
-            use std::alloc::{realloc, Layout};
-            let layout = Layout::from_size_align_unchecked(old_size as usize, 1);
-            let new_size = width * height;
-            realloc(self.tex_data, layout, new_size as usize)
-        };
+        self.tex_data.clear();
+        self.tex_data.resize((width * height) as usize, 0);
 
-        if self.tex_data.is_null() {
-            return false;
-        }
-
-        unsafe {
-            self.tex_data.write_bytes(0, (width * height) as usize);
-        }
         self.dirty_rect = [width, height, 0, 0];
 
         for font in &mut self.fonts {
@@ -658,428 +635,151 @@ impl Stash {
 
         *x += ((*glyph).xadv as f32 / 10.0 + 0.5) as i32 as f32;
     }
-}
 
-pub unsafe fn fons__getGlyph(
-    mut stash: *mut Stash,
-    mut font: *mut Font,
-    codepoint: u32,
-    isize: i16,
-    mut iblur: i16,
-    bitmapOption: i32,
-) -> *mut Glyph {
-    let mut advance: i32 = 0;
-    let mut lsb: i32 = 0;
-    let mut glyph: *mut Glyph = null_mut();
-    let size: f32 = isize as f32 / 10.0;
+    unsafe fn get_glyph(
+        &mut self,
+        mut font: *mut Font,
+        codepoint: u32,
+        isize: i16,
+        mut iblur: i16,
+        bitmapOption: i32,
+    ) -> *mut Glyph {
+        let mut advance: i32 = 0;
+        let mut lsb: i32 = 0;
+        let mut glyph: *mut Glyph = null_mut();
+        let size: f32 = isize as f32 / 10.0;
 
-    if isize < 2 {
-        return null_mut();
-    }
-    if iblur > 20 {
-        iblur = 20
-    }
-
-    let pad = iblur as i32 + 2;
-    (*stash).scratch.clear();
-    let h = hashint(codepoint) & (256 - 1);
-    let mut i = (*font).lut[h as usize];
-    while i != -1 {
-        let glyph = &mut (*font).glyphs[i as usize];
-        if glyph.codepoint == codepoint
-            && glyph.size as i32 == isize as i32
-            && glyph.blur as i32 == iblur as i32
-        {
-            if bitmapOption == FONS_GLYPH_BITMAP_OPTIONAL as i32
-                || glyph.x0 as i32 >= 0 && glyph.y0 as i32 >= 0
-            {
-                return glyph;
-            }
-            // At this point, glyph exists but the bitmap data is not yet created.
-            break;
-        } else {
-            i = glyph.next;
-        }
-    }
-
-    let mut g = (*font).font.glyph_index(codepoint as i32);
-    let mut renderFont: *mut Font = font;
-    if g == 0 {
-        i = 0;
-        while i < (*font).nfallbacks {
-            let fallbackFont = &mut (*stash).fonts[(*font).fallbacks[i as usize] as usize];
-            let fallbackIndex: i32 = (*fallbackFont).font.glyph_index(codepoint as i32);
-            if fallbackIndex != 0 {
-                g = fallbackIndex;
-                renderFont = fallbackFont;
-                break;
-            } else {
-                i += 1
-            }
-        }
-    }
-
-    let scale = (*renderFont).font.pixel_height_scale(size);
-    let [x0, y0, x1, y1] = (*renderFont).font.build_glyph_bitmap(
-        g,
-        size,
-        scale,
-        &mut advance,
-        &mut lsb,
-    );
-
-    let gw = x1 - x0 + pad * 2;
-    let gh = y1 - y0 + pad * 2;
-    let (gx, gy) = if bitmapOption == FONS_GLYPH_BITMAP_REQUIRED as i32 {
-        if let Some(p) = (*stash).atlas.add_rect(gw, gh) {
-            p
-        } else {
+        if isize < 2 {
             return null_mut();
         }
-    } else {
-        (-1, -1)
-    };
-
-    if glyph.is_null() {
-        glyph = (*font).alloc_glyph();
-        (*glyph).codepoint = codepoint;
-        (*glyph).size = isize;
-        (*glyph).blur = iblur;
-        (*glyph).next = 0;
-        (*glyph).next = (*font).lut[h as usize];
-        (*font).lut[h as usize] = (*font).glyphs.len() as i32 - 1;
-    }
-    (*glyph).index = g;
-    (*glyph).x0 = gx as i16;
-    (*glyph).y0 = gy as i16;
-    (*glyph).x1 = ((*glyph).x0 as i32 + gw) as i16;
-    (*glyph).y1 = ((*glyph).y0 as i32 + gh) as i16;
-    (*glyph).xadv = (scale * advance as f32 * 10.0) as i16;
-    (*glyph).xoff = (x0 - pad) as i16;
-    (*glyph).yoff = (y0 - pad) as i16;
-    if bitmapOption == FONS_GLYPH_BITMAP_OPTIONAL as i32 {
-        return glyph;
-    }
-
-    let dst = (*stash)
-        .tex_data
-        .offset(((*glyph).x0 as i32 + pad + ((*glyph).y0 as i32 + pad) * (*stash).width) as isize);
-    (*renderFont).font.render_glyph_bitmap(
-        dst,
-        gw - pad * 2,
-        gh - pad * 2,
-        (*stash).width,
-        [scale, scale],
-        g,
-    );
-
-    let dst = (*stash).tex_data
-        .offset((*glyph).x0 as isize + (*glyph).y0 as isize * (*stash).width as isize);
-
-    for y in 0..gh {
-        *dst.offset((y * (*stash).width) as isize) = 0;
-        *dst.offset((gw - 1 + y * (*stash).width) as isize) = 0;
-    }
-    for x in 0..gw {
-        *dst.offset(x as isize) = 0;
-        *dst.offset((x + (gh - 1) * (*stash).width) as isize) = 0;
-    }
-
-    if iblur as i32 > 0 {
-        (*stash).scratch.clear();
-        let bdst = (*stash).tex_data
-            .offset((*glyph).x0 as isize + (*glyph).y0 as isize * (*stash).width as isize);
-        blur(bdst, gw, gh, (*stash).width, iblur as i32);
-    }
-    (*stash).dirty_rect = [
-        min((*stash).dirty_rect[0], (*glyph).x0 as i32),
-        min((*stash).dirty_rect[1], (*glyph).y0 as i32),
-        max((*stash).dirty_rect[2], (*glyph).x1 as i32),
-        max((*stash).dirty_rect[3], (*glyph).y1 as i32),
-    ];
-    glyph
-}
-
-pub unsafe fn stbtt_GetGlyphShape(
-    info: *const FontInfo,
-    glyph_index: i32,
-    pvertices: *mut *mut Vertex,
-) -> i32 {
-    let data: *mut u8 = (*info).data;
-    let mut vertices: *mut Vertex = null_mut();
-    let mut num_vertices: i32 = 0;
-    *pvertices = null_mut();
-
-    let g = match (*info).glyf_offset(glyph_index) {
-        Some(g) => g as isize,
-        None => return 0,
-    };
-
-    let num_contours = read_i16(data.offset(g)) as isize;
-    if num_contours > 0 {
-        let mut j = 0;
-        let mut was_off = 0;
-        let mut start_off = 0;
-
-        let endPtsOfContours = data.offset(g + 10);
-        let ins = read_u16(data.offset(g + 10 + num_contours * 2)) as isize;
-
-        let mut points = data
-            .offset(g + 10 + num_contours * 2 + 2 + ins);
-
-        let n = 1 + read_u16(endPtsOfContours.offset(num_contours * 2 - 2)) as i32;
-
-        let m = n + 2 * num_contours as i32;
-        vertices = (*(*info).userdata).calloc(m as usize);
-        if vertices.is_null() {
-            return 0;
+        if iblur > 20 {
+            iblur = 20
         }
 
-        let mut next_move = 0;
-        let mut flagcount = 0;
-        let off = m - n;
-
-        let mut flags = 0;
-        for i in 0..n {
-            if flagcount == 0 {
-                flags = *points;
-                points = points.offset(1);
-                if 0 != flags & 8 {
-                    flagcount = *points;
-                    points = points.offset(1);
+        let pad = iblur as i32 + 2;
+        self.scratch.clear();
+        let h = hashint(codepoint) & (256 - 1);
+        let mut i = (*font).lut[h as usize];
+        while i != -1 {
+            let glyph = &mut (*font).glyphs[i as usize];
+            if glyph.codepoint == codepoint
+                && glyph.size as i32 == isize as i32
+                && glyph.blur as i32 == iblur as i32
+            {
+                if bitmapOption == FONS_GLYPH_BITMAP_OPTIONAL as i32
+                    || glyph.x0 as i32 >= 0 && glyph.y0 as i32 >= 0
+                {
+                    return glyph;
                 }
+                // At this point, glyph exists but the bitmap data is not yet created.
+                break;
             } else {
-                flagcount = flagcount.wrapping_sub(1)
+                i = glyph.next;
             }
-            (*vertices.offset((off + i) as isize)).type_0 = flags;
         }
 
-        let mut x = 0;
-        for i in 0..n {
-            let flags = (*vertices.offset((off + i) as isize)).type_0;
-            if 0 != flags & 2 {
-                let dx = *points as i32;
-                points = points.offset(1);
-                x += if 0 != flags & 16 { dx } else { -dx };
-            } else if 0 == flags & 16 {
-                x += *points.offset(0) as i32 * 256 + *points.offset(1) as i32;
-                points = points.offset(2)
-            }
-            (*vertices.offset((off + i) as isize)).x = x as i16;
-        }
-
-        let mut y = 0;
-        for i in 0..n {
-            let flags = (*vertices.offset((off + i) as isize)).type_0;
-            if 0 != flags & 4 {
-                let dy = *points as i32;
-                points = points.offset(1);
-                y += if 0 != flags & 32 { dy } else { -dy }
-            } else if 0 == flags & 32 {
-                y += *points.offset(0) as i32 * 256 + *points.offset(1) as i32;
-                points = points.offset(2)
-            }
-            (*vertices.offset((off + i) as isize)).y = y as i16;
-        }
-
-        num_vertices = 0;
-        let mut scy = 0;
-        let mut scx = 0;
-        let mut cy = 0;
-        let mut cx = 0;
-        let mut sy = 0;
-        let mut sx = 0;
-        let mut i = 0;
-        while i < n {
-            let flags = (*vertices.offset((off + i) as isize)).type_0;
-            x = (*vertices.offset((off + i) as isize)).x as i32;
-            y = (*vertices.offset((off + i) as isize)).y as i32;
-            if next_move == i {
-                if i != 0 {
-                    num_vertices = close_shape(
-                        vertices,
-                        num_vertices,
-                        was_off,
-                        start_off,
-                        sx,
-                        sy,
-                        scx,
-                        scy,
-                        cx,
-                        cy,
-                    )
-                }
-                start_off = (0 == flags as i32 & 1) as i32;
-                if 0 != start_off {
-                    scx = x;
-                    scy = y;
-                    if 0 == (*vertices.offset((off + i + 1) as isize)).type_0 as i32 & 1 {
-                        sx = (x + (*vertices.offset((off + i + 1) as isize)).x as i32) >> 1;
-                        sy = (y + (*vertices.offset((off + i + 1) as isize)).y as i32) >> 1;
-                    } else {
-                        sx = (*vertices.offset((off + i + 1) as isize)).x as i32;
-                        sy = (*vertices.offset((off + i + 1) as isize)).y as i32;
-                        i += 1
-                    }
+        let mut g = (*font).font.glyph_index(codepoint as i32);
+        let mut renderFont: *mut Font = font;
+        if g == 0 {
+            i = 0;
+            while i < (*font).nfallbacks {
+                let fallbackFont = &mut self.fonts[(*font).fallbacks[i as usize] as usize];
+                let fallbackIndex: i32 = (*fallbackFont).font.glyph_index(codepoint as i32);
+                if fallbackIndex != 0 {
+                    g = fallbackIndex;
+                    renderFont = fallbackFont;
+                    break;
                 } else {
-                    sx = x;
-                    sy = y;
+                    i += 1
                 }
-                setvertex(
-                    &mut *vertices.offset(num_vertices as isize),
-                    VMOVE as i32 as u8,
-                    sx, sy, 0, 0,
-                );
-                num_vertices += 1;
-                was_off = 0;
-                next_move = 1 + read_u16(endPtsOfContours.offset((j * 2) as isize)) as i32;
-                j += 1
-            } else if 0 == flags as i32 & 1 {
-                if 0 != was_off {
-                    setvertex(
-                        &mut *vertices.offset(num_vertices as isize),
-                        VCURVE as i32 as u8,
-                        (cx + x) >> 1,
-                        (cy + y) >> 1,
-                        cx, cy,
-                    );
-                    num_vertices += 1;
-                }
-                cx = x;
-                cy = y;
-                was_off = 1
+            }
+        }
+
+        let scale = (*renderFont).font.pixel_height_scale(size);
+        let [x0, y0, x1, y1] = (*renderFont).font.build_glyph_bitmap(
+            g,
+            size,
+            scale,
+            &mut advance,
+            &mut lsb,
+        );
+
+        let gw = x1 - x0 + pad * 2;
+        let gh = y1 - y0 + pad * 2;
+        let (gx, gy) = if bitmapOption == FONS_GLYPH_BITMAP_REQUIRED as i32 {
+            if let Some(p) = self.atlas.add_rect(gw, gh) {
+                p
             } else {
-                if 0 != was_off {
-                    setvertex(
-                        &mut *vertices.offset(num_vertices as isize),
-                        VCURVE as i32 as u8,
-                        x, y, cx, cy,
-                    );
-                    num_vertices += 1;
-                } else {
-                    setvertex(
-                        &mut *vertices.offset(num_vertices as isize),
-                        VLINE as i32 as u8,
-                        x, y, 0, 0,
-                    );
-                    num_vertices += 1;
-                }
-                was_off = 0
+                return null_mut();
             }
-            i += 1
-        }
-        num_vertices = close_shape(
-            vertices,
-            num_vertices,
-            was_off,
-            start_off,
-            sx,
-            sy,
-            scx,
-            scy,
-            cx,
-            cy,
-        )
-    } else if num_contours == -1 {
-        return bad_contour(info, data, pvertices, g);
-    } else if num_contours < 0 {
-        unimplemented!();
-    }
-
-    *pvertices = vertices;
-    num_vertices
-}
-
-unsafe fn bad_contour(
-    info: *const FontInfo,
-    data: *mut u8,
-    pvertices: *mut *mut Vertex,
-    g: isize,
-) -> i32 {
-    let mut more: i32 = 1;
-    let mut comp: *mut u8 = data.offset(g).offset(10);
-    let mut num_vertices = 0;
-    let mut vertices = null_mut();
-    while 0 != more {
-        let mut mtx: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
-        let flags_0 = read_i16(comp) as u16;
-        comp = comp.offset(2);
-        let gidx = read_i16(comp) as u16;
-        comp = comp.offset(2);
-
-        assert!(0 != flags_0 & 2);
-        if 0 != flags_0 as i32 & 1 {
-            mtx[4] = read_i16(comp) as f32;
-            comp = comp.offset(2);
-            mtx[5] = read_i16(comp) as f32;
-            comp = comp.offset(2)
         } else {
-            mtx[4] = *(comp as *mut i8) as f32;
-            comp = comp.offset(1);
-            mtx[5] = *(comp as *mut i8) as f32;
-            comp = comp.offset(1)
+            (-1, -1)
+        };
+
+        if glyph.is_null() {
+            glyph = (*font).alloc_glyph();
+            (*glyph).codepoint = codepoint;
+            (*glyph).size = isize;
+            (*glyph).blur = iblur;
+            (*glyph).next = 0;
+            (*glyph).next = (*font).lut[h as usize];
+            (*font).lut[h as usize] = (*font).glyphs.len() as i32 - 1;
+        }
+        (*glyph).index = g;
+        (*glyph).x0 = gx as i16;
+        (*glyph).y0 = gy as i16;
+        (*glyph).x1 = ((*glyph).x0 as i32 + gw) as i16;
+        (*glyph).y1 = ((*glyph).y0 as i32 + gh) as i16;
+        (*glyph).xadv = (scale * advance as f32 * 10.0) as i16;
+        (*glyph).xoff = (x0 - pad) as i16;
+        (*glyph).yoff = (y0 - pad) as i16;
+        if bitmapOption == FONS_GLYPH_BITMAP_OPTIONAL as i32 {
+            return glyph;
         }
 
-        if 0 != flags_0 & 1 << 3 {
-            mtx[0] = read_i16(comp) as f32 / 16384.0;
-            comp = comp.offset(2);
-            mtx[1] = 0.0;
-            mtx[2] = 0.0;
-            mtx[3] = mtx[0];
-        } else if 0 != flags_0 & 1 << 6 {
-            mtx[0] = read_i16(comp) as f32 / 16384.0;
-            comp = comp.offset(2);
-            mtx[1] = 0.0;
-            mtx[2] = 0.0;
-            mtx[3] = read_i16(comp) as f32 / 16384.0;
-            comp = comp.offset(2)
-        } else if 0 != flags_0 as i32 & 1 << 7 {
-            mtx[0] = read_i16(comp) as f32 / 16384.0;
-            comp = comp.offset(2);
-            mtx[1] = read_i16(comp) as f32 / 16384.0;
-            comp = comp.offset(2);
-            mtx[2] = read_i16(comp) as f32 / 16384.0;
-            comp = comp.offset(2);
-            mtx[3] = read_i16(comp) as f32 / 16384.0;
-            comp = comp.offset(2)
+        let dst = &mut self.tex_data
+            [((*glyph).x0 as i32 + pad + ((*glyph).y0 as i32 + pad) * self.width) as usize..];
+        (*renderFont).font.render_glyph_bitmap(
+            dst.as_mut_ptr(),
+            gw - pad * 2,
+            gh - pad * 2,
+            self.width,
+            [scale, scale],
+            g,
+        );
+
+        let dst = &mut self.tex_data
+            [(*glyph).x0 as usize + (*glyph).y0 as usize * self.width as usize..];
+
+        for y in 0..gh {
+            dst[(y * self.width) as usize] = 0;
+            dst[(gw - 1 + y * self.width) as usize] = 0;
+        }
+        for x in 0..gw {
+            dst[x as usize] = 0;
+            dst[(x + (gh - 1) * self.width) as usize] = 0;
         }
 
-        let m_0 = (mtx[0] * mtx[0] + mtx[1] * mtx[1]).sqrt();
-        let n_0 = (mtx[2] * mtx[2] + mtx[3] * mtx[3]).sqrt();
-        let mut comp_verts = null_mut();
-        let comp_num_verts = stbtt_GetGlyphShape(info, gidx as i32, &mut comp_verts);
-        if comp_num_verts > 0 {
-            for i_0 in 0..comp_num_verts {
-                let mut v = &mut *comp_verts.offset(i_0 as isize);
-                let x = v.x as f32;
-                let y = v.y as f32;
-                v.x = (m_0 * (mtx[0] * x + mtx[2] * y + mtx[4])) as i16;
-                v.y = (n_0 * (mtx[1] * x + mtx[3] * y + mtx[5])) as i16;
-                let x = v.cx as f32;
-                let y = v.cy as f32;
-                v.cx = (m_0 * (mtx[0] * x + mtx[2] * y + mtx[4])) as i16;
-                v.cy = (n_0 * (mtx[1] * x + mtx[3] * y + mtx[5])) as i16;
-            }
-            let tmp: *mut Vertex = (*(*info).userdata).calloc((num_vertices + comp_num_verts) as usize);
-            if tmp.is_null() {
-                return 0;
-            }
-            if num_vertices > 0 {
-                std::ptr::copy(vertices, tmp, num_vertices as usize);
-            }
-            std::ptr::copy(comp_verts, tmp.offset(num_vertices as isize), comp_num_verts as usize);
-            vertices = tmp;
-            num_vertices += comp_num_verts
+        if iblur as i32 > 0 {
+            self.scratch.clear();
+            let bdst = &mut self.tex_data
+                [(*glyph).x0 as usize + (*glyph).y0 as usize * self.width as usize..];
+            blur(bdst, gw, gh, self.width, iblur as i32);
         }
-        more = flags_0 as i32 & 1 << 5
+        self.dirty_rect = [
+            self.dirty_rect[0].min((*glyph).x0 as i32),
+            self.dirty_rect[1].min((*glyph).y0 as i32),
+            self.dirty_rect[2].max((*glyph).x1 as i32),
+            self.dirty_rect[3].max((*glyph).y1 as i32),
+        ];
+        glyph
+
     }
-
-    *pvertices = vertices;
-    num_vertices
 }
+
 
 impl Stash {
-    fn calloc<T>(&mut self, count: usize) -> *mut T {
+    pub(crate) fn calloc<T>(&mut self, count: usize) -> *mut T {
         let size = count * size_of::<T>();
         self.tmpalloc(size as u64)
     }
@@ -1096,61 +796,6 @@ impl Stash {
     }
 }
 
-unsafe fn close_shape(
-    vertices: *mut Vertex,
-    mut num_vertices: i32,
-    was_off: i32,
-    start_off: i32,
-    sx: i32,
-    sy: i32,
-    scx: i32,
-    scy: i32,
-    cx: i32,
-    cy: i32,
-) -> i32 {
-    if 0 != start_off {
-        if 0 != was_off {
-            setvertex(
-                &mut *vertices.offset(num_vertices as isize),
-                VCURVE as u8,
-                (cx + scx) >> 1,
-                (cy + scy) >> 1,
-                cx, cy,
-            );
-            num_vertices += 1;
-        }
-        setvertex(
-            &mut *vertices.offset(num_vertices as isize),
-            VCURVE as u8,
-            sx, sy,
-            scx, scy,
-        );
-    } else if 0 != was_off {
-        setvertex(
-            &mut *vertices.offset(num_vertices as isize),
-            VCURVE as u8,
-            sx, sy,
-            cx, cy,
-        );
-    } else {
-        setvertex(
-            &mut *vertices.offset(num_vertices as isize),
-            VLINE as u8,
-            sx, sy,
-            0, 0,
-        );
-    }
-    num_vertices + 1
-}
-
-#[inline(always)]
-unsafe fn setvertex(mut v: *mut Vertex, type_0: u8, x: i32, y: i32, cx: i32, cy: i32) {
-    (*v).type_0 = type_0;
-    (*v).x = x as i16;
-    (*v).y = y as i16;
-    (*v).cx = cx as i16;
-    (*v).cy = cy as i16;
-}
 // rasterize a shape with quadratic beziers into a bitmap
 // 1-channel bitmap to draw into
 
@@ -1229,7 +874,7 @@ unsafe fn stbtt_FlattenCurves(
     let mut pass = 0;
     loop {
         if pass >= 2 {
-            current_block = 8845338526596852646;
+            current_block = 8_845_338_526_596_852_646;
             break;
         }
         let mut x: f32 = 0 as f32;
@@ -1237,7 +882,7 @@ unsafe fn stbtt_FlattenCurves(
         if pass == 1 {
             points = stash.calloc(num_points as usize);
             if points.is_null() {
-                current_block = 9535040653783544971;
+                current_block = 9_535_040_653_783_544_971;
                 break;
             }
         }
@@ -1290,7 +935,7 @@ unsafe fn stbtt_FlattenCurves(
     }
 
     match current_block {
-        8845338526596852646 => points,
+        8_845_338_526_596_852_646 => points,
         _ => {
             *contour_lengths = null_mut();
             *num_contours = 0;
@@ -1609,7 +1254,7 @@ unsafe fn fill_active_edges_new(
                     assert!(area.abs() <= 1.01);
                     *scanline.offset(x2 as isize) += area
                         + sign
-                            * (1.0 - ((x2 - x2) as f32 + (x_bottom - x2 as f32)) / 2.0)
+                            * (1.0 - ((x2 - x1) as f32 + (x_bottom - x2 as f32)) / 2.0)
                             * (sy1 - y_crossing);
                     *scanline_fill.offset(x2 as isize) += sign * (sy1 - sy0)
                 }
@@ -1858,8 +1503,7 @@ impl Stash {
             let startx = x;
             while str != end {
                 if 0 == decutf8(&mut utf8state, &mut codepoint, *(str as *const u8) as u32) {
-                    let glyph = fons__getGlyph(
-                        self,
+                    let glyph = self.get_glyph(
                         font,
                         codepoint,
                         isize,

@@ -2,10 +2,11 @@ pub use crate::cache::{
     LineCap as StrokeCap,
     LineJoin as StrokeJoin,
 };
-pub use crate::math::Color;
+pub use crate::math::{Color, Rect};
 pub use crate::backend::Image;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
 pub enum PaintingStyle {
     Fill = 0,
     Stroke = 1,
@@ -20,7 +21,7 @@ pub enum Gradient {
         outer_color: u32,
     },
     Box {
-        rect: super::Rect,
+        rect: Rect,
         radius: f32,
         feather: f32,
         inner_color: u32,
@@ -125,7 +126,7 @@ impl Paint {
     pub fn linear_gradient(from: [f32; 2], to: [f32; 2], inner_color: u32, outer_color: u32) -> Self {
         Self::gradient(Gradient::Linear { from, to, inner_color, outer_color })
     }
-    pub fn box_gradient(rect: super::Rect, radius: f32, feather: f32, inner_color: u32, outer_color: u32) -> Self {
+    pub fn box_gradient(rect: Rect, radius: f32, feather: f32, inner_color: u32, outer_color: u32) -> Self {
         Self::gradient(Gradient::Box { rect, radius, feather, inner_color, outer_color })
     }
     pub fn radial_gradient(center: [f32; 2], inr: f32, outr: f32, inner_color: u32, outer_color: u32) -> Self {

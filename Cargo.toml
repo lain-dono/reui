@@ -17,11 +17,11 @@ env_logger = "0.5"
 log = "0.4"
 arrayvec = "0.5"
 
-cgmath = "*"
+#cgmath = "*"
 #glsl-to-spirv = "*"
 
 #wgpu-native = "^0.2.3"
-#wgpu = { version = "0.2", git = "https://github.com/gfx-rs/wgpu-rs", rev = "5522c912f7e2f4f33a1167fb0c8ee4549f066dcf" }
+wgpu = "0.4.0"
 #wgpu_glyph = { version = "0.3.1", git = "https://github.com/hecrj/wgpu_glyph.git" }
 
 
