@@ -51,7 +51,7 @@ impl States {
         let state = if let Some(state) = self.states.last_mut() {
             state
         } else {
-            self.states.push(unsafe { std::mem::zeroed() });
+            self.states.push(Default::default());
             self.states.last_mut().expect("last mut state (reset)")
         };
         *state = State::default();

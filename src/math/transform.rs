@@ -137,6 +137,6 @@ impl Transform {
 
     #[inline]
     pub fn append_mut(&mut self, rhs: Self) {
-        *self = *self * rhs;
+        *self *= rhs;
     }
 }

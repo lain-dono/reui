@@ -10,6 +10,7 @@
 
 #![deny(dead_code)]
 
+use crate::math::{point2, Rect};
 use super::{atlas::Atlas, font_info::*, utils::*};
 
 pub struct Metrics {
@@ -18,9 +19,7 @@ pub struct Metrics {
     pub line_gap: f32,
 }
 
-use std::cmp::{max, min};
-use std::mem::{size_of, uninitialized};
-use std::ptr::null_mut;
+use std::{cmp::{max, min}, mem::size_of, ptr::null_mut};
 
 extern crate libc;
 
@@ -143,6 +142,30 @@ impl Iterator for TextIter {
 }
 
 #[derive(Clone)]
+pub struct LutI32 {
+    lut: [i32; 256],
+}
+
+impl std::ops::Index<usize> for LutI32 {
+    type Output = i32;
+    #[inline(always)]
+    fn index(&self, idx: usize) -> &i32 { &self.lut[idx] }
+}
+
+impl std::ops::IndexMut<usize> for LutI32 {
+    #[inline(always)]
+    fn index_mut(&mut self, idx: usize) -> &mut i32 { &mut self.lut[idx] }
+}
+
+impl Default for LutI32 {
+    fn default() -> Self {
+        Self {
+            lut: [0; 256],
+        }
+    }
+}
+
+#[derive(Clone, Default)]
 #[repr(C)]
 pub struct Font {
     pub data: Vec<u8>,
@@ -156,7 +179,7 @@ pub struct Font {
 
     pub glyphs: Vec<Glyph>,
 
-    pub lut: [i32; 256],
+    pub lut: LutI32,
 
     pub fallbacks: [i32; 20],
     pub nfallbacks: i32,
@@ -479,7 +502,7 @@ impl Stash {
     }
 
     pub fn add_font_mem(&mut self, name: &str, mut data: Vec<u8>) -> i32 {
-        let mut font: Font = unsafe { std::mem::zeroed() };
+        let mut font = Font::default();
         font.glyphs = Vec::with_capacity(256);
         self.fonts.push(font);
         let idx = self.fonts.len() as i32 - 1;
@@ -638,7 +661,7 @@ impl Stash {
 
     unsafe fn get_glyph(
         &mut self,
-        mut font: *mut Font,
+        font: *mut Font,
         codepoint: u32,
         isize: i16,
         mut iblur: i16,
@@ -815,7 +838,7 @@ pub unsafe fn stbtt_Rasterize(
 ) {
     let scale: f32 = if scale_x > scale_y { scale_y } else { scale_x };
     let mut winding_count: i32 = 0;
-    let mut winding_lengths: *mut i32 = 0 as *mut i32;
+    let mut winding_lengths: *mut i32 = std::ptr::null_mut();
     let windings: *mut Point = stbtt_FlattenCurves(
         vertices,
         num_verts,
@@ -1474,7 +1497,7 @@ impl Font {
 
 
 impl Stash {
-    pub fn text_bounds(&mut self, mut x: f32, mut y: f32, mut str: *const u8, end: *const u8) -> (f32, [f32; 4]) {
+    pub fn text_bounds(&mut self, mut x: f32, mut y: f32, mut str: *const u8, end: *const u8) -> (f32, Rect) {
         assert!(!end.is_null());
         unsafe {
             let state: *mut State = self.state_mut();
@@ -1543,7 +1566,7 @@ impl Stash {
                 }
             }
 
-            (advance, [minx, miny, maxx, maxy])
+            (advance, Rect { min: point2(minx, miny), max: point2(maxx, maxy) })
         }
     }
 

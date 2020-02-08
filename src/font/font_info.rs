@@ -27,6 +27,25 @@ pub struct FontInfo {
     pub index2loc_format: i32,
 }
 
+impl Default for FontInfo {
+    fn default() -> Self {
+        Self {
+            userdata: std::ptr::null_mut(),
+            data: std::ptr::null_mut(),
+            fontstart: 0,
+            num_glyphs: 0,
+            loca: 0,
+            head: 0,
+            glyf: 0,
+            hhea: 0,
+            hmtx: 0,
+            kern: 0,
+            index_map: 0,
+            index2loc_format: 0,
+        }
+    }
+}
+
 impl FontInfo {
     pub unsafe fn pixel_height_scale(&self, height: f32) -> f32 {
         let fheight: i32 = read_i16(self.data.offset(self.hhea as isize).offset(4)) as i32

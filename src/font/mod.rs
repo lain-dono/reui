@@ -21,16 +21,25 @@ use crate::{
     },
     backend::TEXTURE_ALPHA,
     cache::Vertex,
-    vg::utils::{
-        average_scale,
-        str_start_end,
-    },
+    vg::utils::average_scale,
+    math::{point2, Rect},
 };
 
 use std::{
     str::from_utf8_unchecked,
     slice::from_raw_parts,
 };
+
+fn str_start_end(s: &str) -> (*const u8, *const u8) {
+    unsafe {
+        let start = s.as_ptr();
+        let end = start.add(s.len());
+        (start, end)
+    }
+}
+
+
+
 
 unsafe fn raw_str<'a>(start: *const u8, end: *const u8) -> &'a str {
     from_utf8_unchecked(raw_slice(start, end))
@@ -261,13 +270,13 @@ impl Context {
         iter.nextx / scale
     }
 
-    pub fn text_bounds(&mut self, x: f32, y: f32, text: &str) -> (f32, [f32; 4]) {
+    pub fn text_bounds(&mut self, x: f32, y: f32, text: &str) -> (f32, Rect) {
         let state = self.states.last();
         let scale = font_scale(state) * self.device_px_ratio;
         let invscale = 1.0 / scale;
 
         if state.font_id == FONS_INVALID {
-            return (0.0, [0.0; 4]);
+            return (0.0, Rect::default());
         }
 
         self.fs.sync_state(state, scale);
@@ -278,10 +287,10 @@ impl Context {
         // Use line bounds for height.
         let (rminy, rmaxy) = self.fs.line_bounds(y*scale);
 
-        bounds[0] *= invscale;
-        bounds[1] = rminy * invscale;
-        bounds[2] *= invscale;
-        bounds[3] = rmaxy * invscale;
+        bounds.min.x *= invscale;
+        bounds.min.y = rminy * invscale;
+        bounds.max.x *= invscale;
+        bounds.max.y = rmaxy * invscale;
 
         (width * invscale, bounds)
     }
@@ -372,7 +381,7 @@ impl Context {
 
     pub fn text_box_bounds(
         &mut self, x: f32, mut y: f32, break_row_width: f32, text: &str,
-    ) -> [f32; 4] {
+    ) -> Rect {
         let (halign, valign);
 
         let (invscale, old_align) = {
@@ -384,7 +393,7 @@ impl Context {
             valign = state.text_align & (Align::TOP  | Align::MIDDLE | Align::BOTTOM | Align::BASELINE);
 
             if state.font_id == FONS_INVALID {
-                return [0.0; 4];
+                return Rect::default();
             }
 
             self.fs.sync_state(state, scale);
@@ -435,7 +444,7 @@ impl Context {
 
         self.states.last_mut().text_align = old_align;
 
-        [minx, miny, maxx, maxy]
+        Rect { min: point2(minx, miny), max: point2(maxx, maxy) }
     }
 
     pub fn text_metrics(&mut self) -> Option<Metrics> {

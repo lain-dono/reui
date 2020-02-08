@@ -189,11 +189,7 @@ use oni2d::{
     Image, ImageFlags,
     Context, Align,
     TextRow, GlyphPosition,
-
     canvas::Canvas,
-
-    utils::slice_start_end,
-
     math::{
         Color,
         rect, Rect,
@@ -267,6 +263,7 @@ pub fn render_demo(
 
     {
         let mut ctx = Canvas::new(vg);
+
         draw_colorwheel(&mut ctx, rect(width - 300.0, height - 300.0, 250.0, 250.0), time);
         draw_eyes(&mut ctx, rect(width - 250.0, 50.0, 150.0, 100.0), mouse, time);
         draw_graph(&mut ctx, 0.0, height/2.0, width, height/2.0, time);
@@ -277,10 +274,7 @@ pub fn render_demo(
         // Line caps
         draw_caps(&mut ctx, 10.0, 300.0, 30.0);
         draw_scissor(&mut ctx, 50.0, height-80.0, time);
-    }
 
-    {
-        let mut ctx = Canvas::new(vg);
         if blowup {
             ctx.rotate((time*0.3).sin()*5.0/180.0*PI);
             ctx.scale(2.0);
@@ -343,7 +337,7 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Offset) {
     let [x, mut y, width, _] = rr.to_xywh();
 
     let (mx, my) = mouse.into();
-    let text = "This is longer chunk of text.\n  \n  Would have used lorem ipsum but she    was busy jumping over the lazy dog with the fox and all the men who came to the aid of the party.🎉".as_bytes();
+    let mut text = "This is longer chunk of text.\n  \n  Would have used lorem ipsum but she    was busy jumping over the lazy dog with the fox and all the men who came to the aid of the party.🎉";
 
     vg.save();
 
@@ -355,7 +349,7 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Offset) {
     // The text break API can be used to fill a large buffer of rows,
     // or to iterate over the text just few lines (or just one) at a time.
     // The "next" variable of the last returned item tells where to continue.
-    let (mut start, end) = slice_start_end(text);
+    //let (mut start, end) = slice_start_end(text);
 
     let mut lnum = 0;
 
@@ -368,11 +362,6 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Offset) {
     let mut gutter = 0isize;
 
     loop {
-        let text = unsafe {
-            let len = end as usize - start as usize;
-            let slice = std::slice::from_raw_parts(start, len);
-            std::str::from_utf8_unchecked(slice)
-        };
         let rows = vg.text_break_lines(text, width, &mut rows);
         if rows.is_empty() { break }
 
@@ -413,13 +402,19 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Offset) {
             y += lineh;
         }
         // Keep going...
-        start = rows[rows.len()-1].next;
+        let start = rows[rows.len()-1].next;
+        text = unsafe {
+            let end = text.as_ptr().add(text.len());
+            let len = end as usize - start as usize;
+            let slice = std::slice::from_raw_parts(start, len);
+            std::str::from_utf8_unchecked(slice)
+        };
     }
 
     if gutter != 0 {
         use std::fmt::Write;
         let mut txt = arrayvec::ArrayString::<[_; 16]>::new();
-        txt.write_fmt(format_args!("{}", gutter)).unwrap();
+        write!(txt, "{}", gutter).unwrap();
 
         vg.font_size(13.0);
         vg.text_align(Align::RIGHT|Align::MIDDLE);
@@ -429,11 +424,11 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Offset) {
         vg.begin_path();
         vg.fill_color(Color::rgba(255,192,0,255).to_bgra());
         vg.rrect(rect(
-                bounds[0].floor()-4.0,
-                bounds[1].floor()-2.0,
-                (bounds[2]-bounds[0]).floor()+8.0,
-                (bounds[3]-bounds[1]).floor()+4.0,
-            ), ((bounds[3]-bounds[1]).floor()+4.0)/2.0 - 1.0,
+                bounds.min.x.floor()-4.0,
+                bounds.min.y.floor()-2.0,
+                bounds.dx().floor()+8.0,
+                bounds.dy().floor()+4.0,
+            ), (bounds.dy().floor()+4.0)/2.0 - 1.0,
         );
         vg.fill();
 
@@ -452,23 +447,23 @@ fn draw_paragraph(vg: &mut Context, rr: Rect, mouse: Offset) {
         "Hover your mouse over the text to see calculated caret position.");
 
     // Fade the tooltip out when close to it.
-    let gx = ((mx - (bounds[0]+bounds[2])*0.5) / (bounds[0] - bounds[2])).abs();
-    let gy = ((my - (bounds[1]+bounds[3])*0.5) / (bounds[1] - bounds[3])).abs();
-    let a = f32::max(gx, gy) - 0.5;
-    let a = a.clamp(0.0, 1.0);
+    let center = bounds.center();
+    let gx = ((mx - center.x) / bounds.dx()).abs();
+    let gy = ((my - center.y) / bounds.dy()).abs();
+    let a = (gx.max(gy) - 0.5).clamp(0.0, 1.0);
     vg.global_alpha(a);
 
     vg.begin_path();
     vg.fill_color(0xFF_DCDCDC);
     vg.rrect(rect(
-            bounds[0]-2.0,bounds[1]-2.0,
-            (bounds[2]-bounds[0]).floor()+4.0,
-            (bounds[3]-bounds[1]).floor()+4.0,
+            bounds.min.x-2.0,bounds.min.y-2.0,
+            bounds.dx().floor()+4.0,
+            bounds.dy().floor()+4.0,
         ), 3.0);
-    let px = ((bounds[2]+bounds[0])/2.0).floor();
-    vg.move_to(px,bounds[1] - 10.0);
-    vg.line_to(px+7.0,bounds[1]+1.0);
-    vg.line_to(px-7.0,bounds[1]+1.0);
+    let px = center.x.floor();
+    vg.move_to(px,bounds.min.y - 10.0);
+    vg.line_to(px+7.0,bounds.min.y+1.0);
+    vg.line_to(px-7.0,bounds.min.y+1.0);
     vg.fill();
 
     vg.fill_color(0xDC_000000);

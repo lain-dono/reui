@@ -1,6 +1,6 @@
 use super::Offset;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct Rect {
     pub min: Offset,
     pub max: Offset,

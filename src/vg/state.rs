@@ -2,7 +2,7 @@ use crate::{
     cache::{LineCap, LineJoin},
     vg::*,
     font::Align,
-    math::{rect, Rect, Transform, Color},
+    math::{point2, Rect, Transform, Color},
 };
 
 #[derive(Clone)]
@@ -92,18 +92,15 @@ impl State {
         let (bx, by) = (xform.tx-tex,xform.ty-tey);
         let (bw, bh) = (tex*2.0,tey*2.0);
 
-        //let r1 = rect(bx, by, bw, bh);
-        //self.set_scissor(r1.intersection(&r).unwrap_or_else(Rect::zero));
-
         let minx = f32::max(ax, bx);
         let miny = f32::max(ay, by);
         let maxx = f32::min(ax+aw, bx+bw);
         let maxy = f32::min(ay+ah, by+bh);
-        self.set_scissor(rect(
-            minx, miny,
-            (maxx - minx).max(0.0),
-            (maxy - miny).max(0.0),
-        ));
+        self.set_scissor(Rect {
+            min: point2(minx, miny),
+            max: point2(maxx, maxy),
+
+        });
     }
 
     pub fn reset_scissor(&mut self) {

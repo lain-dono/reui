@@ -174,7 +174,7 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    pub fn text_bounds(&mut self, text: &str, font_size: f32, font_face: &str) -> (f32, [f32; 4]) {
+    pub fn text_bounds(&mut self, text: &str, font_size: f32, font_face: &str) -> (f32, Rect) {
         self.ctx.font_size(font_size);
         self.ctx.font_face(font_face);
         self.ctx.text_bounds(0.0, 0.0, text)
@@ -253,7 +253,7 @@ impl<'a> Canvas<'a> {
     }
 
     /// Multiply the current transform by the specified 4⨉4 transformation matrix specified as a list of values in column-major order. 
-    pub fn transform(&mut self, t: Transform) { unimplemented!() }
+    pub fn transform(&mut self, _t: Transform) { unimplemented!() }
 }
 
 impl<'a> Canvas<'a> {

@@ -119,18 +119,18 @@ impl Context {
     pub fn stroke(&mut self) {
         let state = self.states.last();
 
-        self.run_stroke(
-            state.xform,
-            state.alpha,
-            &Stroke {
-                paint: state.stroke,
-                scissor: state.scissor,
-                width: state.stroke_width,
-                line_cap: state.line_cap,
-                line_join: state.line_join,
-                miter_limit: state.miter_limit,
-            },
-        );
+        let stroke = Stroke {
+            paint: state.stroke,
+            scissor: state.scissor,
+            width: state.stroke_width,
+            line_cap: state.line_cap,
+            line_join: state.line_join,
+            miter_limit: state.miter_limit,
+        };
+        let alpha = state.alpha;
+        let xform = state.xform;
+
+        self.run_stroke(xform, alpha, &stroke);
     }
 
     pub fn run_stroke(
