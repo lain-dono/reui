@@ -19,7 +19,7 @@ use crate::{
         Context,
         MAX_FONTIMAGE_SIZE, MAX_FONTIMAGES,
     },
-    backend::TEXTURE_ALPHA,
+    backend::{TEXTURE_ALPHA, Backend},
     cache::Vertex,
     vg::utils::average_scale,
     math::{point2, Rect},

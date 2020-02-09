@@ -3,7 +3,7 @@ use slotmap::Key;
 use std::ptr::null;
 
 use crate::{
-    backend::{BackendGL, Image, ImageFlags, TEXTURE_ALPHA, TEXTURE_RGBA},
+    backend::{BackendGL, Backend, Image, ImageFlags, TEXTURE_ALPHA, TEXTURE_RGBA},
     cache::{PathCache, LineCap, LineJoin},
     vg::*,
     font::*,

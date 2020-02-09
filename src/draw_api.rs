@@ -1,8 +1,9 @@
 use crate::{
+    backend::Backend,
+    cache::{LineJoin, Winding},
     context::Context,
-    cache::{Winding, LineJoin},
+    math::{point2, Rect, Transform},
     vg::utils::average_scale,
-    math::{Transform, Rect, point2},
 };
 
 pub struct Stroke {
@@ -49,7 +50,8 @@ impl Context {
 
     pub fn bezier_to(&mut self, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) {
         self.picture.xform = self.states.last().xform;
-        self.picture.bezier_to(point2(c1x, c1y), point2(c2x, c2y), point2(x, y));
+        self.picture
+            .bezier_to(point2(c1x, c1y), point2(c2x, c2y), point2(x, y));
     }
 
     pub fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
@@ -59,7 +61,8 @@ impl Context {
 
     pub fn arc_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, radius: f32) {
         self.picture.xform = self.states.last().xform;
-        self.picture.arc_to(point2(x1, y1), point2(x2, y2), radius, self.cache.dist_tol);
+        self.picture
+            .arc_to(point2(x1, y1), point2(x2, y2), radius, self.cache.dist_tol);
     }
 
     pub fn arc(&mut self, cx: f32, cy: f32, r: f32, a0: f32, a1: f32, dir: Winding) {
@@ -74,7 +77,8 @@ impl Context {
 
     pub fn rrect(&mut self, rect: Rect, radius: f32) {
         self.picture.xform = self.states.last().xform;
-        self.picture.rrect_varying(rect, radius, radius, radius, radius);
+        self.picture
+            .rrect_varying(rect, radius, radius, radius, radius);
     }
 
     pub fn rrect_varying(&mut self, rect: Rect, tl: f32, tr: f32, br: f32, bl: f32) {
@@ -96,11 +100,15 @@ impl Context {
         let state = self.states.last();
 
         self.cache.flatten_paths(&self.picture.commands);
-        self.cache.expand_fill(if state.shape_aa {
-            self.cache.fringe_width
-        } else {
-            0.0
-        }, LineJoin::Miter, 2.4);
+        self.cache.expand_fill(
+            if state.shape_aa {
+                self.cache.fringe_width
+            } else {
+                0.0
+            },
+            LineJoin::Miter,
+            2.4,
+        );
 
         // Apply global alpha
         let mut paint = state.fill;
@@ -133,12 +141,7 @@ impl Context {
         self.run_stroke(xform, alpha, &stroke);
     }
 
-    pub fn run_stroke(
-        &mut self,
-        xform: Transform,
-        alpha: f32,
-        stroke: &Stroke,
-    ) {
+    pub fn run_stroke(&mut self, xform: Transform, alpha: f32, stroke: &Stroke) {
         let scale = average_scale(&xform);
         let mut stroke_width = (stroke.width * scale).clamp(0.0, 200.0);
         let fringe_width = self.cache.fringe_width;
@@ -148,8 +151,8 @@ impl Context {
             // If the stroke width is less than pixel size, use alpha to emulate coverage.
             // Since coverage is area, scale by alpha*alpha.
             let alpha = (stroke_width / fringe_width).clamp(0.0, 1.0);
-            paint.inner_color.a *= alpha*alpha;
-            paint.outer_color.a *= alpha*alpha;
+            paint.inner_color.a *= alpha * alpha;
+            paint.outer_color.a *= alpha * alpha;
             stroke_width = self.cache.fringe_width;
         }
 
@@ -159,7 +162,7 @@ impl Context {
 
         self.cache.flatten_paths(&self.picture.commands);
         self.cache.expand_stroke(
-            stroke_width*0.5,
+            stroke_width * 0.5,
             fringe_width,
             stroke.line_cap,
             stroke.line_join,
