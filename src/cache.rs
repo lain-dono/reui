@@ -1,9 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::{
-    math::{vec2, Offset},
-    vg::utils::normalize,
-};
+use crate::math::{vec2, Offset};
 use std::{f32::consts::PI, slice::from_raw_parts_mut};
 
 const INIT_POINTS_SIZE: usize = 128;
@@ -15,6 +12,19 @@ const LINETO: i32 = 1;
 const BEZIERTO: i32 = 2;
 const CLOSE: i32 = 3;
 const WINDING: i32 = 4;
+
+#[inline(always)]
+fn normalize(x: &mut f32, y: &mut f32) -> f32 {
+    let xx = (*x) * (*x);
+    let yy = (*y) * (*y);
+    let d = (xx + yy).sqrt();
+    if d > 1e-6 {
+        let id = 1.0 / d;
+        *x *= id;
+        *y *= id;
+    }
+    d
+}
 
 #[inline(always)]
 fn triarea2(a: Offset, b: Offset, c: Offset) -> f32 {
@@ -260,41 +270,6 @@ fn fan2strip(i: usize, len: usize) -> usize {
         len - 1 - i / 2
     }
 }
-
-/*
-struct PairIterMut<'a> {
-    pts: &'a mut [Point],
-    idx: usize,
-    p0: usize,
-    p1: usize,
-}
-
-impl<'a> PairIterMut<'a> {
-    fn new(pts: &'a mut [Point], p0: usize, p1: usize) -> Self {
-        Self { pts, p0, p1, idx: 0, }
-    }
-}
-
-impl<'a> Iterator for PairIterMut<'a> {
-    type Item = (&'a mut Point, &'a mut Point);
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.idx == self.pts.len() {
-            None
-        } else {
-            let pts = self.pts.as_mut_ptr();
-            let item = unsafe {
-                let a = pts.add(self.p0);
-                let b = pts.add(self.p1);
-                (&mut *a, &mut *b)
-            };
-            self.idx += 1;
-            self.p0 = self.p1;
-            self.p1 += 1;
-            Some(item)
-        }
-    }
-}
-*/
 
 pub struct PathCache {
     points: Vec<PathPoint>,

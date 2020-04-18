@@ -12,21 +12,11 @@ use super::{
         types::{GLint, GLsizei, GLsizeiptr, GLuint},
     },
     gl_shader::Shader,
-    gl_textures::TextureManager,
-    Image, ImageFlags, TEXTURE_RGBA,
 };
-
-use slotmap::Key;
 
 fn gl_draw_strip(offset: usize, count: usize) {
     unsafe {
         gl::DrawArrays(gl::TRIANGLE_STRIP, offset as GLint, count as GLsizei);
-    }
-}
-
-fn gl_draw_triangles(offset: usize, count: usize) {
-    unsafe {
-        gl::DrawArrays(gl::TRIANGLES, offset as GLint, count as GLsizei);
     }
 }
 
@@ -103,9 +93,9 @@ fn max_vert_count(paths: &[Path]) -> usize {
 }
 
 const SHADER_FILLGRAD: f32 = 0.0;
-const SHADER_FILLIMG: f32 = 1.0;
+//const SHADER_FILLIMG: f32 = 1.0;
 const SHADER_SIMPLE: f32 = 2.0;
-const SHADER_IMG: f32 = 3.0;
+//const SHADER_IMG: f32 = 3.0;
 
 #[repr(C, align(4))]
 struct FragUniforms {
@@ -155,9 +145,11 @@ impl FragUniforms {
     fn set_stroke_thr(&mut self, thr: f32) {
         self.array[25] = thr;
     }
+    /*
     fn set_tex_type(&mut self, t: f32) {
         self.array[26] = t;
     }
+    */
     fn set_type(&mut self, t: f32) {
         self.array[27] = t;
     }
@@ -177,21 +169,16 @@ enum CallKind {
     FILL,
     CONVEXFILL,
     STROKE,
-    TRIANGLES,
 }
 
 #[derive(Clone, Copy)]
 struct DrawCallData {
-    image: Image,
     uniform_offset: usize,
 }
 
 impl Default for DrawCallData {
     fn default() -> Self {
-        Self {
-            image: Image::null(),
-            uniform_offset: 0,
-        }
+        Self { uniform_offset: 0 }
     }
 }
 
@@ -207,35 +194,12 @@ struct Call {
     data: DrawCallData,
 }
 
-impl Call {
-    fn triangles(
-        image: Image,
-        uniform_offset: usize,
-        triangle_offset: usize,
-        triangle_count: usize,
-    ) -> Self {
-        Self {
-            kind: CallKind::TRIANGLES,
-            data: DrawCallData {
-                image,
-                uniform_offset,
-            },
-            triangle_offset,
-            triangle_count,
-            path_offset: 0,
-            path_count: 0,
-        }
-    }
-}
-
 pub struct BackendGL {
     // Per frame buffers
     calls: Vec<Call>,
     paths: Vec<PathGL>,
     verts: Vec<Vertex>,
     uniforms: Vec<FragUniforms>,
-
-    textures: TextureManager<Image>,
 
     shader: Shader,
     view: [f32; 2],
@@ -252,7 +216,6 @@ impl Default for BackendGL {
         Self {
             shader,
             view: [0f32; 2],
-            textures: TextureManager::new(),
             vert_buf: Buffer::new(),
 
             // Per frame buffers
@@ -282,10 +245,9 @@ impl BackendGL {
         start
     }
 
-    fn set_uniforms(&self, offset: usize, image: Image) {
+    fn set_uniforms(&self, offset: usize) {
         let frag = self.frag_uniform(offset);
         self.shader.bind_frag(&frag.array);
-        self.textures.bind(image);
     }
 
     fn frag_uniform(&self, idx: usize) -> &FragUniforms {
@@ -323,28 +285,9 @@ impl BackendGL {
 
         frag.set_stroke_mul((width * 0.5 + fringe * 0.5) / fringe);
         frag.set_stroke_thr(stroke_thr);
-
-        if !paint.image.is_null() {
-            let tex = match self.textures.find_texture(paint.image) {
-                Some(tex) => tex,
-                None => return false,
-            };
-            frag.set_type(SHADER_FILLIMG);
-
-            frag.set_tex_type(if tex.kind == TEXTURE_RGBA {
-                if tex.flags.contains(ImageFlags::PREMULTIPLIED) {
-                    0.0
-                } else {
-                    1.0
-                }
-            } else {
-                2.0
-            });
-        } else {
-            frag.set_type(SHADER_FILLGRAD);
-            frag.set_radius(paint.radius);
-            frag.set_feather(paint.feather);
-        };
+        frag.set_type(SHADER_FILLGRAD);
+        frag.set_radius(paint.radius);
+        frag.set_feather(paint.feather);
 
         frag.set_paint_mat(paint.xform.inverse());
 
@@ -355,7 +298,7 @@ impl BackendGL {
         let start = path_offset as usize;
         let end = start + path_count as usize;
 
-        self.set_uniforms(data.uniform_offset, data.image);
+        self.set_uniforms(data.uniform_offset);
         check_error("convex fill");
 
         for path in &self.paths[start..end] {
@@ -365,12 +308,6 @@ impl BackendGL {
                 gl_draw_strip(path.stroke_offset, path.stroke_count);
             }
         }
-    }
-
-    fn triangles(&self, data: DrawCallData, triangle_offset: usize, triangle_count: usize) {
-        self.set_uniforms(data.uniform_offset, data.image);
-        check_error("triangles fill");
-        gl_draw_triangles(triangle_offset, triangle_count);
     }
 
     fn fill(
@@ -393,7 +330,7 @@ impl BackendGL {
         }
 
         // set bindpoint for solid loc
-        self.set_uniforms(data.uniform_offset, Image::null());
+        self.set_uniforms(data.uniform_offset);
         check_error("fill simple");
 
         unsafe {
@@ -411,7 +348,7 @@ impl BackendGL {
             gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
         }
 
-        self.set_uniforms(data.uniform_offset + 1, data.image);
+        self.set_uniforms(data.uniform_offset + 1);
         check_error("fill fill");
 
         unsafe {
@@ -451,14 +388,14 @@ impl BackendGL {
             gl::StencilFunc(gl::EQUAL, 0x0, 0xff);
             gl::StencilOp(gl::KEEP, gl::KEEP, gl::INCR);
         }
-        self.set_uniforms(data.uniform_offset + 1, data.image);
+        self.set_uniforms(data.uniform_offset + 1);
         check_error("stroke fill 0");
         for path in &self.paths[start..end] {
             gl_draw_strip(path.stroke_offset, path.stroke_count);
         }
 
         // Draw anti-aliased pixels.
-        self.set_uniforms(data.uniform_offset, data.image);
+        self.set_uniforms(data.uniform_offset);
         unsafe {
             gl::StencilFunc(gl::EQUAL, 0x00, 0xff);
             gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
@@ -496,27 +433,6 @@ impl super::Backend for BackendGL {
         self.paths.clear();
         self.calls.clear();
         self.uniforms.clear();
-    }
-
-    fn draw_triangles(&mut self, paint: &Paint, scissor: &Scissor, verts: &[Vertex]) {
-        // Allocate vertices for all the paths.
-        let triangle_offset = self.alloc_verts(verts.len());
-        let triangle_count = verts.len();
-
-        copy_verts(&mut self.verts, triangle_offset, verts.len(), verts);
-
-        // Fill shader
-        let uniform_offset = self.alloc_frag_uniforms(1);
-        let frag = self.frag_uniform_mut(uniform_offset);
-        self.convert_paint(frag, paint, scissor, 1.0, 1.0, -1.0);
-        frag.set_type(SHADER_IMG);
-
-        self.calls.push(Call::triangles(
-            paint.image,
-            uniform_offset,
-            triangle_offset,
-            triangle_count,
-        ))
     }
 
     fn draw_fill(
@@ -590,10 +506,7 @@ impl super::Backend for BackendGL {
 
         self.calls.push(Call {
             kind,
-            data: DrawCallData {
-                image: paint.image,
-                uniform_offset,
-            },
+            data: DrawCallData { uniform_offset },
             triangle_offset,
             triangle_count,
             path_offset,
@@ -640,10 +553,7 @@ impl super::Backend for BackendGL {
 
         self.calls.push(Call {
             kind: CallKind::STROKE,
-            data: DrawCallData {
-                image: paint.image,
-                uniform_offset,
-            },
+            data: DrawCallData { uniform_offset },
             triangle_offset: 0,
             triangle_count: 0,
             path_offset,
@@ -724,9 +634,6 @@ impl super::Backend for BackendGL {
                     self.convex_fill(call.data, call.path_offset, call.path_count)
                 }
                 CallKind::STROKE => self.stroke(call.data, call.path_offset, call.path_count),
-                CallKind::TRIANGLES => {
-                    self.triangles(call.data, call.triangle_offset, call.triangle_count)
-                }
             }
         }
 
@@ -744,29 +651,5 @@ impl super::Backend for BackendGL {
 
         // Reset calls
         self.reset();
-    }
-
-    fn texture_size(&self, image: Image) -> Option<(u32, u32)> {
-        self.textures.texture_size(image)
-    }
-
-    fn update_texture(&mut self, image: super::SubImage, data: &[u8]) -> bool {
-        self.textures
-            .update_texture(image.image, image.x, image.y, image.w, image.h, data)
-    }
-
-    fn delete_texture(&mut self, image: Image) -> bool {
-        self.textures.delete_texture(image)
-    }
-
-    fn create_texture(
-        &mut self,
-        kind: i32,
-        w: u32,
-        h: u32,
-        flags: ImageFlags,
-        data: *const u8,
-    ) -> Image {
-        self.textures.create_texture(kind, w, h, flags, data)
     }
 }

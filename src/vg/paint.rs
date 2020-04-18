@@ -1,8 +1,4 @@
-use crate::{
-    backend::Image,
-    math::{Color, Rect, Transform},
-};
-use slotmap::Key;
+use crate::math::{Color, Rect, Transform};
 
 #[derive(Clone, Copy)]
 pub struct Paint {
@@ -12,7 +8,6 @@ pub struct Paint {
     pub feather: f32,
     pub inner_color: Color,
     pub outer_color: Color,
-    pub image: Image,
 }
 
 impl Paint {
@@ -57,7 +52,6 @@ impl Paint {
             feather: d.max(1.0),
             inner_color,
             outer_color,
-            image: Image::null(),
         }
     }
 
@@ -82,7 +76,6 @@ impl Paint {
             feather: f.max(1.0),
             inner_color,
             outer_color,
-            image: Image::null(),
         }
     }
 
@@ -109,7 +102,6 @@ impl Paint {
             feather: feather.max(1.0),
             inner_color,
             outer_color,
-            image: Image::null(),
         }
     }
 
@@ -118,14 +110,13 @@ impl Paint {
     /// (ex,ey) the size of one image, angle rotation around the top-left corner,
     /// image is handle to the image to render.
     /// The gradient is transformed by the current transform when it is passed to FillPaint() or StrokePaint().
-    pub fn image_pattern(cx: f32, cy: f32, w: f32, h: f32, image: Image, alpha: f32) -> Self {
+    pub fn image_pattern(cx: f32, cy: f32, w: f32, h: f32, alpha: f32) -> Self {
         let white = Color::rgbaf(1.0, 1.0, 1.0, alpha);
         Self {
             xform: Transform::translation(cx, cy),
             extent: [w, h],
             radius: 0.0,
             feather: 0.0,
-            image,
             inner_color: white,
             outer_color: white,
         }
@@ -137,7 +128,6 @@ impl Paint {
             extent: [0.0, 0.0],
             radius: 0.0,
             feather: 1.0,
-            image: Image::null(),
             inner_color: color,
             outer_color: color,
         }

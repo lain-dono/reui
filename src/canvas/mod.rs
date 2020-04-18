@@ -2,10 +2,7 @@ mod paint;
 mod path;
 mod picture;
 
-pub use slotmap::Key;
-
 pub use crate::{
-    backend::Image,
     math::{rect, Corners, Offset, Rect, Transform},
     Context, Winding,
 };
@@ -115,12 +112,6 @@ fn gradient_to_paint(gradient: Gradient) -> crate::vg::Paint {
             Color::new(inner_color),
             Color::new(outer_color),
         ),
-        Gradient::ImagePattern {
-            center,
-            size,
-            image,
-            alpha,
-        } => crate::vg::Paint::image_pattern(center[0], center[1], size[0], size[1], image, alpha),
     }
 }
 
@@ -173,10 +164,6 @@ impl<'a> Canvas<'a> {
 
     pub fn reset_scissor(&mut self) {
         self.ctx.reset_scissor();
-    }
-
-    pub fn image_size(&mut self, image: Image) -> Option<(u32, u32)> {
-        self.ctx.image_size(image)
     }
 
     /// Returns the number of items on the save stack, including the initial state.

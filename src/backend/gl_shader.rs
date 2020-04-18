@@ -6,10 +6,7 @@ use std::ptr::null;
 
 pub struct Shader {
     prog: GLuint,
-    //frag: GLuint,
-    //vert: GLuint,
     loc_viewsize: GLint,
-    loc_tex: GLint,
     loc_frag: GLint,
 }
 
@@ -21,9 +18,7 @@ impl Shader {
             let prog = gl::CreateProgram();
             let vert = gl::CreateShader(gl::VERTEX_SHADER);
             let frag = gl::CreateShader(gl::FRAGMENT_SHADER);
-            //str[2] = vshader;
             gl::ShaderSource(vert, 1, &vshader, null());
-            //str[2] = fshader;
             gl::ShaderSource(frag, 1, &fshader, null());
 
             gl::CompileShader(vert);
@@ -42,8 +37,8 @@ impl Shader {
             gl::AttachShader(prog, vert);
             gl::AttachShader(prog, frag);
 
-            gl::BindAttribLocation(prog, 0, b"vertex\0".as_ptr() as *const i8);
-            gl::BindAttribLocation(prog, 1, b"tcoord\0".as_ptr() as *const i8);
+            gl::BindAttribLocation(prog, 0, b"a_Position\0".as_ptr() as *const i8);
+            gl::BindAttribLocation(prog, 1, b"a_TexCoord\0".as_ptr() as *const i8);
 
             gl::LinkProgram(prog);
             /*
@@ -53,10 +48,7 @@ impl Shader {
 
             Self {
                 prog,
-                //vert,
-                //frag,
                 loc_viewsize: gl::GetUniformLocation(prog, b"viewSize\0".as_ptr() as *const i8),
-                loc_tex: gl::GetUniformLocation(prog, b"tex\0".as_ptr() as *const i8),
                 loc_frag: gl::GetUniformLocation(prog, b"frag\0".as_ptr() as *const i8),
             }
         }
@@ -82,7 +74,7 @@ impl Shader {
 
     pub fn bind_view(&self, view: *const [f32; 2]) {
         unsafe {
-            gl::Uniform1i(self.loc_tex, 0);
+            //gl::Uniform1i(self.loc_tex, 0);
             gl::Uniform2fv(self.loc_viewsize, 1, view as *const f32);
         }
     }
@@ -92,14 +84,20 @@ impl Shader {
 // see the following discussion: https://github.com/memononen/nanovg/issues/46
 static VERT: &[u8] = b"
 uniform vec2 viewSize;
-attribute vec2 vertex;
-attribute vec2 tcoord;
-varying vec2 ftcoord;
-varying vec2 fpos;
-void main(void) {
-    ftcoord = tcoord;
-    fpos = vertex;
-    gl_Position = vec4(2.0*vertex.x/viewSize.x - 1.0, 1.0 - 2.0*vertex.y/viewSize.y, 0, 1);
+
+attribute vec2 a_Position;
+attribute vec2 a_TexCoord;
+
+varying vec2 v_Position;
+varying vec2 v_TexCoord;
+
+void main() {
+    v_TexCoord = a_TexCoord;
+    v_Position = a_Position;
+    gl_Position = vec4(
+        2.0 * a_Position.x / viewSize.x - 1.0,
+        1.0 - 2.0 * a_Position.y / viewSize.y,
+        0.0, 1.0);
 }
 \0";
 
@@ -108,10 +106,10 @@ static FRAG: &[u8] = b"
 
 //precision highp float;
 
+varying vec2 v_Position;
+varying vec2 v_TexCoord;
+
 uniform vec4 frag[UNIFORMARRAY_SIZE];
-uniform sampler2D tex;
-varying vec2 ftcoord;
-varying vec2 fpos;
 
 #define scissorTransform frag[0]
 #define paintTransform frag[1]
@@ -125,7 +123,7 @@ varying vec2 fpos;
 #define feather frag[5].w
 #define strokeMult frag[6].x
 #define strokeThr frag[6].y
-#define texType int(frag[6].z)
+
 #define type int(frag[6].w)
 
 float sdroundrect(vec2 pt, vec2 ext, float rad) {
@@ -149,43 +147,28 @@ float scissorMask(vec2 p) {
 
 // Stroke - from [0..1] to clipped pyramid, where the slope is 1px.
 float strokeMask() {
-    return min(1.0, (1.0-abs(ftcoord.x*2.0-1.0))*strokeMult) * min(1.0, ftcoord.y);
+    return min(1.0, (1.0-abs(v_TexCoord.x*2.0-1.0))*strokeMult) * min(1.0, v_TexCoord.y);
 }
 
 void main(void) {
-    vec4 result;
-    float scissor = scissorMask(fpos);
+    float scissor = scissorMask(v_Position);
 
     float strokeAlpha = strokeMask();
-    if (strokeAlpha < strokeThr) discard;
+    if (strokeAlpha < strokeThr) {
+        discard;
+    }
 
+    vec4 result;
     if (type == 0) {            // Gradient
         // Calculate gradient color using box gradient
-        vec2 pt = applyTransform(paintTransform, fpos);
+        vec2 pt = applyTransform(paintTransform, v_Position);
         float d = clamp((sdroundrect(pt, extent, radius) + feather*0.5) / feather, 0.0, 1.0);
         vec4 color = mix(innerCol,outerCol,d);
         // Combine alpha
         color *= strokeAlpha * scissor;
         result = color;
-    } else if (type == 1) {        // Image
-        // Calculate color fron texture
-        vec2 pt = applyTransform(paintTransform, fpos) / extent;
-        vec4 color = texture2D(tex, pt);
-        if (texType == 1) color = vec4(color.xyz*color.w,color.w);
-        if (texType == 2) color = vec4(color.x);
-        // Apply color tint and alpha.
-        color *= innerCol;
-        // Combine alpha
-        color *= strokeAlpha * scissor;
-        result = color;
     } else if (type == 2) {        // Stencil fill
         result = vec4(1,1,1,1);
-    } else if (type == 3) {        // Textured tris
-        vec4 color = texture2D(tex, ftcoord);
-        if (texType == 1) color = vec4(color.xyz*color.w, color.w);
-        if (texType == 2) color = vec4(color.x);
-        color *= scissor;
-        result = color * innerCol;
     }
 
     gl_FragColor = result;

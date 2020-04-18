@@ -1,4 +1,3 @@
-pub use crate::backend::Image;
 pub use crate::cache::{LineCap as StrokeCap, LineJoin as StrokeJoin};
 pub use crate::math::{Color, Rect};
 
@@ -30,12 +29,6 @@ pub enum Gradient {
         outr: f32,
         inner_color: u32,
         outer_color: u32,
-    },
-    ImagePattern {
-        center: [f32; 2],
-        size: [f32; 2],
-        image: Image,
-        alpha: f32,
     },
 }
 
@@ -172,14 +165,6 @@ impl Paint {
             outr,
             inner_color,
             outer_color,
-        })
-    }
-    pub fn image_pattern(center: [f32; 2], size: [f32; 2], image: Image, alpha: f32) -> Self {
-        Self::gradient(Gradient::ImagePattern {
-            center,
-            size,
-            image,
-            alpha,
         })
     }
 }

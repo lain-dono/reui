@@ -19,35 +19,9 @@ arrayvec = "0.5"
 
 zerocopy = "0.2.8"
 
-#cgmath = "*"
-#glsl-to-spirv = "*"
-
-#wgpu-native = "^0.2.3"
-#wgpu = "0.4.0"
-#wgpu_glyph = { version = "0.3.1", git = "https://github.com/hecrj/wgpu_glyph.git" }
-
-#rusttype = "0.6.2"
-
-[dependencies.slotmap]
-version = "0.4"
-features = ["unstable"]
-
 [dependencies.smallvec]
 version = "^0.6"
 features = ["union"]
-
-[dependencies.image]
-version = "*"
-default-features = false
-features = ["jpeg", "png_codec"]
-
-#[features]
-#default = []
-#local = ["wgpu-native/local"]
-#metal = ["wgpu/metal"]
-#dx11 = ["wgpu/dx11"]
-#dx12 = ["wgpu/dx12"]
-#vulkan = ["wgpu/vulkan"]
 
 [[example]]
 name = "demo"

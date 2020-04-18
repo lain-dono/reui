@@ -11,7 +11,7 @@ pub mod canvas;
 pub mod math;
 
 pub use crate::{
-    backend::{gl, BackendGL, Image, ImageFlags},
+    backend::{gl, BackendGL},
     cache::{LineCap, LineJoin, Winding},
     context::Context,
     vg::{utils, Paint},

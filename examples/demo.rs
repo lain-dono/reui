@@ -1,7 +1,5 @@
 #![feature(clamp)]
 
-use slotmap::Key;
-
 use std::f32::consts::PI;
 use std::ptr::null;
 
@@ -9,7 +7,7 @@ use oni2d::{
     canvas::Canvas,
     gl,
     math::{point2, rect, Offset},
-    BackendGL, Context, Image, ImageFlags,
+    BackendGL, Context,
 };
 
 mod sup;
@@ -33,7 +31,7 @@ fn main() {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
-        let window = glfwCreateWindow(2000, 1200, b"ONI2D\0".as_ptr(), null(), null());
+        let window = glfwCreateWindow(2000, 1200, b"Anti-aliased vector graphics\0".as_ptr(), null(), null());
         //window = glfwCreateWindow(1000, 600, "NanoVG", glfwGetPrimaryMonitor(), NULL);
         if window.is_null() {
             glfwTerminate();
@@ -44,8 +42,6 @@ fn main() {
         glfwMakeContextCurrent(window);
 
         let mut vg = Context::new(BackendGL::default());
-
-        let data = DemoData::new(&mut vg);
 
         glfwSwapInterval(0);
 
@@ -83,7 +79,6 @@ fn main() {
                 (win_w as f32 / scale, win_h as f32 / scale).into(),
                 time as f32,
                 BLOWUP != 0,
-                &data,
             );
 
             vg.end_frame();
@@ -171,32 +166,12 @@ extern "C" fn key(window: *mut GLFWwindow, key: i32, _scancode: i32, action: i32
     }
 }
 
-#[repr(C)]
-pub struct DemoData {
-    pub images: [Image; 12],
-}
-
-impl DemoData {
-    fn new(vg: &mut Context) -> Self {
-        let mut images = [Image::null(); 12];
-        for (i, image) in images.iter_mut().enumerate() {
-            let file = format!("assets/images/image{}.jpg", i + 1);
-            let m = vg.create_image(&file, ImageFlags::REPEAT);
-            assert!(!m.is_null(), "Could not load {}.", file);
-            *image = m;
-        }
-
-        Self { images }
-    }
-}
-
 pub fn render_demo(
     vg: &mut Context,
     mouse: Offset,
     wsize: Offset,
     time: f32,
     blowup: bool,
-    data: &DemoData,
 ) {
     let (width, height) = wsize.into();
 
@@ -235,11 +210,9 @@ pub fn render_demo(
         draw_search_box(&mut ctx, rect(x, y, 280.0, 25.0));
         y += 40.0;
         draw_drop_down(&mut ctx, rect(x, y, 280.0, 28.0));
-        let popy = y + 14.0;
         y += 45.0;
 
         // Form
-        //draw_label(&mut ctx, "Login", rect(x, y, 280.0, 20.0));
         y += 25.0;
         draw_edit_box(&mut ctx, rect(x, y, 280.0, 28.0));
         y += 35.0;
@@ -250,7 +223,6 @@ pub fn render_demo(
         y += 45.0;
 
         // Slider
-        //draw_label(&mut ctx, "Diameter", rect(x, y, 280.0, 20.0));
         y += 25.0;
         draw_edit_box_num(&mut ctx, rect(x + 180.0, y, 100.0, 28.0));
         draw_slider(&mut ctx, 0.4, x, y, 170.0, 28.0);
@@ -258,14 +230,6 @@ pub fn render_demo(
 
         draw_button(&mut ctx, rect(x, y, 160.0, 28.0), 0xFF_801008);
         draw_button(&mut ctx, rect(x + 170.0, y, 110.0, 28.0), 0x00_000000);
-
-        // Thumbnails box
-        draw_thumbnails(
-            &mut ctx,
-            rect(365.0, popy - 30.0, 160.0, 300.0),
-            &data.images[..],
-            time,
-        );
     }
 
     if false {
@@ -286,9 +250,9 @@ pub fn render_demo(
         );
     }
 
-    {
+    if true {
         use oni2d::canvas::*;
         let mut ctx = Canvas::new(vg);
-        sup::blendish::run(&mut ctx, time, rect(50.0, 50.0, 200.0, 200.0));
+        sup::blendish::run(&mut ctx, time, rect(380.0, 50.0, 200.0, 200.0));
     }
 }
