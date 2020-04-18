@@ -122,35 +122,41 @@ impl<'a> Canvas<'a> {
         Self { ctx, save_count: 1 }
     }
 
-    fn sync_fill(&mut self, paint: &Paint) {
-        match paint.gradient {
-            Some(gradient) => self.ctx.fill_paint(gradient_to_paint(gradient)),
-            None => self.ctx.fill_color(paint.color),
-        }
-    }
-
     fn sync_stroke(&mut self, paint: &Paint) {
+        let state = self.ctx.states.last_mut();
+
         match paint.gradient {
-            Some(gradient) => self.ctx.stroke_paint(gradient_to_paint(gradient)),
-            None => self.ctx.stroke_color(paint.color),
+            Some(gradient) => {
+                state.stroke = gradient_to_paint(gradient);
+                state.stroke.xform.prepend_mut(state.xform);
+            }
+            None => state.stroke = crate::vg::Paint::color(Color::new(paint.color)),
         }
-        self.ctx.line_cap(paint.stroke_cap);
-        self.ctx.line_join(paint.stroke_join);
-        self.ctx.miter_limit(paint.stroke_miter_limit);
-        self.ctx.stroke_width(paint.stroke_width);
+
+        state.line_cap = paint.stroke_cap;
+        state.line_join = paint.stroke_join;
+        state.miter_limit = paint.stroke_miter_limit;
+        state.stroke_width = paint.stroke_width;
     }
 
-    fn fill_or_stroke(&mut self, paint: &Paint) {
-        self.ctx.shape_anti_alias(paint.is_antialias);
-        match paint.style {
-            PaintingStyle::Fill => {
-                self.sync_fill(paint);
-                self.ctx.fill();
+    fn fill_or_stroke(&mut self, paint: &Paint, force_stroke: bool) {
+        self.ctx.states.last_mut().shape_aa = paint.is_antialias;
+
+        if force_stroke || paint.style == PaintingStyle::Stroke {
+            self.sync_stroke(paint);
+            self.ctx.stroke();
+        } else {
+            let state = self.ctx.states.last_mut();
+
+            match paint.gradient {
+                Some(gradient) => {
+                    state.fill = gradient_to_paint(gradient);
+                    state.fill.xform.prepend_mut(state.xform);
+                }
+                None => state.fill = crate::vg::Paint::color(Color::new(paint.color)),
             }
-            PaintingStyle::Stroke => {
-                self.sync_stroke(paint);
-                self.ctx.stroke();
-            }
+
+            self.ctx.fill();
         }
     }
 
@@ -255,7 +261,7 @@ impl<'a> Canvas<'a> {
     pub fn draw_circle(&mut self, c: Offset, radius: f32, paint: Paint) {
         self.ctx.begin_path();
         self.ctx.circle(c.x, c.y, radius);
-        self.fill_or_stroke(&paint);
+        self.fill_or_stroke(&paint, false);
     }
 
     /*
@@ -310,7 +316,7 @@ impl<'a> Canvas<'a> {
         self.ctx.begin_path();
         self.ctx
             .ellipse(rect.min.x, rect.min.y, rect.dx(), rect.dy());
-        self.fill_or_stroke(&paint);
+        self.fill_or_stroke(&paint, false);
     }
 
     /*
@@ -329,7 +335,7 @@ impl<'a> Canvas<'a> {
 
         self.ctx.begin_path();
         self.ctx.picture.append_commands(path);
-        self.fill_or_stroke(&paint);
+        self.fill_or_stroke(&paint, false);
     }
 
     pub fn draw_path_cloned(&mut self, path: &[f32], paint: Paint) {
@@ -338,7 +344,7 @@ impl<'a> Canvas<'a> {
 
         self.ctx.begin_path();
         self.ctx.picture.append_commands(&mut path);
-        self.fill_or_stroke(&paint);
+        self.fill_or_stroke(&paint, false);
     }
 
     /*
@@ -358,7 +364,7 @@ impl<'a> Canvas<'a> {
     pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
         self.ctx.begin_path();
         self.ctx.rect(rect);
-        self.fill_or_stroke(&paint);
+        self.fill_or_stroke(&paint, false);
     }
 
     /// Draws a rounded rectangle with the given Paint.
@@ -372,7 +378,7 @@ impl<'a> Canvas<'a> {
             rrect.radius.br,
             rrect.radius.bl,
         );
-        self.fill_or_stroke(&paint);
+        self.fill_or_stroke(&paint, false);
     }
 
     /*

@@ -105,23 +105,6 @@ impl Paint {
         }
     }
 
-    /// Creates and returns an image patter.
-    /// Parameters (ox,oy) specify the left-top location of the image pattern,
-    /// (ex,ey) the size of one image, angle rotation around the top-left corner,
-    /// image is handle to the image to render.
-    /// The gradient is transformed by the current transform when it is passed to FillPaint() or StrokePaint().
-    pub fn image_pattern(cx: f32, cy: f32, w: f32, h: f32, alpha: f32) -> Self {
-        let white = Color::rgbaf(1.0, 1.0, 1.0, alpha);
-        Self {
-            xform: Transform::translation(cx, cy),
-            extent: [w, h],
-            radius: 0.0,
-            feather: 0.0,
-            inner_color: white,
-            outer_color: white,
-        }
-    }
-
     pub fn color(color: Color) -> Self {
         Self {
             xform: Transform::identity(),

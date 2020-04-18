@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables)]
+
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -11,7 +13,6 @@ use wgpu_vg::{
 
 struct Backend {}
 
-#[allow(dead_code)]
 impl wgpu_vg::backend::Backend for Backend {
     fn reset(&mut self) {
         unimplemented!()

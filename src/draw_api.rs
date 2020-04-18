@@ -1,18 +1,19 @@
 use crate::{
-    cache::{LineJoin, Winding},
+    cache::{LineCap, LineJoin, Winding},
     context::Context,
-    math::{point2, Rect, Transform},
+    math::{point2, Rect},
 };
 
 pub struct Stroke {
     pub paint: crate::vg::Paint,
     pub scissor: crate::vg::Scissor,
     pub width: f32,
-    pub line_cap: crate::cache::LineCap,
-    pub line_join: crate::cache::LineJoin,
+    pub line_cap: LineCap,
+    pub line_join: LineJoin,
     pub miter_limit: f32,
 }
 
+/*
 impl Context {
     pub fn fill_rect(&mut self, r: Rect, c: u32) {
         self.begin_path();
@@ -21,6 +22,7 @@ impl Context {
         self.fill();
     }
 }
+*/
 
 impl Context {
     pub fn begin_path(&mut self) {
@@ -94,7 +96,7 @@ impl Context {
         self.picture.circle(cx, cy, r);
     }
 
-    pub fn fill(&mut self) {
+    pub(crate) fn fill(&mut self) {
         let state = self.states.last();
 
         self.cache.flatten_paths(&self.picture.commands);
@@ -109,9 +111,7 @@ impl Context {
         );
 
         // Apply global alpha
-        let mut paint = state.fill;
-        paint.inner_color.a *= state.alpha;
-        paint.outer_color.a *= state.alpha;
+        let paint = state.fill;
 
         self.params.draw_fill(
             &paint,
@@ -122,9 +122,10 @@ impl Context {
         );
     }
 
-    pub fn stroke(&mut self) {
+    pub(crate) fn stroke(&mut self) {
         let state = self.states.last();
 
+        let xform = state.xform;
         let stroke = Stroke {
             paint: state.stroke,
             scissor: state.scissor,
@@ -133,13 +134,9 @@ impl Context {
             line_join: state.line_join,
             miter_limit: state.miter_limit,
         };
-        let alpha = state.alpha;
-        let xform = state.xform;
 
-        self.run_stroke(xform, alpha, &stroke);
-    }
+        let alpha = 1.0;
 
-    pub fn run_stroke(&mut self, xform: Transform, alpha: f32, stroke: &Stroke) {
         let scale = xform.average_scale();
         let mut stroke_width = (stroke.width * scale).clamp(0.0, 200.0);
         let fringe_width = self.cache.fringe_width;

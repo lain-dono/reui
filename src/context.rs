@@ -2,9 +2,9 @@ use arrayvec::ArrayVec;
 
 use crate::{
     backend::Backend,
-    cache::{LineCap, LineJoin, PathCache},
+    cache::PathCache,
     canvas::Picture,
-    math::{Color, Offset, Transform},
+    math::{Offset, Transform},
     vg::*,
 };
 
@@ -61,10 +61,6 @@ pub struct Context {
     pub params: Box<dyn Backend>,
 }
 
-// FIXME
-unsafe impl Sync for Context {}
-unsafe impl Send for Context {}
-
 impl Context {
     pub fn save(&mut self) {
         self.states.save();
@@ -74,43 +70,6 @@ impl Context {
     }
     pub fn reset(&mut self) {
         self.states.reset();
-    }
-
-    // State setting
-
-    pub(crate) fn shape_anti_alias(&mut self, enabled: bool) {
-        self.states.last_mut().shape_aa = enabled;
-    }
-    pub(crate) fn stroke_width(&mut self, width: f32) {
-        self.states.last_mut().stroke_width = width;
-    }
-    pub(crate) fn miter_limit(&mut self, limit: f32) {
-        self.states.last_mut().miter_limit = limit;
-    }
-    pub(crate) fn line_cap(&mut self, cap: LineCap) {
-        self.states.last_mut().line_cap = cap;
-    }
-    pub(crate) fn line_join(&mut self, join: LineJoin) {
-        self.states.last_mut().line_join = join;
-    }
-    pub(crate) fn global_alpha(&mut self, alpha: f32) {
-        self.states.last_mut().alpha = alpha;
-    }
-    pub(crate) fn stroke_color(&mut self, color: u32) {
-        self.states.last_mut().stroke = Paint::color(Color::new(color))
-    }
-    pub(crate) fn fill_color(&mut self, color: u32) {
-        self.states.last_mut().fill = Paint::color(Color::new(color))
-    }
-    pub(crate) fn stroke_paint(&mut self, paint: Paint) {
-        let state = self.states.last_mut();
-        state.stroke = paint;
-        state.stroke.xform.prepend_mut(state.xform);
-    }
-    pub(crate) fn fill_paint(&mut self, paint: Paint) {
-        let state = self.states.last_mut();
-        state.fill = paint;
-        state.fill.xform.prepend_mut(state.xform);
     }
 }
 
