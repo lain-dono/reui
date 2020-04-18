@@ -7,8 +7,8 @@ use winit::{
 };
 
 use wgpu_vg::{
+    backend::{Paint, Scissor},
     cache::Path,
-    vg::{Paint, Scissor},
 };
 
 struct Backend {}

@@ -1,9 +1,9 @@
 use std::{mem, ptr::null, slice::from_raw_parts_mut};
 
 use crate::{
+    backend::{Paint, Scissor},
     cache::{Path, Vertex},
     math::Transform,
-    vg::{Paint, Scissor},
 };
 
 use super::{

@@ -1,6 +1,6 @@
 use crate::{
+    backend::Scissor,
     math::{point2, Rect, Transform},
-    vg::*,
 };
 
 #[derive(Clone)]

@@ -1,16 +1,22 @@
 mod gl_backend;
 mod gl_shader;
 
+mod paint;
+
 pub mod gl {
     include!(concat!(env!("OUT_DIR"), "/gl_bindings.rs"));
 }
 
 pub use self::gl_backend::BackendGL;
+pub use self::paint::Paint;
 
-use crate::{
-    cache::Path,
-    vg::{Paint, Scissor},
-};
+use crate::{cache::Path, math::Transform};
+
+#[derive(Clone, Copy)]
+pub struct Scissor {
+    pub xform: Transform,
+    pub extent: [f32; 2],
+}
 
 pub trait Backend {
     fn reset(&mut self);
