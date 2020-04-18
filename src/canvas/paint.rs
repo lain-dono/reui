@@ -44,11 +44,7 @@ pub struct Paint {
     pub stroke_miter_limit: f32,
     pub stroke_width: f32,
 
-    //pub color_filter: ColorFilter,
-    //pub mask_filter: MaskFilter,
-    //pub shader: Shader,
     pub gradient: Option<Gradient>,
-    pub aa: bool,
 }
 
 impl Default for Paint {
@@ -62,7 +58,6 @@ impl Default for Paint {
             stroke_miter_limit: 10.0,
             stroke_width: 1.0,
             gradient: None,
-            aa: true,
         }
     }
 }
@@ -113,8 +108,11 @@ impl Paint {
         }
     }
 
-    pub fn antialias(self, aa: bool) -> Self {
-        Self { aa, ..self }
+    pub fn antialias(self, is_antialias: bool) -> Self {
+        Self {
+            is_antialias,
+            ..self
+        }
     }
 
     pub fn gradient(gradient: Gradient) -> Self {

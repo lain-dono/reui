@@ -1,5 +1,4 @@
 use crate::{
-    backend::Backend,
     cache::{LineJoin, Winding},
     context::Context,
     math::{point2, Rect, Transform},

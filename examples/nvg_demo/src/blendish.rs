@@ -1,4 +1,4 @@
-use oni2d::{canvas::*, math::*};
+use wgpu_vg::{canvas::*, math::*};
 
 const HOVER_SHADE: i32 = 15;
 
@@ -13,6 +13,7 @@ pub enum State {
     Active,
 }
 
+#[allow(dead_code)]
 pub enum Gropped {
     None,
     StartVertical,

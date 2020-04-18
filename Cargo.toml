@@ -1,8 +1,13 @@
 [package]
-name = "oni2d"
+name = "wgpu_vg"
 version = "0.1.0"
 authors = ["Lain-dono <lain.dono@gmail.com>"]
 edition = "2018"
+
+[workspace]
+members = [
+    "examples/nvg_demo",
+]
 
 [lib]
 
@@ -12,11 +17,12 @@ gl_generator = "0.11"
 [dependencies]
 bitflags = "1.2"
 arrayvec = "0.5"
+
 wgpu = "0.5.0"
+winit = { version = "0.22.1", features = ["web-sys"] }
+futures = "0.3"
+env_logger = "0.7"
 
 [dependencies.smallvec]
 version = "1.3"
 features = ["union"]
-
-[[example]]
-name = "demo"

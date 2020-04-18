@@ -1,7 +1,7 @@
 use arrayvec::ArrayVec;
 
 use crate::{
-    backend::{Backend, BackendGL},
+    backend::Backend,
     cache::{LineCap, LineJoin, PathCache},
     canvas::Picture,
     math::{Color, Offset, Transform},
@@ -31,7 +31,7 @@ impl States {
     }
     fn save(&mut self) {
         if self.states.len() >= self.states.capacity() {
-            return;
+            panic!("wtf?")
         }
         if let Some(state) = self.states.last().cloned() {
             self.states.push(state);
@@ -58,7 +58,7 @@ pub struct Context {
     pub cache: PathCache,
     pub device_px_ratio: f32,
 
-    pub params: BackendGL,
+    pub params: Box<dyn Backend>,
 }
 
 // FIXME
@@ -137,7 +137,7 @@ impl Context {
         self.device_px_ratio = ratio;
     }
 
-    pub fn new(params: BackendGL) -> Self {
+    pub fn new(params: Box<dyn Backend>) -> Self {
         Self {
             params,
 

@@ -141,7 +141,7 @@ impl<'a> Canvas<'a> {
     }
 
     fn fill_or_stroke(&mut self, paint: &Paint) {
-        self.ctx.shape_anti_alias(paint.aa);
+        self.ctx.shape_anti_alias(paint.is_antialias);
         match paint.style {
             PaintingStyle::Fill => {
                 self.sync_fill(paint);
