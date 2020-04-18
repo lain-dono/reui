@@ -145,4 +145,8 @@ impl Transform {
     pub fn append_mut(&mut self, rhs: Self) {
         *self *= rhs;
     }
+
+    pub(crate) fn average_scale(&self) -> f32 {
+        self.re * self.re + self.im * self.im
+    }
 }

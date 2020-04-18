@@ -3,7 +3,6 @@ use crate::{
     cache::{LineJoin, Winding},
     context::Context,
     math::{point2, Rect, Transform},
-    vg::utils::average_scale,
 };
 
 pub struct Stroke {
@@ -142,7 +141,7 @@ impl Context {
     }
 
     pub fn run_stroke(&mut self, xform: Transform, alpha: f32, stroke: &Stroke) {
-        let scale = average_scale(&xform);
+        let scale = xform.average_scale();
         let mut stroke_width = (stroke.width * scale).clamp(0.0, 200.0);
         let fringe_width = self.cache.fringe_width;
         let mut paint = stroke.paint;

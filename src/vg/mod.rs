@@ -1,8 +1,6 @@
 mod paint;
 mod state;
 
-pub mod utils;
-
 pub use self::{paint::Paint, state::State};
 
 use crate::{

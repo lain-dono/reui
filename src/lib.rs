@@ -14,5 +14,5 @@ pub use crate::{
     backend::{gl, BackendGL},
     cache::{LineCap, LineJoin, Winding},
     context::Context,
-    vg::{utils, Paint},
+    vg::Paint,
 };

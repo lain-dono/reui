@@ -10,17 +10,12 @@ edition = "2018"
 gl_generator = "0.11"
 
 [dependencies]
-libc = "0.2"
-rlibc = "1"
-bitflags = "^1.1"
-env_logger = "0.5"
-log = "0.4"
+bitflags = "1.2"
 arrayvec = "0.5"
-
-zerocopy = "0.2.8"
+wgpu = "0.5.0"
 
 [dependencies.smallvec]
-version = "^0.6"
+version = "1.3"
 features = ["union"]
 
 [[example]]

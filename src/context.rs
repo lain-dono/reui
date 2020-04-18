@@ -10,7 +10,7 @@ use crate::{
 
 const INIT_COMMANDS_SIZE: usize = 256;
 
-pub struct States {
+pub(crate) struct States {
     states: ArrayVec<[State; 32]>,
 }
 
@@ -54,7 +54,7 @@ impl States {
 pub struct Context {
     pub picture: Picture,
 
-    pub states: States,
+    pub(crate) states: States,
     pub cache: PathCache,
     pub device_px_ratio: f32,
 
@@ -78,36 +78,36 @@ impl Context {
 
     // State setting
 
-    pub fn shape_anti_alias(&mut self, enabled: bool) {
+    pub(crate) fn shape_anti_alias(&mut self, enabled: bool) {
         self.states.last_mut().shape_aa = enabled;
     }
-    pub fn stroke_width(&mut self, width: f32) {
+    pub(crate) fn stroke_width(&mut self, width: f32) {
         self.states.last_mut().stroke_width = width;
     }
-    pub fn miter_limit(&mut self, limit: f32) {
+    pub(crate) fn miter_limit(&mut self, limit: f32) {
         self.states.last_mut().miter_limit = limit;
     }
-    pub fn line_cap(&mut self, cap: LineCap) {
+    pub(crate) fn line_cap(&mut self, cap: LineCap) {
         self.states.last_mut().line_cap = cap;
     }
-    pub fn line_join(&mut self, join: LineJoin) {
+    pub(crate) fn line_join(&mut self, join: LineJoin) {
         self.states.last_mut().line_join = join;
     }
-    pub fn global_alpha(&mut self, alpha: f32) {
+    pub(crate) fn global_alpha(&mut self, alpha: f32) {
         self.states.last_mut().alpha = alpha;
     }
-    pub fn stroke_color(&mut self, color: u32) {
+    pub(crate) fn stroke_color(&mut self, color: u32) {
         self.states.last_mut().stroke = Paint::color(Color::new(color))
     }
-    pub fn fill_color(&mut self, color: u32) {
+    pub(crate) fn fill_color(&mut self, color: u32) {
         self.states.last_mut().fill = Paint::color(Color::new(color))
     }
-    pub fn stroke_paint(&mut self, paint: Paint) {
+    pub(crate) fn stroke_paint(&mut self, paint: Paint) {
         let state = self.states.last_mut();
         state.stroke = paint;
         state.stroke.xform.prepend_mut(state.xform);
     }
-    pub fn fill_paint(&mut self, paint: Paint) {
+    pub(crate) fn fill_paint(&mut self, paint: Paint) {
         let state = self.states.last_mut();
         state.fill = paint;
         state.fill.xform.prepend_mut(state.xform);

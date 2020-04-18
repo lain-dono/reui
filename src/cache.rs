@@ -14,6 +14,13 @@ const CLOSE: i32 = 3;
 const WINDING: i32 = 4;
 
 #[inline(always)]
+const fn pack_uv(u: f32, v: f32) -> [u16; 2] {
+    let u = (u * 65535.0) as u16;
+    let v = (v * 65535.0) as u16;
+    [u, v]
+}
+
+#[inline(always)]
 fn normalize(x: &mut f32, y: &mut f32) -> f32 {
     let xx = (*x) * (*x);
     let yy = (*y) * (*y);
@@ -90,7 +97,7 @@ pub struct Vertex {
 impl Vertex {
     #[inline(always)]
     pub fn new(pos: [f32; 2], uv: [f32; 2]) -> Self {
-        let uv = crate::vg::utils::pack_uv(uv[0], uv[1]);
+        let uv = pack_uv(uv[0], uv[1]);
         Self { pos, uv }
     }
 

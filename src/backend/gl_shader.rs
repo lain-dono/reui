@@ -66,7 +66,7 @@ impl Shader {
         }
     }
 
-    pub fn bind_frag(&self, array: &[f32; 7 * 4 + 1]) {
+    pub fn bind_frag(&self, array: &[f32; 7 * 4]) {
         unsafe {
             gl::Uniform4fv(self.loc_frag, 7, &(array[0]));
         }

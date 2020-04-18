@@ -17,9 +17,6 @@ use self::sup::*;
 //extern "C" {}
 
 fn main() {
-    env_logger::init();
-    log::info!("start");
-
     const GLFW_CONTEXT_VERSION_MAJOR: i32 = 0x0002_2002;
     const GLFW_CONTEXT_VERSION_MINOR: i32 = 0x0002_2003;
 
@@ -31,7 +28,13 @@ fn main() {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
-        let window = glfwCreateWindow(2000, 1200, b"Anti-aliased vector graphics\0".as_ptr(), null(), null());
+        let window = glfwCreateWindow(
+            2000,
+            1200,
+            b"Anti-aliased vector graphics\0".as_ptr(),
+            null(),
+            null(),
+        );
         //window = glfwCreateWindow(1000, 600, "NanoVG", glfwGetPrimaryMonitor(), NULL);
         if window.is_null() {
             glfwTerminate();
@@ -166,13 +169,7 @@ extern "C" fn key(window: *mut GLFWwindow, key: i32, _scancode: i32, action: i32
     }
 }
 
-pub fn render_demo(
-    vg: &mut Context,
-    mouse: Offset,
-    wsize: Offset,
-    time: f32,
-    blowup: bool,
-) {
+pub fn render_demo(vg: &mut Context, mouse: Offset, wsize: Offset, time: f32, blowup: bool) {
     let (width, height) = wsize.into();
 
     {

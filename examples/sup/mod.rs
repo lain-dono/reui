@@ -17,7 +17,7 @@ pub fn draw_window(ctx: &mut Canvas, rr: Rect) {
     let mut path: Path<[_; 128]> = Path::new();
     path.add_rect(rect(x - 10.0, y - 10.0, w + 20.0, h + 20.0));
     path.add_rrect(rrect);
-    path._path_winding(Winding::CW);
+    path.path_winding(Winding::CW);
     ctx.draw_path(
         &mut path,
         Paint::gradient(Gradient::Box {
@@ -458,7 +458,7 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, x: f32, y: f32, w: f32, h: f32) {
         kr * 2.0 + 5.0 + 5.0 + 3.0,
     ));
     path.add_circle([x + (pos * w).floor(), cy].into(), kr);
-    path._path_winding(Winding::CW);
+    path.path_winding(Winding::CW);
     ctx.draw_path(
         &mut path,
         Paint::gradient(Gradient::Radial {
@@ -573,7 +573,7 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
         8.0 + 20.0,
     ));
     path.add_rect(rect(r0 - 2.0, -4.0, r1 - r0 + 4.0, 8.0));
-    path._path_winding(Winding::CW);
+    path.path_winding(Winding::CW);
     ctx.draw_path(&mut path, paint);
 
     // Center triangle
@@ -611,7 +611,7 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     path.clear();
     path.add_rect(rect(ax - 20.0, ay - 20.0, 40.0, 40.0));
     path.add_circle([ax, ay].into(), 7.0);
-    path._path_winding(Winding::CW);
+    path.path_winding(Winding::CW);
     ctx.draw_path(&mut path, paint);
 
     ctx.restore();

@@ -49,7 +49,7 @@ impl<A: Array<Item = f32>> Path<A> {
         self.current = [0.0, 0.0];
     }
 
-    pub fn _path_winding(&mut self, dir: Winding) {
+    pub fn path_winding(&mut self, dir: Winding) {
         self.commands
             .extend_from_slice(&[WINDING as f32, dir as i32 as f32]);
     }

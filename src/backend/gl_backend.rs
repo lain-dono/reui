@@ -52,7 +52,7 @@ impl Buffer {
 
     pub fn bind_and_upload<T: Sized>(&self, data: &[T]) {
         let size = (data.len() * std::mem::size_of::<T>()) as GLsizeiptr;
-        let ptr = data.as_ptr() as *const libc::c_void;
+        let ptr = data.as_ptr() as *const _;
         unsafe {
             gl::BindBuffer(gl::ARRAY_BUFFER, self.0);
             gl::BufferData(gl::ARRAY_BUFFER, size as GLsizeiptr, ptr, gl::STREAM_DRAW);
@@ -66,11 +66,12 @@ impl Buffer {
     }
 }
 
-fn check_error(msg: &str) {
-    if true {
+fn check_error(_msg: &str) {
+    #[cfg(build = "debug")]
+    {
         let err = unsafe { gl::GetError() };
         if err != gl::NO_ERROR {
-            log::debug!("GL Error {:08x} after {}", err, msg);
+            println!("GL Error {:08x} after {}", err, _msg);
         }
     }
 }
@@ -93,19 +94,17 @@ fn max_vert_count(paths: &[Path]) -> usize {
 }
 
 const SHADER_FILLGRAD: f32 = 0.0;
-//const SHADER_FILLIMG: f32 = 1.0;
 const SHADER_SIMPLE: f32 = 2.0;
-//const SHADER_IMG: f32 = 3.0;
 
 #[repr(C, align(4))]
 struct FragUniforms {
-    array: [f32; 7 * 4 + 1],
+    array: [f32; 7 * 4],
 }
 
 impl Default for FragUniforms {
     fn default() -> Self {
         Self {
-            array: [0.0; 7 * 4 + 1],
+            array: [0.0; 7 * 4],
         }
     }
 }
@@ -145,11 +144,6 @@ impl FragUniforms {
     fn set_stroke_thr(&mut self, thr: f32) {
         self.array[25] = thr;
     }
-    /*
-    fn set_tex_type(&mut self, t: f32) {
-        self.array[26] = t;
-    }
-    */
     fn set_type(&mut self, t: f32) {
         self.array[27] = t;
     }
@@ -587,7 +581,6 @@ impl super::Backend for BackendGL {
             gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
             gl::StencilFunc(gl::ALWAYS, 0, 0xffff_ffff);
             gl::ActiveTexture(gl::TEXTURE0);
-            gl::BindTexture(gl::TEXTURE_2D, 0);
         }
 
         // Upload vertex data
@@ -605,7 +598,7 @@ impl super::Backend for BackendGL {
                 gl::UNSIGNED_SHORT,
                 gl::TRUE,
                 size as i32,
-                (2 * mem::size_of::<f32>()) as *const libc::c_void,
+                (2 * mem::size_of::<f32>()) as *const _,
             );
         }
 
@@ -642,8 +635,6 @@ impl super::Backend for BackendGL {
             gl::DisableVertexAttribArray(1);
 
             gl::Disable(gl::CULL_FACE);
-
-            gl::BindTexture(gl::TEXTURE_2D, 0);
         }
 
         self.vert_buf.unbind();
