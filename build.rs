@@ -1,4 +1,4 @@
-use gl_generator::{Registry, Api, Profile, Fallbacks, StaticGenerator};
+use gl_generator::{Api, Fallbacks, Profile, Registry, StaticGenerator};
 use std::{env, fs::File, path::Path};
 
 fn main() {

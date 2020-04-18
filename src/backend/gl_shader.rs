@@ -1,11 +1,13 @@
+use super::gl::{
+    self,
+    types::{GLint, GLuint},
+};
 use std::ptr::null;
-use super::gl::{self, types::{GLint, GLuint}};
 
 pub struct Shader {
     prog: GLuint,
     //frag: GLuint,
     //vert: GLuint,
-
     loc_viewsize: GLint,
     loc_tex: GLint,
     loc_frag: GLint,
@@ -53,10 +55,9 @@ impl Shader {
                 prog,
                 //vert,
                 //frag,
-
                 loc_viewsize: gl::GetUniformLocation(prog, b"viewSize\0".as_ptr() as *const i8),
-                loc_tex:      gl::GetUniformLocation(prog, b"tex\0".as_ptr() as *const i8),
-                loc_frag:     gl::GetUniformLocation(prog, b"frag\0".as_ptr() as *const i8),
+                loc_tex: gl::GetUniformLocation(prog, b"tex\0".as_ptr() as *const i8),
+                loc_frag: gl::GetUniformLocation(prog, b"frag\0".as_ptr() as *const i8),
             }
         }
     }
@@ -73,7 +74,7 @@ impl Shader {
         }
     }
 
-    pub fn bind_frag(&self, array: &[f32; 7*4 + 1]) {
+    pub fn bind_frag(&self, array: &[f32; 7 * 4 + 1]) {
         unsafe {
             gl::Uniform4fv(self.loc_frag, 7, &(array[0]));
         }

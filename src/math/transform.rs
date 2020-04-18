@@ -13,7 +13,7 @@ impl std::ops::Mul<Self> for Transform {
         Self {
             re: other.re * self.re - other.im * self.im,
             im: other.re * self.im + other.im * self.re,
-            
+
             tx: other.tx * self.re - other.ty * self.im + self.tx,
             ty: other.tx * self.im + other.ty * self.re + self.ty,
         }
@@ -26,7 +26,7 @@ impl std::ops::MulAssign<Self> for Transform {
         *self = Self {
             re: other.re * self.re - other.im * self.im,
             im: other.re * self.im + other.im * self.re,
-            
+
             tx: other.tx * self.re - other.ty * self.im + self.tx,
             ty: other.tx * self.im + other.ty * self.re + self.ty,
         };
@@ -58,18 +58,33 @@ impl Transform {
 
     #[inline]
     pub fn translation(tx: f32, ty: f32) -> Self {
-        Self { re: 1.0, im: 0.0, tx, ty }
+        Self {
+            re: 1.0,
+            im: 0.0,
+            tx,
+            ty,
+        }
     }
 
     #[inline]
     pub fn rotation(theta: f32) -> Self {
         let (sin, cos) = theta.sin_cos();
-        Self { re: cos, im: -sin, tx: 0.0, ty: 0.0 }
+        Self {
+            re: cos,
+            im: -sin,
+            tx: 0.0,
+            ty: 0.0,
+        }
     }
 
     #[inline]
     pub fn scale(factor: f32) -> Self {
-        Self { re: factor, im: 0.0, tx: 0.0, ty: 0.0 }
+        Self {
+            re: factor,
+            im: 0.0,
+            tx: 0.0,
+            ty: 0.0,
+        }
     }
 
     #[inline]
@@ -82,10 +97,7 @@ impl Transform {
 
     #[inline]
     pub fn apply_vector(&self, [x, y]: [f32; 2]) -> [f32; 2] {
-        [
-            self.re * x - self.im * y,
-            self.im * x + self.re * y,
-        ]
+        [self.re * x - self.im * y, self.im * x + self.re * y]
     }
 
     #[inline]
@@ -93,20 +105,14 @@ impl Transform {
         let id = (self.re * self.re + self.im * self.im).recip();
         let [re, im] = [self.re * id, self.im * id];
         let [dx, dy] = [x - self.tx, y - self.ty];
-        [
-            re * dx + im * dy,
-            re * dy - im * dx,
-        ]
+        [re * dx + im * dy, re * dy - im * dx]
     }
 
     #[inline]
     pub fn apply_inv_vector(&self, [x, y]: [f32; 2]) -> [f32; 2] {
         let id = (self.re * self.re + self.im * self.im).recip();
         let [re, im] = [self.re * id, self.im * id];
-        [
-            re * x + im * y,
-            re * y - im * x,
-        ]
+        [re * x + im * y, re * y - im * x]
     }
 
     #[inline]

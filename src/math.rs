@@ -1,14 +1,9 @@
 mod color;
 mod offset;
-mod transform;
 mod rect;
+mod transform;
 
-pub use self::{
-    color::Color,
-    transform::Transform,
-    offset::Offset,
-    rect::Rect,
-};
+pub use self::{color::Color, offset::Offset, rect::Rect, transform::Transform};
 
 impl self::transform::Transform {
     pub fn transform_point(&self, p: Offset) -> Offset {
@@ -31,10 +26,11 @@ pub fn point2(x: f32, y: f32) -> Offset {
     Offset { x, y }
 }
 
+/*
 fn convert_radius_to_sigma(radius: f32) -> f32 {
     radius * 0.57735 + 0.5
 }
-
+*/
 
 #[derive(Clone, Copy, Default)]
 pub struct Corners {

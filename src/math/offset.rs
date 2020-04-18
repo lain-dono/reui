@@ -93,22 +93,30 @@ impl std::ops::DivAssign<f32> for Offset {
 
 impl Into<[f32; 2]> for Offset {
     #[inline]
-    fn into(self) -> [f32; 2] { [self.x, self.y] }
+    fn into(self) -> [f32; 2] {
+        [self.x, self.y]
+    }
 }
 
 impl Into<(f32, f32)> for Offset {
     #[inline]
-    fn into(self) -> (f32, f32) { (self.x, self.y) }
+    fn into(self) -> (f32, f32) {
+        (self.x, self.y)
+    }
 }
 
 impl From<[f32; 2]> for Offset {
     #[inline]
-    fn from([x, y]: [f32; 2]) -> Self { Self { x, y } }
+    fn from([x, y]: [f32; 2]) -> Self {
+        Self { x, y }
+    }
 }
 
 impl From<(f32, f32)> for Offset {
     #[inline]
-    fn from((x, y): (f32, f32)) -> Self { Self { x, y } }
+    fn from((x, y): (f32, f32)) -> Self {
+        Self { x, y }
+    }
 }
 
 impl Offset {
@@ -178,4 +186,3 @@ impl Offset {
         }
     }
 }
-

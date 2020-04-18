@@ -1,4 +1,4 @@
-use crate::math::{Transform};
+use crate::math::Transform;
 
 pub fn normalize(x: &mut f32, y: &mut f32) -> f32 {
     let xx = (*x) * (*x);
@@ -13,7 +13,7 @@ pub fn normalize(x: &mut f32, y: &mut f32) -> f32 {
 }
 
 pub fn average_scale(t: &Transform) -> f32 {
-    (t.re*t.re+ t.im*t.im)
+    t.re * t.re + t.im * t.im
 }
 
 #[inline(always)]

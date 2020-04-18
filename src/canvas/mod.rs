@@ -1,53 +1,20 @@
-mod path;
 mod paint;
+mod path;
 mod picture;
 
 pub use slotmap::Key;
 
 pub use crate::{
-    Context,
     backend::Image,
-    font::Align,
-    Winding,
-    math::{
-        Offset,
-        Transform,
-        Rect,
-        rect,
-        Corners,
-    },
+    math::{rect, Corners, Offset, Rect, Transform},
+    Context, Winding,
 };
 
 pub use self::{
+    paint::{Color, Gradient, Paint, PaintingStyle, StrokeCap, StrokeJoin},
     path::Path,
     picture::Picture,
-    paint::{
-        Paint,
-        PaintingStyle,
-        StrokeCap,
-        StrokeJoin,
-        Gradient,
-        Color,
-    },
 };
-
-#[derive(Clone, Copy)]
-pub struct TextStyle<'a> {
-    pub font_size: f32,
-    pub font_face: &'a str,
-    pub font_blur: f32,
-    pub color: u32,
-    pub text_align: Align,
-}
-
-impl<'a> TextStyle<'a> {
-    pub fn text_align(self, align: Align) -> Self {
-        Self {
-            text_align: align,
-            .. self
-        }
-    }
-}
 
 pub type Radius = f32; // TODO: [f32; 2]
 
@@ -59,19 +26,26 @@ pub struct RRect {
 
 impl RRect {
     pub fn from_rect_and_radius(rect: Rect, radius: f32) -> Self {
-        Self { rect, radius: Corners::all_same(radius) }
+        Self {
+            rect,
+            radius: Corners::all_same(radius),
+        }
     }
 
     pub fn new(o: Offset, s: Offset, radius: f32) -> Self {
-        Self::from_rect_and_radius(Rect::from_points(o, o+s), radius)
+        Self::from_rect_and_radius(Rect::from_points(o, o + s), radius)
     }
 
     pub fn rect(&self) -> Rect {
         self.rect
     }
 
-    pub fn width(&self) -> f32 { self.rect.dx() }
-    pub fn height(&self) -> f32 { self.rect.dy() }
+    pub fn width(&self) -> f32 {
+        self.rect.dx()
+    }
+    pub fn height(&self) -> f32 {
+        self.rect.dy()
+    }
 
     pub fn inflate(self, v: f32) -> Self {
         Self {
@@ -101,34 +75,52 @@ impl<'a> Drop for Canvas<'a> {
 
 fn gradient_to_paint(gradient: Gradient) -> crate::vg::Paint {
     match gradient {
-        Gradient::Linear { from, to, inner_color, outer_color } =>
-            crate::vg::Paint::linear_gradient(
-                from[0], from[1],
-                to[0], to[1],
-                Color::new(inner_color),
-                Color::new(outer_color),
-            ),
-        Gradient::Box { rect, radius, feather, inner_color, outer_color } =>
-            crate::vg::Paint::box_gradient(
-                rect,
-                radius,
-                feather,
-                Color::new(inner_color),
-                Color::new(outer_color),
-            ),
-        Gradient::Radial { center, inr, outr, inner_color, outer_color } =>
-            crate::vg::Paint::radial_gradient(
-                center[0], center[1],
-                inr, outr,
-                Color::new(inner_color),
-                Color::new(outer_color),
-            ),
-        Gradient::ImagePattern { center, size, image, alpha } =>
-            crate::vg::Paint::image_pattern(
-                center[0], center[1],
-                size[0], size[1],
-                image, alpha,
-            ),
+        Gradient::Linear {
+            from,
+            to,
+            inner_color,
+            outer_color,
+        } => crate::vg::Paint::linear_gradient(
+            from[0],
+            from[1],
+            to[0],
+            to[1],
+            Color::new(inner_color),
+            Color::new(outer_color),
+        ),
+        Gradient::Box {
+            rect,
+            radius,
+            feather,
+            inner_color,
+            outer_color,
+        } => crate::vg::Paint::box_gradient(
+            rect,
+            radius,
+            feather,
+            Color::new(inner_color),
+            Color::new(outer_color),
+        ),
+        Gradient::Radial {
+            center,
+            inr,
+            outr,
+            inner_color,
+            outer_color,
+        } => crate::vg::Paint::radial_gradient(
+            center[0],
+            center[1],
+            inr,
+            outr,
+            Color::new(inner_color),
+            Color::new(outer_color),
+        ),
+        Gradient::ImagePattern {
+            center,
+            size,
+            image,
+            alpha,
+        } => crate::vg::Paint::image_pattern(center[0], center[1], size[0], size[1], image, alpha),
     }
 }
 
@@ -136,10 +128,7 @@ impl<'a> Canvas<'a> {
     pub fn new(ctx: &'a mut Context) -> Self {
         ctx.save();
 
-        Self {
-            ctx,
-            save_count: 1,
-        }
+        Self { ctx, save_count: 1 }
     }
 
     fn sync_fill(&mut self, paint: &Paint) {
@@ -174,21 +163,6 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    pub fn text_bounds(&mut self, text: &str, font_size: f32, font_face: &str) -> (f32, Rect) {
-        self.ctx.font_size(font_size);
-        self.ctx.font_face(font_face);
-        self.ctx.text_bounds(0.0, 0.0, text)
-    }
-
-    pub fn text(&mut self, o: Offset, text: &str, style: TextStyle) {
-        self.ctx.font_size(style.font_size);
-        self.ctx.font_face(style.font_face);
-        self.ctx.font_blur(style.font_blur);
-        self.ctx.text_align(style.text_align);
-        self.ctx.fill_color(style.color);
-        self.ctx.text(o.x, o.y, text);
-    }
-
     pub fn scissor(&mut self, r: Rect) {
         self.ctx.scissor(r)
     }
@@ -207,10 +181,12 @@ impl<'a> Canvas<'a> {
 
     /// Returns the number of items on the save stack, including the initial state.
     /// This means it returns 1 for a clean canvas, and that each call to save and saveLayer increments it,
-    /// and that each matching call to restore decrements it. [...] 
-    pub fn save_count(&mut self) -> usize { self.save_count }
+    /// and that each matching call to restore decrements it. [...]
+    pub fn save_count(&mut self) -> usize {
+        self.save_count
+    }
 
-    /// Saves a copy of the current transform and clip on the save stack. [...] 
+    /// Saves a copy of the current transform and clip on the save stack. [...]
     pub fn save(&mut self) {
         self.save_count += 1;
         self.ctx.save();
@@ -219,10 +195,12 @@ impl<'a> Canvas<'a> {
     /// Saves a copy of the current transform and clip on the save stack,
     /// and then creates a new group which subsequent calls will become a part of.
     /// When the save stack is later popped, the group will be flattened into a layer
-    /// and have the given paint's Paint.colorFilter and Paint.blendMode applied. [...] 
-    pub fn save_layer(&mut self, _bounds: Rect, _paint: Paint) { unimplemented!() }
+    /// and have the given paint's Paint.colorFilter and Paint.blendMode applied. [...]
+    pub fn save_layer(&mut self, _bounds: Rect, _paint: Paint) {
+        unimplemented!()
+    }
 
-    /// Pops the current save stack, if there is anything to pop. Otherwise, does nothing. [...] 
+    /// Pops the current save stack, if there is anything to pop. Otherwise, does nothing. [...]
     pub fn restore(&mut self) {
         if self.save_count > 1 {
             self.save_count -= 1;
@@ -230,40 +208,44 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /// Add a rotation to the current transform. The argument is in radians clockwise. 
+    /// Add a rotation to the current transform. The argument is in radians clockwise.
     pub fn rotate(&mut self, radians: f32) {
         self.ctx.rotate(radians)
     }
 
     /// Add an axis-aligned scale to the current transform,
-    /// scaling by the first argument in the horizontal direction and the second in the vertical direction. [...] 
+    /// scaling by the first argument in the horizontal direction and the second in the vertical direction. [...]
     pub fn scale(&mut self, scale: f32) {
         self.ctx.scale(scale)
     }
 
     /// Add an axis-aligned skew to the current transform,
     /// with the first argument being the horizontal skew in radians clockwise around the origin,
-    /// and the second argument being the vertical skew in radians clockwise around the origin. 
-    pub fn skew(&mut self, _sx: f32, _sy: f32) { unimplemented!() }
+    /// and the second argument being the vertical skew in radians clockwise around the origin.
+    pub fn skew(&mut self, _sx: f32, _sy: f32) {
+        unimplemented!()
+    }
 
     /// Add a translation to the current transform,
-    /// shifting the coordinate space horizontally by the first argument and vertically by the second argument. 
+    /// shifting the coordinate space horizontally by the first argument and vertically by the second argument.
     pub fn translate(&mut self, dx: f32, dy: f32) {
         self.ctx.translate(dx, dy)
     }
 
-    /// Multiply the current transform by the specified 4⨉4 transformation matrix specified as a list of values in column-major order. 
-    pub fn transform(&mut self, _t: Transform) { unimplemented!() }
+    /// Multiply the current transform by the specified 4⨉4 transformation matrix specified as a list of values in column-major order.
+    pub fn transform(&mut self, _t: Transform) {
+        unimplemented!()
+    }
 }
 
 impl<'a> Canvas<'a> {
-/*
     /*
-    /// Reduces the clip region to the intersection of the current clip and the given Path. [...] 
+    /*
+    /// Reduces the clip region to the intersection of the current clip and the given Path. [...]
     clipPath(Path path, { bool doAntiAlias: true }) -> void
-    /// Reduces the clip region to the intersection of the current clip and the given rectangle. [...] 
+    /// Reduces the clip region to the intersection of the current clip and the given rectangle. [...]
     clipRect(Rect rect, { ClipOp clipOp: ClipOp.intersect, bool doAntiAlias: true }) -> void
-    /// Reduces the clip region to the intersection of the current clip and the given rounded rectangle. [...] 
+    /// Reduces the clip region to the intersection of the current clip and the given rounded rectangle. [...]
     clipRRect(RRect rrect, { bool doAntiAlias: true }) -> void
     */
 
@@ -272,7 +254,7 @@ impl<'a> Canvas<'a> {
     /// with zero radians being the point on the right hand side of the oval that crosses the horizontal line
     /// that intersects the center of the rectangle and with positive angles going clockwise around the oval.
     /// If useCenter is true, the arc is closed back to the center, forming a circle sector.
-    /// Otherwise, the arc is not closed, forming a circle segment. [...] 
+    /// Otherwise, the arc is not closed, forming a circle segment. [...]
     pub fn draw_arc(&mut self, rect: Rect, start_angle: f32, sweep_angle: f32, use_center: bool, paint: Paint) {
         unimplemented!()
     }
@@ -282,7 +264,7 @@ impl<'a> Canvas<'a> {
 
     /// Draws a circle centered at the point given by the first argument
     /// and that has the radius given by the second argument, with the Paint given in the third argument.
-    /// Whether the circle is filled or stroked (or both) is controlled by Paint.style. 
+    /// Whether the circle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_circle(&mut self, c: Offset, radius: f32, paint: Paint) {
         self.ctx.begin_path();
         self.ctx.circle(c.x, c.y, radius);
@@ -291,26 +273,26 @@ impl<'a> Canvas<'a> {
 
     /*
     /// Paints the given Color onto the canvas, applying the given BlendMode,
-    /// with the given color being the source and the background being the destination. 
+    /// with the given color being the source and the background being the destination.
     pub fn draw_color(&mut self, color: Color, blend: BlendMode) -> void
 
     /// Draws a shape consisting of the difference between two rounded rectangles with the given Paint.
-    /// Whether this shape is filled or stroked (or both) is controlled by Paint.style. [...] 
+    /// Whether this shape is filled or stroked (or both) is controlled by Paint.style. [...]
     pub fn draw_drrect(&mut self, RRect outer, RRect inner, Paint paint) -> void
 
     /// Draws the given Image into the canvas with its top-left corner at the given Offset.
-    /// The image is composited into the canvas using the given Paint. 
+    /// The image is composited into the canvas using the given Paint.
     pub fn draw_image(&mut self, Image image, Offset p, Paint paint) -> void
 
-    /// Draws the given Image into the canvas using the given Paint. [...] 
+    /// Draws the given Image into the canvas using the given Paint. [...]
     pub fn draw_image_nine(&mut self, Image image, Rect center, Rect dst, Paint paint) -> void
     /// Draws the subset of the given image described by the src argument into the canvas
-    /// in the axis-aligned rectangle given by the dst argument. [...] 
+    /// in the axis-aligned rectangle given by the dst argument. [...]
     pub fn draw_image_rect(&mut self, Image image, Rect src, Rect dst, Paint paint) -> void
     */
 
     /// Draws a line between the given points using the given paint.
-    /// The line is stroked, the value of the Paint.style is ignored for this call. [...] 
+    /// The line is stroked, the value of the Paint.style is ignored for this call. [...]
     pub fn draw_line(&mut self, p1: Offset, p2: Offset, paint: Paint) {
         self.sync_stroke(&paint);
 
@@ -321,7 +303,9 @@ impl<'a> Canvas<'a> {
     }
 
     pub fn draw_lines(&mut self, points: &[Offset], paint: Paint) {
-        if points.len() < 2 { return }
+        if points.len() < 2 {
+            return;
+        }
 
         self.sync_stroke(&paint);
 
@@ -334,24 +318,25 @@ impl<'a> Canvas<'a> {
     }
 
     /// Draws an axis-aligned oval that fills the given axis-aligned rectangle with the given Paint.
-    /// Whether the oval is filled or stroked (or both) is controlled by Paint.style. 
+    /// Whether the oval is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
         self.ctx.begin_path();
-        self.ctx.ellipse(rect.min.x, rect.min.y, rect.dx(), rect.dy());
+        self.ctx
+            .ellipse(rect.min.x, rect.min.y, rect.dx(), rect.dy());
         self.fill_or_stroke(&paint);
     }
 
     /*
-    /// Fills the canvas with the given Paint. [...] 
+    /// Fills the canvas with the given Paint. [...]
     pub fn draw_paint(&mut self, Paint paint) -> void
 
-    /// Draws the text in the given Paragraph into this canvas at the given Offset. [...] 
+    /// Draws the text in the given Paragraph into this canvas at the given Offset. [...]
     pub fn draw_paragraph(&mut self, Paragraph paragraph, Offset offset) -> void
     */
 
     /// Draws the given Path with the given Paint.
     /// Whether this shape is filled or stroked (or both) is controlled by Paint.style.
-    /// If the path is filled, then sub-paths within it are implicitly closed (see Path.close). 
+    /// If the path is filled, then sub-paths within it are implicitly closed (see Path.close).
     pub fn draw_path(&mut self, path: &mut [f32], paint: Paint) {
         self.ctx.picture.xform = self.ctx.states.last().xform;
 
@@ -369,21 +354,20 @@ impl<'a> Canvas<'a> {
         self.fill_or_stroke(&paint);
     }
 
-
     /*
-    /// Draw the given picture onto the canvas. To create a picture, see PictureRecorder. 
+    /// Draw the given picture onto the canvas. To create a picture, see PictureRecorder.
     pub fn draw_picture(&mut self, Picture picture) -> void
-    /// Draws a sequence of points according to the given PointMode. [...] 
+    /// Draws a sequence of points according to the given PointMode. [...]
     pub fn draw_points(&mut self, PointMode pointMode, List<Offset> points, Paint paint) -> void
 
     pub fn draw_raw_atlas(&mut self, Image atlas, Float32List rstTransforms, Float32List rects, Int32List colors, BlendMode blendMode, Rect cullRect, Paint paint) -> void
 
-    /// Draws a sequence of points according to the given PointMode. [...] 
+    /// Draws a sequence of points according to the given PointMode. [...]
     pub fn draw_raw_points(&mut self, PointMode pointMode, Float32List points, Paint paint) -> void
     */
 
     /// Draws a rectangle with the given Paint.
-    /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style. 
+    /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
         self.ctx.begin_path();
         self.ctx.rect(rect);
@@ -391,7 +375,7 @@ impl<'a> Canvas<'a> {
     }
 
     /// Draws a rounded rectangle with the given Paint.
-    /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style. 
+    /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rrect(&mut self, rrect: RRect, paint: Paint) {
         self.ctx.begin_path();
         self.ctx.rrect_varying(
@@ -405,7 +389,7 @@ impl<'a> Canvas<'a> {
     }
 
     /*
-    /// Draws a shadow for a Path representing the given material elevation. [...] 
+    /// Draws a shadow for a Path representing the given material elevation. [...]
     pub fn draw_shadow(&mut self, Path path, Color color, double elevation, bool transparentOccluder) -> void
     */
 }

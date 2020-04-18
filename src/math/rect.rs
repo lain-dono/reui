@@ -38,17 +38,15 @@ impl Rect {
     }
 
     pub fn to_xywh(&self) -> [f32; 4] {
-        [
-            self.min.x,
-            self.min.y,
-            self.dx(),
-            self.dy(),
-        ]
+        [self.min.x, self.min.y, self.dx(), self.dy()]
     }
 
     #[inline]
     pub fn from_size(w: f32, h: f32) -> Self {
-        Self { min: Offset::new(0.0, 0.0), max: Offset::new(w, h) }
+        Self {
+            min: Offset::new(0.0, 0.0),
+            max: Offset::new(w, h),
+        }
     }
 
     #[inline]
@@ -61,10 +59,14 @@ impl Rect {
     }
 
     #[inline]
-    pub fn dx(&self) -> f32 { self.max.x - self.min.x }
+    pub fn dx(&self) -> f32 {
+        self.max.x - self.min.x
+    }
 
     #[inline]
-    pub fn dy(&self) -> f32 { self.max.y - self.min.y }
+    pub fn dy(&self) -> f32 {
+        self.max.y - self.min.y
+    }
 
     #[inline]
     pub fn size(&self) -> Offset {
@@ -127,7 +129,6 @@ impl Rect {
     }
 
     pub fn overlaps(r: Self, s: Self) -> bool {
-        r.min.x <= s.max.x && s.min.x <= r.max.x &&
-        r.min.y <= s.max.y && s.min.y <= r.max.y
+        r.min.x <= s.max.x && s.min.x <= r.max.x && r.min.y <= s.max.y && s.min.y <= r.max.y
     }
 }

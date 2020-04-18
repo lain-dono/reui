@@ -1,13 +1,17 @@
 fn hue(mut h: f32, m1: f32, m2: f32) -> f32 {
-    if h < 0.0 { h += 1.0; }
-    if h > 1.0 { h -= 1.0; }
+    if h < 0.0 {
+        h += 1.0;
+    }
+    if h > 1.0 {
+        h -= 1.0;
+    }
 
-    if h < 1.0/6.0 {
+    if h < 1.0 / 6.0 {
         m1 + (m2 - m1) * h * 6.0
-    } else if h < 3.0/6.0 {
+    } else if h < 3.0 / 6.0 {
         m2
-    } else if h < 4.0/6.0 {
-        m1 + (m2 - m1) * (2.0/3.0 - h) * 6.0
+    } else if h < 4.0 / 6.0 {
+        m1 + (m2 - m1) * (2.0 / 3.0 - h) * 6.0
     } else {
         m1
     }
@@ -23,10 +27,7 @@ pub struct Color {
 
 impl Color {
     pub fn is_transparent_black(&self) -> bool {
-        self.r == 0.0 &&
-        self.g == 0.0 &&
-        self.b == 0.0 &&
-        self.a == 0.0
+        self.r == 0.0 && self.g == 0.0 && self.b == 0.0 && self.a == 0.0
     }
 
     pub const fn new(color: u32) -> Self {
@@ -117,16 +118,22 @@ impl Color {
     /// HSL values are all in range [0..1], alpha in range [0..255]
     pub fn hsla(h: f32, s: f32, l: f32, a: u8) -> Self {
         let mut h = h % 1.0;
-        if h < 0.0 { h += 1.0; }
+        if h < 0.0 {
+            h += 1.0;
+        }
         let s = s.clamp(0.0, 1.0);
         let l = l.clamp(0.0, 1.0);
 
-        let m2 = if l <= 0.5 { l * (1.0 + s) } else { l + s - l * s };
+        let m2 = if l <= 0.5 {
+            l * (1.0 + s)
+        } else {
+            l + s - l * s
+        };
         let m1 = 2.0 * l - m2;
         Self {
-            r: hue(h + 1.0/3.0, m1, m2).clamp(0.0, 1.0),
+            r: hue(h + 1.0 / 3.0, m1, m2).clamp(0.0, 1.0),
             g: hue(h, m1, m2).clamp(0.0, 1.0),
-            b: hue(h - 1.0/3.0, m1, m2).clamp(0.0, 1.0),
+            b: hue(h - 1.0 / 3.0, m1, m2).clamp(0.0, 1.0),
             a: f32::from(a) / 255.0,
         }
     }

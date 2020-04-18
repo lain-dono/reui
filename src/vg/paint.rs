@@ -1,4 +1,7 @@
-use crate::{backend::Image, math::{Transform, Rect, Color}};
+use crate::{
+    backend::Image,
+    math::{Color, Rect, Transform},
+};
 use slotmap::Key;
 
 #[derive(Clone, Copy)]
@@ -19,13 +22,14 @@ impl Paint {
     // NanoVG supports four types of paints: linear gradient, box gradient, radial gradient and image pattern.
     // These can be used as paints for strokes and fills.
 
-
     /// Creates and returns a linear gradient. Parameters (sx,sy)-(ex,ey) specify the start and end coordinates
     /// of the linear gradient, icol specifies the start color and ocol the end color.
     /// The gradient is transformed by the current transform when it is passed to FillPaint() or StrokePaint().
     pub fn linear_gradient(
-        sx: f32, sy: f32,
-        ex: f32, ey: f32,
+        sx: f32,
+        sy: f32,
+        ex: f32,
+        ey: f32,
         inner_color: Color,
         outer_color: Color,
     ) -> Self {
@@ -45,8 +49,8 @@ impl Paint {
             xform: Transform {
                 re: dy,
                 im: -dx,
-                tx: sx - dx*large,
-                ty: sy - dy*large,
+                tx: sx - dx * large,
+                ty: sy - dy * large,
             },
             extent: [large, large + d * 0.5],
             radius: 0.0,
@@ -61,13 +65,15 @@ impl Paint {
     /// the inner and outer radius of the gradient, icol specifies the start color and ocol the end color.
     /// The gradient is transformed by the current transform when it is passed to FillPaint() or StrokePaint().
     pub fn radial_gradient(
-        cx: f32, cy: f32,
-        inr: f32, outr: f32,
+        cx: f32,
+        cy: f32,
+        inr: f32,
+        outr: f32,
         inner_color: Color,
         outer_color: Color,
     ) -> Self {
-        let r = (inr+outr)*0.5;
-        let f = outr-inr;
+        let r = (inr + outr) * 0.5;
+        let f = outr - inr;
 
         Self {
             xform: Transform::translation(cx, cy),
@@ -90,14 +96,15 @@ impl Paint {
     /// The gradient is transformed by the current transform when it is passed to FillPaint() or StrokePaint().
     pub fn box_gradient(
         rect: Rect,
-        radius: f32, feather: f32,
+        radius: f32,
+        feather: f32,
         inner_color: Color,
         outer_color: Color,
     ) -> Self {
         let center = rect.center();
         Self {
             xform: Transform::translation(center.x, center.y),
-            extent: [rect.dx()*0.5, rect.dy()*0.5],
+            extent: [rect.dx() * 0.5, rect.dy() * 0.5],
             radius,
             feather: feather.max(1.0),
             inner_color,
@@ -111,11 +118,7 @@ impl Paint {
     /// (ex,ey) the size of one image, angle rotation around the top-left corner,
     /// image is handle to the image to render.
     /// The gradient is transformed by the current transform when it is passed to FillPaint() or StrokePaint().
-    pub fn image_pattern(
-        cx: f32, cy: f32,
-        w: f32, h: f32,
-        image: Image, alpha: f32,
-    ) -> Self {
+    pub fn image_pattern(cx: f32, cy: f32, w: f32, h: f32, image: Image, alpha: f32) -> Self {
         let white = Color::rgbaf(1.0, 1.0, 1.0, alpha);
         Self {
             xform: Transform::translation(cx, cy),

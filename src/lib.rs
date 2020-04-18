@@ -1,23 +1,18 @@
 #![feature(ptr_offset_from, decl_macro, const_fn, clamp)]
 #![warn(clippy::all)]
 
-mod vg;
 mod backend;
-mod font;
 mod cache;
-mod draw_api;
 mod context;
+mod draw_api;
+mod vg;
 
-pub mod math;
-pub mod perf;
 pub mod canvas;
+pub mod math;
 
 pub use crate::{
-    cache::{Winding, LineJoin, LineCap},
-    backend::{BackendGL, Image, ImageFlags, gl},
-    vg::{Paint, utils},
+    backend::{gl, BackendGL, Image, ImageFlags},
+    cache::{LineCap, LineJoin, Winding},
     context::Context,
-    font::{Align, TextRow, GlyphPosition},
+    vg::{utils, Paint},
 };
-
-//pub mod backend_wgpu;

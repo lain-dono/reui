@@ -243,8 +243,8 @@ pub struct BackendGL {
     vert_buf: Buffer,
 }
 
-impl BackendGL {
-    pub fn new() -> Self {
+impl Default for BackendGL {
+    fn default() -> Self {
         check_error("init");
         let shader = Shader::new();
         check_error("shader & uniform locations");
@@ -262,7 +262,9 @@ impl BackendGL {
             uniforms: Vec::new(),
         }
     }
+}
 
+impl BackendGL {
     fn alloc_verts(&mut self, n: usize) -> usize {
         let start = self.verts.len();
         self.verts.resize_with(start + n, Default::default);

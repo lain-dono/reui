@@ -3,12 +3,12 @@ mod state;
 
 pub mod utils;
 
-pub use self::{
-    paint::Paint,
-    state::State,
-};
+pub use self::{paint::Paint, state::State};
 
-use crate::{context::Context, math::{Rect, Transform}};
+use crate::{
+    context::Context,
+    math::{Rect, Transform},
+};
 
 #[derive(Clone, Copy)]
 pub struct Scissor {

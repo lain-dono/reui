@@ -12,7 +12,6 @@ slotmap::new_key_type! {
     pub struct Image;
 }
 
-pub const TEXTURE_ALPHA: i32 = 0x01;
 pub const TEXTURE_RGBA: i32 = 0x02;
 
 bitflags::bitflags!(
