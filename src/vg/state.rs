@@ -1,21 +1,10 @@
 use crate::{
-    canvas::{StrokeCap, StrokeJoin},
-    math::{point2, Color, Rect, Transform},
+    math::{point2, Rect, Transform},
     vg::*,
 };
 
 #[derive(Clone)]
 pub struct State {
-    pub shape_aa: bool,
-
-    pub fill: Paint,
-    pub stroke: Paint,
-
-    pub stroke_width: f32,
-    pub stroke_miter_limit: f32,
-    pub stroke_join: StrokeJoin,
-    pub stroke_cap: StrokeCap,
-
     pub xform: Transform,
     pub scissor: Scissor,
 }
@@ -23,16 +12,7 @@ pub struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            fill: Paint::color(Color::new(0xFF_FFFFFF)),
-            stroke: Paint::color(Color::new(0xFF_000000)),
-
-            shape_aa: true,
-            stroke_width: 1.0,
-            stroke_miter_limit: 10.0,
-            stroke_cap: StrokeCap::Butt,
-            stroke_join: StrokeJoin::Miter,
             xform: Transform::identity(),
-
             scissor: Scissor {
                 extent: [-1.0, -1.0],
                 xform: Transform::identity(),
@@ -45,9 +25,8 @@ impl State {
     pub fn set_scissor(&mut self, rect: Rect) {
         let [x, y, w, h] = rect.to_xywh();
 
-        self.scissor.xform = self
-            .xform
-            .append(Transform::translation(x + w * 0.5, y + h * 0.5));
+        let translate = Transform::translation(x + w * 0.5, y + h * 0.5);
+        self.scissor.xform.append_mut(translate);
 
         self.scissor.extent[0] = w * 0.5;
         self.scissor.extent[1] = h * 0.5;

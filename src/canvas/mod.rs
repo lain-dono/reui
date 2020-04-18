@@ -2,15 +2,14 @@ mod paint;
 mod path;
 mod picture;
 
-pub use crate::{
-    context::Context,
-    math::{rect, Corners, Offset, Rect, Transform},
-};
-
 pub use self::{
     paint::{Color, Gradient, Paint, PaintingStyle, StrokeCap, StrokeJoin},
     path::Path,
     picture::Picture,
+};
+pub use crate::{
+    context::Context,
+    math::{clamp_f32, rect, Corners, Offset, Rect, Transform},
 };
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -65,17 +64,6 @@ impl RRect {
     }
 }
 
-pub struct Canvas<'a> {
-    ctx: &'a mut Context,
-    save_count: usize,
-}
-
-impl<'a> Drop for Canvas<'a> {
-    fn drop(&mut self) {
-        self.ctx.restore();
-    }
-}
-
 fn gradient_to_paint(gradient: Gradient) -> crate::vg::Paint {
     match gradient {
         Gradient::Linear {
@@ -121,43 +109,99 @@ fn gradient_to_paint(gradient: Gradient) -> crate::vg::Paint {
     }
 }
 
+pub struct Canvas<'a> {
+    ctx: &'a mut Context,
+    save_count: usize,
+}
+
+impl<'a> Drop for Canvas<'a> {
+    fn drop(&mut self) {
+        self.ctx.restore();
+    }
+}
+
 impl<'a> Canvas<'a> {
     pub fn new(ctx: &'a mut Context) -> Self {
         ctx.save();
-
         Self { ctx, save_count: 1 }
     }
 
     fn fill_or_stroke(&mut self, paint: &Paint, force_stroke: bool) {
+        let cache = &mut self.ctx.cache;
         let state = self.ctx.states.last_mut();
-
-        state.shape_aa = paint.is_antialias;
+        let xform = state.xform;
+        let scissor = state.scissor;
 
         if force_stroke || paint.style == PaintingStyle::Stroke {
-            match paint.gradient {
+            let mut paint_stroke = match paint.gradient {
                 Some(gradient) => {
-                    state.stroke = gradient_to_paint(gradient);
-                    state.stroke.xform.prepend_mut(state.xform);
+                    let mut paint = gradient_to_paint(gradient);
+                    paint.xform.prepend_mut(xform);
+                    paint
                 }
-                None => state.stroke = crate::vg::Paint::color(Color::new(paint.color)),
+                None => crate::vg::Paint::color(Color::new(paint.color)),
+            };
+
+            let scale = xform.average_scale();
+            let mut stroke_width = clamp_f32(paint.stroke_width * scale, 0.0, 200.0);
+            let fringe_width = cache.fringe_width;
+
+            if stroke_width < cache.fringe_width {
+                // If the stroke width is less than pixel size, use alpha to emulate coverage.
+                // Since coverage is area, scale by alpha*alpha.
+                let alpha = clamp_f32(stroke_width / fringe_width, 0.0, 1.0);
+                paint_stroke.inner_color.a *= alpha * alpha;
+                paint_stroke.outer_color.a *= alpha * alpha;
+                stroke_width = cache.fringe_width;
             }
 
-            state.stroke_cap = paint.stroke_cap;
-            state.stroke_join = paint.stroke_join;
-            state.stroke_miter_limit = paint.stroke_miter_limit;
-            state.stroke_width = paint.stroke_width;
+            // Apply global alpha
+            //let alpha = 1.0;
+            //paint.inner_color.a *= alpha;
+            //paint.outer_color.a *= alpha;
 
-            self.ctx.stroke();
+            cache.flatten_paths(&self.ctx.picture.commands);
+            cache.expand_stroke(
+                stroke_width * 0.5,
+                fringe_width,
+                paint.stroke_cap,
+                paint.stroke_join,
+                paint.stroke_miter_limit,
+            );
+
+            self.ctx.params.draw_stroke(
+                &paint_stroke,
+                &scissor,
+                fringe_width,
+                stroke_width,
+                &cache.paths,
+            );
         } else {
-            match paint.gradient {
+            let fill = match paint.gradient {
                 Some(gradient) => {
-                    state.fill = gradient_to_paint(gradient);
-                    state.fill.xform.prepend_mut(state.xform);
+                    let mut paint = gradient_to_paint(gradient);
+                    paint.xform.prepend_mut(xform);
+                    paint
                 }
-                None => state.fill = crate::vg::Paint::color(Color::new(paint.color)),
-            }
+                None => crate::vg::Paint::color(Color::new(paint.color)),
+            };
 
-            self.ctx.fill();
+            let w = if paint.is_antialias {
+                cache.fringe_width
+            } else {
+                0.0
+            };
+
+            cache.flatten_paths(&self.ctx.picture.commands);
+            cache.expand_fill(w, StrokeJoin::Miter, 2.4);
+
+            self.ctx.params.draw_fill(
+                &fill,
+                &state.scissor,
+                cache.fringe_width,
+                &cache.bounds,
+                &cache.paths,
+            );
         }
     }
 

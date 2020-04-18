@@ -102,12 +102,9 @@ bitflags::bitflags!(
 
 #[derive(Clone, Default)]
 struct PathPoint {
-    // position
-    pos: Offset,
-    // direction
-    dir: Offset,
-    // extrusions
-    ext: Offset,
+    pos: Offset, // position
+    dir: Offset, // direction
+    ext: Offset, // extrusions
     len: f32,
     flags: PointFlags,
 }

@@ -6,6 +6,13 @@ pub struct Transform {
     pub ty: f32,
 }
 
+impl Into<[f32; 4]> for Transform {
+    #[inline]
+    fn into(self) -> [f32; 4] {
+        [self.re, self.im, self.tx, self.ty]
+    }
+}
+
 impl std::ops::Mul<Self> for Transform {
     type Output = Self;
     #[inline]

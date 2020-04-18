@@ -1,20 +1,11 @@
 use crate::{
     backend::Backend,
     cache::PathCache,
-    canvas::{Picture, StrokeCap, StrokeJoin, Winding},
-    math::{clamp_f32, point2, Offset, Rect, Transform},
+    canvas::{Picture, Winding},
+    math::{point2, Offset, Rect, Transform},
     vg::*,
 };
 use arrayvec::ArrayVec;
-
-pub struct Stroke {
-    pub paint: crate::vg::Paint,
-    pub scissor: crate::vg::Scissor,
-    pub width: f32,
-    pub stroke_cap: StrokeCap,
-    pub stroke_join: StrokeJoin,
-    pub miter_limit: f32,
-}
 
 const INIT_COMMANDS_SIZE: usize = 256;
 
@@ -23,20 +14,19 @@ pub(crate) struct States {
 }
 
 impl States {
-    pub(crate) fn new() -> Self {
+    fn new() -> Self {
         let mut states = ArrayVec::<_>::new();
         states.push(State::default());
         Self { states }
     }
+
     pub(crate) fn last(&self) -> &State {
         self.states.last().expect("last state")
     }
     pub(crate) fn last_mut(&mut self) -> &mut State {
         self.states.last_mut().expect("last_mut state")
     }
-    pub(crate) fn clear(&mut self) {
-        self.states.clear();
-    }
+
     fn save(&mut self) {
         if self.states.len() >= self.states.capacity() {
             panic!("wtf?")
@@ -44,9 +34,6 @@ impl States {
         if let Some(state) = self.states.last().cloned() {
             self.states.push(state);
         }
-    }
-    fn restore(&mut self) {
-        self.states.pop();
     }
     fn reset(&mut self) {
         let state = if let Some(state) = self.states.last_mut() {
@@ -64,7 +51,6 @@ pub struct Context {
 
     pub(crate) states: States,
     pub cache: PathCache,
-    pub device_px_ratio: f32,
 
     pub params: Box<dyn Backend>,
 }
@@ -74,7 +60,7 @@ impl Context {
         self.states.save();
     }
     pub fn restore(&mut self) {
-        self.states.restore();
+        self.states.states.pop();
     }
     pub fn reset(&mut self) {
         self.states.reset();
@@ -82,12 +68,25 @@ impl Context {
 }
 
 impl Context {
+    pub fn new(params: Box<dyn Backend>) -> Self {
+        Self {
+            params,
+            states: States::new(),
+            cache: PathCache::new(),
+            picture: Picture {
+                commands: Vec::with_capacity(INIT_COMMANDS_SIZE),
+                cmd: Offset::zero(),
+                xform: Transform::identity(),
+            },
+        }
+    }
+
     pub fn begin_frame(&mut self, width: f32, height: f32, dpi: f32) {
-        self.states.clear();
+        self.states.states.clear();
+
         self.save();
         self.reset();
-        self.set_dpi(dpi);
-
+        self.cache.set_dpi(dpi);
         self.params.set_viewport(width, height, dpi);
     }
 
@@ -99,30 +98,6 @@ impl Context {
         self.params.flush();
     }
 
-    pub fn set_dpi(&mut self, ratio: f32) {
-        self.cache.set_dpi(ratio);
-        self.device_px_ratio = ratio;
-    }
-
-    pub fn new(params: Box<dyn Backend>) -> Self {
-        Self {
-            params,
-
-            states: States::new(),
-            cache: PathCache::new(),
-
-            picture: Picture {
-                commands: Vec::with_capacity(INIT_COMMANDS_SIZE),
-                cmd: Offset::zero(),
-                xform: Transform::identity(),
-            },
-
-            device_px_ratio: 1.0,
-        }
-    }
-}
-
-impl Context {
     pub fn current_transform(&self) -> &Transform {
         &self.states.last().xform
     }
@@ -145,9 +120,7 @@ impl Context {
     pub fn scale(&mut self, scale: f32) {
         self.pre_transform(Transform::scale(scale));
     }
-}
 
-impl Context {
     pub fn begin_path(&mut self) {
         self.picture.commands.clear();
         self.cache.clear();
@@ -155,10 +128,6 @@ impl Context {
 
     pub fn close_path(&mut self) {
         self.picture.close_path();
-    }
-
-    pub fn path_winding(&mut self, dir: Winding) {
-        self.picture.path_winding(dir);
     }
 
     pub fn move_to(&mut self, x: f32, y: f32) {
@@ -217,82 +186,5 @@ impl Context {
     pub fn circle(&mut self, cx: f32, cy: f32, r: f32) {
         self.picture.xform = self.states.last().xform;
         self.picture.circle(cx, cy, r);
-    }
-
-    pub(crate) fn fill(&mut self) {
-        let state = self.states.last();
-
-        self.cache.flatten_paths(&self.picture.commands);
-        self.cache.expand_fill(
-            if state.shape_aa {
-                self.cache.fringe_width
-            } else {
-                0.0
-            },
-            StrokeJoin::Miter,
-            2.4,
-        );
-
-        // Apply global alpha
-        let paint = state.fill;
-
-        self.params.draw_fill(
-            &paint,
-            &state.scissor,
-            self.cache.fringe_width,
-            &self.cache.bounds,
-            &self.cache.paths,
-        );
-    }
-
-    pub(crate) fn stroke(&mut self) {
-        let state = self.states.last();
-
-        let xform = state.xform;
-        let stroke = Stroke {
-            paint: state.stroke,
-            scissor: state.scissor,
-            width: state.stroke_width,
-            stroke_cap: state.stroke_cap,
-            stroke_join: state.stroke_join,
-            miter_limit: state.stroke_miter_limit,
-        };
-
-        let alpha = 1.0;
-
-        let scale = xform.average_scale();
-        let mut stroke_width = clamp_f32(stroke.width * scale, 0.0, 200.0);
-        let fringe_width = self.cache.fringe_width;
-        let mut paint = stroke.paint;
-
-        if stroke_width < self.cache.fringe_width {
-            // If the stroke width is less than pixel size, use alpha to emulate coverage.
-            // Since coverage is area, scale by alpha*alpha.
-            let alpha = clamp_f32(stroke_width / fringe_width, 0.0, 1.0);
-            paint.inner_color.a *= alpha * alpha;
-            paint.outer_color.a *= alpha * alpha;
-            stroke_width = self.cache.fringe_width;
-        }
-
-        // Apply global alpha
-        paint.inner_color.a *= alpha;
-        paint.outer_color.a *= alpha;
-
-        self.cache.flatten_paths(&self.picture.commands);
-        self.cache.expand_stroke(
-            stroke_width * 0.5,
-            fringe_width,
-            stroke.stroke_cap,
-            stroke.stroke_join,
-            stroke.miter_limit,
-        );
-
-        self.params.draw_stroke(
-            &paint,
-            &stroke.scissor,
-            fringe_width,
-            stroke_width,
-            &self.cache.paths,
-        );
     }
 }

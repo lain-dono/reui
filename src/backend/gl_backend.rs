@@ -15,9 +15,7 @@ use super::{
 };
 
 fn gl_draw_strip(offset: usize, count: usize) {
-    unsafe {
-        gl::DrawArrays(gl::TRIANGLE_STRIP, offset as GLint, count as GLsizei);
-    }
+    unsafe { gl::DrawArrays(gl::TRIANGLE_STRIP, offset as GLint, count as GLsizei) }
 }
 
 struct Buffer(GLuint);
@@ -25,9 +23,7 @@ struct Buffer(GLuint);
 impl Drop for Buffer {
     fn drop(&mut self) {
         if self.0 != 0 {
-            unsafe {
-                gl::DeleteBuffers(1, &self.0);
-            }
+            unsafe { gl::DeleteBuffers(1, &self.0) }
             self.0 = 0;
         }
     }
@@ -60,9 +56,7 @@ impl Buffer {
     }
 
     pub fn unbind(&self) {
-        unsafe {
-            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
-        }
+        unsafe { gl::BindBuffer(gl::ARRAY_BUFFER, 0) }
     }
 }
 
@@ -98,54 +92,50 @@ const SHADER_SIMPLE: f32 = 2.0;
 
 #[repr(C, align(4))]
 struct FragUniforms {
-    array: [f32; 7 * 4],
+    scissor_mat: [f32; 4],
+    paint_mat: [f32; 4],
+    inner_col: [f32; 4],
+    outer_col: [f32; 4],
+
+    scissor_ext: [f32; 2],
+    scissor_scale: [f32; 2],
+
+    extent: [f32; 2],
+    radius: f32,
+    feather: f32,
+
+    stroke_mul: f32,
+    stroke_thr: f32,
+    padding: [u8; 4],
+    kind: f32,
 }
 
 impl Default for FragUniforms {
     fn default() -> Self {
         Self {
-            array: [0.0; 7 * 4],
+            scissor_mat: [0f32; 4],
+            paint_mat: [0f32; 4],
+            inner_col: [0f32; 4],
+            outer_col: [0f32; 4],
+
+            scissor_ext: [0f32; 2],
+            scissor_scale: [0f32; 2],
+
+            extent: [0f32; 2],
+            radius: 0f32,
+            feather: 0f32,
+
+            stroke_mul: 0f32,
+            stroke_thr: 0f32,
+            padding: [0u8; 4],
+            kind: 0f32,
         }
     }
 }
 
-impl FragUniforms {
-    fn set_paint_mat(&mut self, t: Transform) {
-        self.array[4..8].copy_from_slice(&[t.re, t.im, t.tx, t.ty]);
-    }
-
-    fn set_inner_col(&mut self, color: [f32; 4]) {
-        self.array[8..12].copy_from_slice(&color)
-    }
-
-    fn set_outer_col(&mut self, color: [f32; 4]) {
-        self.array[12..16].copy_from_slice(&color)
-    }
-
-    fn set_scissor(&mut self, mat: [f32; 4], ext: [f32; 2], scale: [f32; 2]) {
-        self.array[0..4].copy_from_slice(&mat);
-        self.array[16..18].copy_from_slice(&ext);
-        self.array[18..20].copy_from_slice(&scale);
-    }
-
-    fn set_extent(&mut self, ext: [f32; 2]) {
-        self.array[20..22].copy_from_slice(&ext);
-    }
-
-    fn set_radius(&mut self, radius: f32) {
-        self.array[22] = radius;
-    }
-    fn set_feather(&mut self, feather: f32) {
-        self.array[23] = feather;
-    }
-    fn set_stroke_mul(&mut self, mul: f32) {
-        self.array[24] = mul;
-    }
-    fn set_stroke_thr(&mut self, thr: f32) {
-        self.array[25] = thr;
-    }
-    fn set_type(&mut self, t: f32) {
-        self.array[27] = t;
+impl AsRef<[f32; 7 * 4]> for FragUniforms {
+    fn as_ref(&self) -> &[f32; 7 * 4] {
+        unsafe { &*(self as *const Self as *const _) }
     }
 }
 
@@ -241,7 +231,7 @@ impl BackendGL {
 
     fn set_uniforms(&self, offset: usize) {
         let frag = self.frag_uniform(offset);
-        self.shader.bind_frag(&frag.array);
+        self.shader.bind_frag(frag.as_ref());
     }
 
     fn frag_uniform(&self, idx: usize) -> &FragUniforms {
@@ -263,27 +253,32 @@ impl BackendGL {
     ) -> bool {
         *frag = Default::default();
 
-        frag.set_inner_col(paint.inner_color.premul());
-        frag.set_outer_col(paint.outer_color.premul());
+        frag.inner_col = paint.inner_color.premul();
+        frag.outer_col = paint.outer_color.premul();
 
         if scissor.extent[0] < -0.5 || scissor.extent[1] < -0.5 {
-            frag.set_scissor([0.0; 4], [1.0, 1.0], [1.0, 1.0]);
+            frag.scissor_mat = [0.0; 4];
+            frag.scissor_ext = [1.0, 1.0];
+            frag.scissor_scale = [1.0, 1.0];
         } else {
             let xform = &scissor.xform;
             let (re, im) = (xform.re, xform.im);
             let scale = (re * re + im * im).sqrt() / fringe;
-            frag.set_scissor(xform2mat3(xform.inverse()), scissor.extent, [scale, scale]);
+
+            frag.scissor_mat = xform2mat3(xform.inverse());
+            frag.scissor_ext = scissor.extent;
+            frag.scissor_scale = [scale, scale];
         }
 
-        frag.set_extent(paint.extent);
+        frag.extent = paint.extent;
 
-        frag.set_stroke_mul((width * 0.5 + fringe * 0.5) / fringe);
-        frag.set_stroke_thr(stroke_thr);
-        frag.set_type(SHADER_FILLGRAD);
-        frag.set_radius(paint.radius);
-        frag.set_feather(paint.feather);
+        frag.stroke_mul = (width * 0.5 + fringe * 0.5) / fringe;
+        frag.stroke_thr = stroke_thr;
+        frag.kind = SHADER_FILLGRAD;
+        frag.radius = paint.radius;
+        frag.feather = paint.feather;
 
-        frag.set_paint_mat(paint.xform.inverse());
+        frag.paint_mat = paint.xform.inverse().into();
 
         true
     }
@@ -484,8 +479,8 @@ impl super::Backend for BackendGL {
             // Simple shader for stencil
             let frag = self.frag_uniform_mut(uniform_offset);
             *frag = Default::default();
-            frag.set_stroke_thr(-1.0);
-            frag.set_type(SHADER_SIMPLE);
+            frag.stroke_thr = -1.0;
+            frag.kind = SHADER_SIMPLE;
 
             // Fill shader
             self.frag_uniform_mut(uniform_offset + 1)
@@ -591,15 +586,9 @@ impl super::Backend for BackendGL {
             gl::EnableVertexAttribArray(0);
             gl::EnableVertexAttribArray(1);
 
+            let two = (2 * mem::size_of::<f32>()) as *const _;
             gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, size as i32, null());
-            gl::VertexAttribPointer(
-                1,
-                2,
-                gl::UNSIGNED_SHORT,
-                gl::TRUE,
-                size as i32,
-                (2 * mem::size_of::<f32>()) as *const _,
-            );
+            gl::VertexAttribPointer(1, 2, gl::UNSIGNED_SHORT, gl::TRUE, size as i32, two);
         }
 
         // Set view and texture just once per frame.
