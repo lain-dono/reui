@@ -8,28 +8,9 @@ use crate::{
 
 const INIT_COMMANDS_SIZE: usize = 256;
 
-pub(crate) struct States {
-    pub states: Vec<State>,
-}
-
-impl States {
-    fn new() -> Self {
-        let mut states = Vec::with_capacity(32);
-        states.push(State::default());
-        Self { states }
-    }
-
-    pub fn last(&self) -> &State {
-        self.states.last().expect("last state")
-    }
-    pub fn last_mut(&mut self) -> &mut State {
-        self.states.last_mut().expect("last_mut state")
-    }
-}
-
 pub struct Context {
     pub(crate) picture: Picture,
-    pub(crate) states: States,
+    pub(crate) states: Vec<State>,
     pub(crate) cache: PathCache,
     pub(crate) params: Box<dyn Backend>,
 }
@@ -38,7 +19,7 @@ impl Context {
     pub fn new(params: Box<dyn Backend>) -> Self {
         Self {
             params,
-            states: States::new(),
+            states: Vec::with_capacity(256),
             cache: PathCache::new(),
             picture: Picture {
                 commands: Vec::with_capacity(INIT_COMMANDS_SIZE),
@@ -49,8 +30,8 @@ impl Context {
     }
 
     pub fn begin_frame(&mut self, width: f32, height: f32, dpi: f32) {
-        self.states.states.clear();
-        self.states.states.push(Default::default());
+        self.states.clear();
+        self.states.push(Default::default());
         self.cache.set_dpi(dpi);
         self.params.set_viewport(width, height, dpi);
     }
@@ -61,10 +42,6 @@ impl Context {
 
     pub fn end_frame(&mut self) {
         self.params.flush();
-    }
-
-    pub fn pre_transform(&mut self, m: Transform) {
-        self.states.last_mut().xform.append_mut(m);
     }
 
     pub fn begin_path(&mut self) {

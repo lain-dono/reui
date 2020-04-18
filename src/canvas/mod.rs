@@ -133,7 +133,7 @@ impl<'a> Canvas<'a> {
 
     fn fill_or_stroke(&mut self, paint: &Paint, force_stroke: bool) {
         let cache = &mut self.ctx.cache;
-        let state = self.ctx.states.last_mut();
+        let state = self.ctx.states.last_mut().unwrap();
         let xform = state.xform;
         let scissor = state.scissor;
 
@@ -197,15 +197,15 @@ impl<'a> Canvas<'a> {
     }
 
     pub fn scissor(&mut self, rect: Rect) {
-        self.ctx.states.last_mut().set_scissor(rect);
+        self.ctx.states.last_mut().unwrap().set_scissor(rect);
     }
 
     pub fn intersect_scissor(&mut self, rect: Rect) {
-        self.ctx.states.last_mut().intersect_scissor(rect);
+        self.ctx.states.last_mut().unwrap().intersect_scissor(rect);
     }
 
     pub fn reset_scissor(&mut self) {
-        self.ctx.states.last_mut().reset_scissor();
+        self.ctx.states.last_mut().unwrap().reset_scissor();
     }
 
     /// Returns the number of items on the save stack, including the initial state.
@@ -218,8 +218,8 @@ impl<'a> Canvas<'a> {
     /// Saves a copy of the current transform and clip on the save stack. [...]
     pub fn save(&mut self) {
         self.save_count += 1;
-        if let Some(state) = self.ctx.states.states.last().cloned() {
-            self.ctx.states.states.push(state);
+        if let Some(state) = self.ctx.states.last().cloned() {
+            self.ctx.states.push(state);
         }
     }
 
@@ -235,19 +235,23 @@ impl<'a> Canvas<'a> {
     pub fn restore(&mut self) {
         if self.save_count > 1 {
             self.save_count -= 1;
-            self.ctx.states.states.pop();
+            self.ctx.states.pop();
         }
+    }
+
+    fn pre_transform(&mut self, m: Transform) {
+        self.ctx.states.last_mut().unwrap().xform.append_mut(m);
     }
 
     /// Add a rotation to the current transform. The argument is in radians clockwise.
     pub fn rotate(&mut self, radians: f32) {
-        self.ctx.pre_transform(Transform::rotation(radians));
+        self.pre_transform(Transform::rotation(radians));
     }
 
     /// Add an axis-aligned scale to the current transform,
     /// scaling by the first argument in the horizontal direction and the second in the vertical direction. [...]
     pub fn scale(&mut self, scale: f32) {
-        self.ctx.pre_transform(Transform::scale(scale));
+        self.pre_transform(Transform::scale(scale));
     }
 
     /// Add an axis-aligned skew to the current transform,
@@ -260,7 +264,7 @@ impl<'a> Canvas<'a> {
     /// Add a translation to the current transform,
     /// shifting the coordinate space horizontally by the first argument and vertically by the second argument.
     pub fn translate(&mut self, dx: f32, dy: f32) {
-        self.ctx.pre_transform(Transform::translation(dx, dy));
+        self.pre_transform(Transform::translation(dx, dy));
     }
 
     /// Multiply the current transform by the specified 4⨉4 transformation matrix specified as a list of values in column-major order.
@@ -298,7 +302,7 @@ impl<'a> Canvas<'a> {
     /// Whether the circle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_circle(&mut self, c: Offset, radius: f32, paint: Paint) {
         self.ctx.begin_path();
-        self.ctx.picture.xform = self.ctx.states.last().xform;
+        self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.picture.circle(c.x, c.y, radius);
         self.fill_or_stroke(&paint, false);
     }
@@ -327,9 +331,8 @@ impl<'a> Canvas<'a> {
     /// The line is stroked, the value of the Paint.style is ignored for this call. [...]
     pub fn draw_line(&mut self, p1: Offset, p2: Offset, paint: Paint) {
         self.ctx.begin_path();
-        self.ctx.picture.xform = self.ctx.states.last().xform;
+        self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.picture.move_to(p1);
-        self.ctx.picture.xform = self.ctx.states.last().xform;
         self.ctx.picture.line_to(p2);
         self.fill_or_stroke(&paint, true);
     }
@@ -339,7 +342,7 @@ impl<'a> Canvas<'a> {
             return;
         }
         self.ctx.begin_path();
-        self.ctx.picture.xform = self.ctx.states.last().xform;
+        self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.picture.move_to(points[0]);
         for p in points.iter().skip(1) {
             self.ctx.picture.line_to(*p);
@@ -353,7 +356,7 @@ impl<'a> Canvas<'a> {
         let (cx, cy) = (rect.min.x, rect.min.y);
         let (rx, ry) = (rect.dx(), rect.dy());
         self.ctx.begin_path();
-        self.ctx.picture.xform = self.ctx.states.last().xform;
+        self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.picture.ellipse(cx, cy, rx, ry);
         self.fill_or_stroke(&paint, false);
     }
@@ -370,7 +373,7 @@ impl<'a> Canvas<'a> {
     /// Whether this shape is filled or stroked (or both) is controlled by Paint.style.
     /// If the path is filled, then sub-paths within it are implicitly closed (see Path.close).
     pub fn draw_path(&mut self, path: &mut [f32], paint: Paint) {
-        self.ctx.picture.xform = self.ctx.states.last().xform;
+        self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.begin_path();
         self.ctx.picture.append_commands(path);
         self.fill_or_stroke(&paint, false);
@@ -378,7 +381,7 @@ impl<'a> Canvas<'a> {
 
     pub fn draw_path_cloned(&mut self, path: &[f32], paint: Paint) {
         let mut path = path.to_owned();
-        self.ctx.picture.xform = self.ctx.states.last().xform;
+        self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.begin_path();
         self.ctx.picture.append_commands(&mut path);
         self.fill_or_stroke(&paint, false);
@@ -400,7 +403,7 @@ impl<'a> Canvas<'a> {
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
         self.ctx.begin_path();
-        self.ctx.picture.xform = self.ctx.states.last().xform;
+        self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.picture.rect(rect);
         self.fill_or_stroke(&paint, false);
     }
@@ -409,7 +412,7 @@ impl<'a> Canvas<'a> {
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rrect(&mut self, rrect: RRect, paint: Paint) {
         self.ctx.begin_path();
-        self.ctx.picture.xform = self.ctx.states.last().xform;
+        self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.picture.rrect_varying(
             rrect.rect(),
             rrect.radius.tl,
