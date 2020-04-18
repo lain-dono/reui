@@ -7,7 +7,7 @@ use wgpu_vg::{
 pub fn main() {
     use wgpu_vg::{
         backend::{gl, BackendGL},
-        Context,
+        context::Context,
     };
 
     const GLFW_CONTEXT_VERSION_MAJOR: i32 = 0x0002_2002;

@@ -1,5 +1,5 @@
 use crate::{
-    cache::{LineCap, LineJoin},
+    canvas::{StrokeCap, StrokeJoin},
     math::{point2, Color, Rect, Transform},
     vg::*,
 };
@@ -12,9 +12,9 @@ pub struct State {
     pub stroke: Paint,
 
     pub stroke_width: f32,
-    pub miter_limit: f32,
-    pub line_join: LineJoin,
-    pub line_cap: LineCap,
+    pub stroke_miter_limit: f32,
+    pub stroke_join: StrokeJoin,
+    pub stroke_cap: StrokeCap,
 
     pub xform: Transform,
     pub scissor: Scissor,
@@ -28,9 +28,9 @@ impl Default for State {
 
             shape_aa: true,
             stroke_width: 1.0,
-            miter_limit: 10.0,
-            line_cap: LineCap::Butt,
-            line_join: LineJoin::Miter,
+            stroke_miter_limit: 10.0,
+            stroke_cap: StrokeCap::Butt,
+            stroke_join: StrokeJoin::Miter,
             xform: Transform::identity(),
 
             scissor: Scissor {

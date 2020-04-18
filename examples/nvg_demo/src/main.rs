@@ -1,5 +1,3 @@
-#![feature(clamp)]
-
 mod blendish;
 mod canvas;
 mod run_gles;

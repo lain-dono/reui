@@ -2,8 +2,22 @@ use wgpu_vg::{canvas::*, math::*};
 
 const HOVER_SHADE: i32 = 15;
 
+fn offset_color(Color { r, g, b, a }: Color, delta: i32) -> Color {
+    if delta != 0 {
+        let offset = delta as f32 / 255.0;
+        Color {
+            r: clamp_f32(r + offset, 0.0, 1.0),
+            g: clamp_f32(g + offset, 0.0, 1.0),
+            b: clamp_f32(b + offset, 0.0, 1.0),
+            a,
+        }
+    } else {
+        Color { r, g, b, a }
+    }
+}
+
 fn shade(c: u32, shade: i32) -> u32 {
-    Color::new(c).offset(shade).to_bgra()
+    offset_color(Color::new(c), shade).to_bgra()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

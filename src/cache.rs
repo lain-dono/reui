@@ -1,6 +1,9 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::math::{vec2, Offset};
+use crate::{
+    canvas::{StrokeCap, StrokeJoin, Winding},
+    math::{clamp_i32, vec2, Offset},
+};
 use std::{f32::consts::PI, slice::from_raw_parts_mut};
 
 const INIT_POINTS_SIZE: usize = 128;
@@ -14,7 +17,7 @@ const CLOSE: i32 = 3;
 const WINDING: i32 = 4;
 
 #[inline(always)]
-const fn pack_uv(u: f32, v: f32) -> [u16; 2] {
+fn pack_uv(u: f32, v: f32) -> [u16; 2] {
     let u = (u * 65535.0) as u16;
     let v = (v * 65535.0) as u16;
     [u, v]
@@ -66,26 +69,6 @@ fn choose_bevel(bevel: bool, p0: &PathPoint, p1: &PathPoint, w: f32) -> [Offset;
     } else {
         [p1.pos + p1.ext * w, p1.pos + p1.ext * w]
     }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum LineCap {
-    Butt = 0,
-    Round = 1,
-    Square = 2,
-}
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum LineJoin {
-    Round = 1,
-    Bevel = 3,
-    Miter = 4,
-}
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum Winding {
-    CCW = 1, // Winding for solid shapes
-    CW = 2,  // Winding for holes
 }
 
 #[derive(Clone, Copy, Default)]
@@ -348,7 +331,7 @@ impl PathCache {
         &mut self.verts[..count]
     }
 
-    fn calculate_joins(&mut self, w: f32, line_join: LineJoin, miter_limit: f32) {
+    fn calculate_joins(&mut self, w: f32, line_join: StrokeJoin, miter_limit: f32) {
         let iw = if w > 0.0 { 1.0 / w } else { 0.0 };
 
         let miter_limit2 = miter_limit * miter_limit;
@@ -397,7 +380,7 @@ impl PathCache {
                 }
 
                 // Check to see if the corner needs to be beveled.
-                if p1.is_corner() && (dmr2 * miter_limit2 < 1.0 || line_join != LineJoin::Miter) {
+                if p1.is_corner() && (dmr2 * miter_limit2 < 1.0 || line_join != StrokeJoin::Miter) {
                     p1.flags |= PointFlags::BEVEL;
                 }
 
@@ -605,8 +588,8 @@ impl PathCache {
         &mut self,
         w: f32,
         fringe: f32,
-        line_cap: LineCap,
-        line_join: LineJoin,
+        line_cap: StrokeCap,
+        line_join: StrokeJoin,
         miter_limit: f32,
     ) {
         let aa = fringe; //self.fringeWidth;
@@ -627,7 +610,7 @@ impl PathCache {
         // Calculate max vertex usage.
         let mut cverts = 0;
         for path in &self.paths {
-            let count = if line_join == LineJoin::Round {
+            let count = if line_join == StrokeJoin::Round {
                 ncap + 2
             } else {
                 5
@@ -635,7 +618,7 @@ impl PathCache {
             cverts += (path.count + path.nbevel * count + 1) * 2; // plus one for loop
             if !path.closed {
                 // space for caps
-                if line_cap == LineCap::Round {
+                if line_cap == StrokeCap::Round {
                     cverts += (ncap * 2 + 2) * 2;
                 } else {
                     cverts += (3 + 3) * 2;
@@ -676,9 +659,11 @@ impl PathCache {
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx]);
                 let d: Offset = (p1.pos - p0.pos).normalize();
                 match line_cap {
-                    LineCap::Butt => dst.butt_cap_start(p0, d.x, d.y, w, -aa * 0.5, aa, u0, u1),
-                    LineCap::Square => dst.butt_cap_start(p0, d.x, d.y, w, w - aa, aa, u0, u1),
-                    LineCap::Round => dst.round_cap_start(p0, d.x, d.y, w, ncap as i32, aa, u0, u1),
+                    StrokeCap::Butt => dst.butt_cap_start(p0, d.x, d.y, w, -aa * 0.5, aa, u0, u1),
+                    StrokeCap::Square => dst.butt_cap_start(p0, d.x, d.y, w, w - aa, aa, u0, u1),
+                    StrokeCap::Round => {
+                        dst.round_cap_start(p0, d.x, d.y, w, ncap as i32, aa, u0, u1)
+                    }
                 };
             }
 
@@ -689,7 +674,7 @@ impl PathCache {
                     .flags
                     .intersects(PointFlags::BEVEL | PointFlags::INNERBEVEL)
                 {
-                    if line_join == LineJoin::Round {
+                    if line_join == StrokeJoin::Round {
                         dst.round_join(p0, p1, w, w, u0, u1, ncap as i32, aa);
                     } else {
                         dst.bevel_join(p0, p1, w, w, u0, u1, aa);
@@ -713,9 +698,9 @@ impl PathCache {
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx % pts.len()]); // XXX
                 let d: Offset = (p1.pos - p0.pos).normalize();
                 match line_cap {
-                    LineCap::Butt => dst.butt_cap_end(p1, d.x, d.y, w, -aa * 0.5, aa, u0, u1),
-                    LineCap::Square => dst.butt_cap_end(p1, d.x, d.y, w, w - aa, aa, u0, u1),
-                    LineCap::Round => dst.round_cap_end(p1, d.x, d.y, w, ncap as i32, aa, u0, u1),
+                    StrokeCap::Butt => dst.butt_cap_end(p1, d.x, d.y, w, -aa * 0.5, aa, u0, u1),
+                    StrokeCap::Square => dst.butt_cap_end(p1, d.x, d.y, w, w - aa, aa, u0, u1),
+                    StrokeCap::Round => dst.round_cap_end(p1, d.x, d.y, w, ncap as i32, aa, u0, u1),
                 }
             }
 
@@ -724,7 +709,7 @@ impl PathCache {
         }
     }
 
-    pub fn expand_fill(&mut self, w: f32, line_join: LineJoin, miter_limit: f32) {
+    pub fn expand_fill(&mut self, w: f32, line_join: StrokeJoin, miter_limit: f32) {
         let aa = self.fringe_width;
         let fringe = w > 0.0;
 
@@ -883,7 +868,7 @@ impl Verts {
             self.push(p1.pos - dl0 * rw, [ru, 1.0]);
 
             let n = (a0 - a1) / PI;
-            let n = ((n * ncap as f32).ceil() as i32).clamp(2, ncap);
+            let n = clamp_i32((n * ncap as f32).ceil() as i32, 2, ncap);
             for i in 0..n {
                 let u = (i as f32) / (n - 1) as f32;
                 let a = a0 + u * (a1 - a0);
@@ -904,7 +889,7 @@ impl Verts {
             self.push(r0, [ru, 1.0]);
 
             let n = (a1 - a0) / PI;
-            let n = ((n * ncap as f32).ceil() as i32).clamp(2, ncap);
+            let n = clamp_i32((n * ncap as f32).ceil() as i32, 2, ncap);
             for i in 0..n {
                 let u = (i as f32) / (n - 1) as f32;
                 let a = a0 + u * (a1 - a0);

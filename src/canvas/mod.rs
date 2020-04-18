@@ -3,8 +3,8 @@ mod path;
 mod picture;
 
 pub use crate::{
+    context::Context,
     math::{rect, Corners, Offset, Rect, Transform},
-    Context, Winding,
 };
 
 pub use self::{
@@ -12,6 +12,12 @@ pub use self::{
     path::Path,
     picture::Picture,
 };
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum Winding {
+    CCW = 1, // Winding for solid shapes
+    CW = 2,  // Winding for holes
+}
 
 pub type Radius = f32; // TODO: [f32; 2]
 
@@ -122,32 +128,27 @@ impl<'a> Canvas<'a> {
         Self { ctx, save_count: 1 }
     }
 
-    fn sync_stroke(&mut self, paint: &Paint) {
+    fn fill_or_stroke(&mut self, paint: &Paint, force_stroke: bool) {
         let state = self.ctx.states.last_mut();
 
-        match paint.gradient {
-            Some(gradient) => {
-                state.stroke = gradient_to_paint(gradient);
-                state.stroke.xform.prepend_mut(state.xform);
-            }
-            None => state.stroke = crate::vg::Paint::color(Color::new(paint.color)),
-        }
-
-        state.line_cap = paint.stroke_cap;
-        state.line_join = paint.stroke_join;
-        state.miter_limit = paint.stroke_miter_limit;
-        state.stroke_width = paint.stroke_width;
-    }
-
-    fn fill_or_stroke(&mut self, paint: &Paint, force_stroke: bool) {
-        self.ctx.states.last_mut().shape_aa = paint.is_antialias;
+        state.shape_aa = paint.is_antialias;
 
         if force_stroke || paint.style == PaintingStyle::Stroke {
-            self.sync_stroke(paint);
+            match paint.gradient {
+                Some(gradient) => {
+                    state.stroke = gradient_to_paint(gradient);
+                    state.stroke.xform.prepend_mut(state.xform);
+                }
+                None => state.stroke = crate::vg::Paint::color(Color::new(paint.color)),
+            }
+
+            state.stroke_cap = paint.stroke_cap;
+            state.stroke_join = paint.stroke_join;
+            state.stroke_miter_limit = paint.stroke_miter_limit;
+            state.stroke_width = paint.stroke_width;
+
             self.ctx.stroke();
         } else {
-            let state = self.ctx.states.last_mut();
-
             match paint.gradient {
                 Some(gradient) => {
                     state.fill = gradient_to_paint(gradient);
@@ -189,7 +190,7 @@ impl<'a> Canvas<'a> {
     /// and then creates a new group which subsequent calls will become a part of.
     /// When the save stack is later popped, the group will be flattened into a layer
     /// and have the given paint's Paint.colorFilter and Paint.blendMode applied. [...]
-    pub fn save_layer(&mut self, _bounds: Rect, _paint: Paint) {
+    pub fn _save_layer(&mut self, _bounds: Rect, _paint: Paint) {
         unimplemented!()
     }
 
@@ -215,7 +216,7 @@ impl<'a> Canvas<'a> {
     /// Add an axis-aligned skew to the current transform,
     /// with the first argument being the horizontal skew in radians clockwise around the origin,
     /// and the second argument being the vertical skew in radians clockwise around the origin.
-    pub fn skew(&mut self, _sx: f32, _sy: f32) {
+    pub fn _skew(&mut self, _sx: f32, _sy: f32) {
         unimplemented!()
     }
 
@@ -226,7 +227,7 @@ impl<'a> Canvas<'a> {
     }
 
     /// Multiply the current transform by the specified 4⨉4 transformation matrix specified as a list of values in column-major order.
-    pub fn transform(&mut self, _t: Transform) {
+    pub fn _transform(&mut self, _t: Transform) {
         unimplemented!()
     }
 }
@@ -287,12 +288,10 @@ impl<'a> Canvas<'a> {
     /// Draws a line between the given points using the given paint.
     /// The line is stroked, the value of the Paint.style is ignored for this call. [...]
     pub fn draw_line(&mut self, p1: Offset, p2: Offset, paint: Paint) {
-        self.sync_stroke(&paint);
-
         self.ctx.begin_path();
         self.ctx.move_to(p1.x, p1.y);
         self.ctx.line_to(p2.x, p2.y);
-        self.ctx.stroke();
+        self.fill_or_stroke(&paint, true);
     }
 
     pub fn draw_lines(&mut self, points: &[Offset], paint: Paint) {
@@ -300,14 +299,12 @@ impl<'a> Canvas<'a> {
             return;
         }
 
-        self.sync_stroke(&paint);
-
         self.ctx.begin_path();
         self.ctx.move_to(points[0].x, points[0].y);
         for p in points.iter().skip(1) {
             self.ctx.line_to(p.x, p.y);
         }
-        self.ctx.stroke();
+        self.fill_or_stroke(&paint, true);
     }
 
     /// Draws an axis-aligned oval that fills the given axis-aligned rectangle with the given Paint.

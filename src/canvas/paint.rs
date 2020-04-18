@@ -1,5 +1,18 @@
-pub use crate::cache::{LineCap as StrokeCap, LineJoin as StrokeJoin};
 pub use crate::math::{Color, Rect};
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum StrokeCap {
+    Butt = 0,
+    Round = 1,
+    Square = 2,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum StrokeJoin {
+    Round = 1,
+    Bevel = 3,
+    Miter = 4,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]

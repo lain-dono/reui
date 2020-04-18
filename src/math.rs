@@ -32,6 +32,34 @@ fn convert_radius_to_sigma(radius: f32) -> f32 {
 }
 */
 
+// reduce #![feature(clamp)]
+
+#[doc(hidden)]
+#[inline]
+pub fn clamp_f32(mut x: f32, min: f32, max: f32) -> f32 {
+    assert!(min <= max);
+    if x < min {
+        x = min;
+    }
+    if x > max {
+        x = max;
+    }
+    x
+}
+
+#[doc(hidden)]
+#[inline]
+pub fn clamp_i32(mut x: i32, min: i32, max: i32) -> i32 {
+    assert!(min <= max);
+    if x < min {
+        x = min;
+    }
+    if x > max {
+        x = max;
+    }
+    x
+}
+
 #[derive(Clone, Copy, Default)]
 pub struct Corners {
     pub tl: f32,
