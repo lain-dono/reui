@@ -1,4 +1,4 @@
-#![feature(ptr_offset_from, decl_macro, const_fn, const_int_conversion, clamp)]
+#![feature(ptr_offset_from, decl_macro, const_fn, clamp)]
 #![warn(clippy::all)]
 
 mod vg;
@@ -14,7 +14,7 @@ pub mod canvas;
 
 pub use crate::{
     cache::{Winding, LineJoin, LineCap},
-    backend::{BackendGL, NFlags, Image, ImageFlags, gl},
+    backend::{BackendGL, Image, ImageFlags, gl},
     vg::{Paint, utils},
     context::Context,
     font::{Align, TextRow, GlyphPosition},

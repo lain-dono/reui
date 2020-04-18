@@ -11,24 +11,18 @@ mod stash;
 mod utils;
 
 use self::fons::FONS_INVALID;
-pub use self::stash::{Stash, Metrics};
+pub use self::stash::{Metrics, Stash};
 
 use crate::{
-    vg::State,
-    context::{
-        Context,
-        MAX_FONTIMAGE_SIZE, MAX_FONTIMAGES,
-    },
-    backend::{TEXTURE_ALPHA, Backend},
+    backend::{Backend, TEXTURE_ALPHA},
     cache::Vertex,
-    vg::utils::average_scale,
+    context::{Context, MAX_FONTIMAGES, MAX_FONTIMAGE_SIZE},
     math::{point2, Rect},
+    vg::utils::average_scale,
+    vg::State,
 };
 
-use std::{
-    str::from_utf8_unchecked,
-    slice::from_raw_parts,
-};
+use std::{slice::from_raw_parts, str::from_utf8_unchecked};
 
 fn str_start_end(s: &str) -> (*const u8, *const u8) {
     unsafe {
@@ -37,9 +31,6 @@ fn str_start_end(s: &str) -> (*const u8, *const u8) {
         (start, end)
     }
 }
-
-
-
 
 unsafe fn raw_str<'a>(start: *const u8, end: *const u8) -> &'a str {
     from_utf8_unchecked(raw_slice(start, end))
@@ -69,10 +60,10 @@ bitflags::bitflags!(
 
 #[derive(Clone, Copy)]
 pub struct TextRow {
-    pub start: *const u8,   // Pointer to the input text where the row starts.
-    pub end: *const u8,     // Pointer to the input text where the row ends (one past the last character).
-    pub next: *const u8,    // Pointer to the beginning of the next row.
-    pub width: f32,         // Logical width of the row.
+    pub start: *const u8, // Pointer to the input text where the row starts.
+    pub end: *const u8, // Pointer to the input text where the row ends (one past the last character).
+    pub next: *const u8, // Pointer to the beginning of the next row.
+    pub width: f32,     // Logical width of the row.
 
     // Actual bounds of the row.
     // Logical with and bounds can differ because of kerning and some parts over extending.
@@ -87,8 +78,8 @@ impl TextRow {
 }
 
 pub struct GlyphPosition {
-    pub s: *const u8,   // Position of the glyph in the input string.
-    pub x: f32,         // The x-coordinate of the logical glyph position.
+    pub s: *const u8, // Position of the glyph in the input string.
+    pub x: f32,       // The x-coordinate of the logical glyph position.
     // The bounds of the glyph shape.
     pub minx: f32,
     pub maxx: f32,
@@ -141,22 +132,25 @@ impl Context {
                 let y = dirty[1];
                 let w = (dirty[2] - dirty[0]) as u32;
                 let h = (dirty[3] - dirty[1]) as u32;
-                self.params.update_texture(image, x,y, w,h, data);
+                self.params
+                    .update_texture(crate::backend::SubImage { image, x, y, w, h }, data);
             }
         }
     }
 
     fn alloc_text_atlas(&mut self) -> bool {
         self.flush_text_texture();
-        if self.font_image_idx >= (MAX_FONTIMAGES-1) as i32 {
+        if self.font_image_idx >= (MAX_FONTIMAGES - 1) as i32 {
             return false;
         }
         // if next fontImage already have a texture
-        let (iw, ih) = if !self.font_images[(self.font_image_idx+1) as usize].is_null() {
-            self.image_size(self.font_images[(self.font_image_idx+1) as usize])
+        let (iw, ih) = if !self.font_images[(self.font_image_idx + 1) as usize].is_null() {
+            self.image_size(self.font_images[(self.font_image_idx + 1) as usize])
                 .expect("font image texture")
-        } else { // calculate the new font image size and create it.
-            let (mut iw, mut ih) = self.image_size(self.font_images[self.font_image_idx as usize])
+        } else {
+            // calculate the new font image size and create it.
+            let (mut iw, mut ih) = self
+                .image_size(self.font_images[self.font_image_idx as usize])
                 .expect("font image texture");
             if iw > ih {
                 ih *= 2;
@@ -167,8 +161,9 @@ impl Context {
                 iw = MAX_FONTIMAGE_SIZE as u32;
                 ih = MAX_FONTIMAGE_SIZE as u32;
             }
-            self.font_images[(self.font_image_idx+1) as usize] =
-                self.params.create_texture(TEXTURE_ALPHA, iw, ih, Default::default(), null());
+            self.font_images[(self.font_image_idx + 1) as usize] =
+                self.params
+                    .create_texture(TEXTURE_ALPHA, iw, ih, Default::default(), null());
             (iw, ih)
         };
         self.font_image_idx += 1;
@@ -187,11 +182,7 @@ impl Context {
         paint.inner_color.a *= state.alpha;
         paint.outer_color.a *= state.alpha;
 
-        self.params.draw_triangles(
-            &paint,
-            &state.scissor,
-            &verts,
-        );
+        self.params.draw_triangles(&paint, &state.scissor, &verts);
     }
 
     unsafe fn text_raw(&mut self, x: f32, y: f32, start: *const u8, end: *const u8) -> f32 {
@@ -224,11 +215,12 @@ impl Context {
 
         let mut nverts = 0;
 
-        let mut iter = self.fs.text_iter_required(x*scale, y*scale, start, end);
+        let mut iter = self.fs.text_iter_required(x * scale, y * scale, start, end);
         let mut prev_iter = iter;
 
         while let Some(mut q) = iter.next() {
-            if iter.prev_glyph_index == -1 { // can not retrieve glyph?
+            if iter.prev_glyph_index == -1 {
+                // can not retrieve glyph?
                 if nverts != 0 {
                     self.render_text(&mut verts[..nverts]);
                     nverts = 0;
@@ -238,23 +230,24 @@ impl Context {
                 }
                 iter = prev_iter;
                 q = iter.next().unwrap(); // try again
-                if iter.prev_glyph_index == -1 { // still can not find glyph?
+                if iter.prev_glyph_index == -1 {
+                    // still can not find glyph?
                     break;
                 }
             }
             prev_iter = iter;
 
             // Create triangles
-            if nverts+6 <= cverts {
+            if nverts + 6 <= cverts {
                 // Transform corners.
                 let pts = (
-                    xform.apply([q.x0*invscale, q.y0*invscale]),
-                    xform.apply([q.x1*invscale, q.y0*invscale]),
-                    xform.apply([q.x1*invscale, q.y1*invscale]),
-                    xform.apply([q.x0*invscale, q.y1*invscale]),
+                    xform.apply([q.x0 * invscale, q.y0 * invscale]),
+                    xform.apply([q.x1 * invscale, q.y0 * invscale]),
+                    xform.apply([q.x1 * invscale, q.y1 * invscale]),
+                    xform.apply([q.x0 * invscale, q.y1 * invscale]),
                 );
 
-                verts[nverts    ].set(pts.0, [q.s0, q.t0]); // 01
+                verts[nverts].set(pts.0, [q.s0, q.t0]); // 01
                 verts[nverts + 1].set(pts.2, [q.s1, q.t1]); // 45
                 verts[nverts + 2].set(pts.1, [q.s1, q.t0]); // 23
                 verts[nverts + 3].set(pts.0, [q.s0, q.t0]); // 01
@@ -282,10 +275,10 @@ impl Context {
         self.fs.sync_state(state, scale);
 
         let (start, end) = str_start_end(text);
-        let (width, mut bounds) = self.fs.text_bounds(x*scale, y*scale, start, end);
+        let (width, mut bounds) = self.fs.text_bounds(x * scale, y * scale, start, end);
 
         // Use line bounds for height.
-        let (rminy, rmaxy) = self.fs.line_bounds(y*scale);
+        let (rminy, rmaxy) = self.fs.line_bounds(y * scale);
 
         bounds.min.x *= invscale;
         bounds.min.y = rminy * invscale;
@@ -308,7 +301,8 @@ impl Context {
 
             old_align = state.text_align;
             haling = state.text_align & (Align::LEFT | Align::CENTER | Align::RIGHT);
-            valign = state.text_align & (Align::TOP  | Align::MIDDLE | Align::BOTTOM | Align::BASELINE);
+            valign =
+                state.text_align & (Align::TOP | Align::MIDDLE | Align::BOTTOM | Align::BASELINE);
 
             lineh = self.text_metrics().unwrap().line_gap;
 
@@ -321,27 +315,37 @@ impl Context {
         loop {
             let text = unsafe { raw_str(start, end) };
             let rows = self.text_break_lines(text, break_row_width, &mut rows);
-            if rows.is_empty() { break }
+            if rows.is_empty() {
+                break;
+            }
             for row in rows {
                 unsafe {
                     if haling.contains(Align::LEFT) {
                         self.text_raw(x, y, row.start, row.end);
                     } else if haling.contains(Align::CENTER) {
-                        self.text_raw(x + break_row_width*0.5 - row.width*0.5, y, row.start, row.end);
+                        self.text_raw(
+                            x + break_row_width * 0.5 - row.width * 0.5,
+                            y,
+                            row.start,
+                            row.end,
+                        );
                     } else if haling.contains(Align::RIGHT) {
                         self.text_raw(x + break_row_width - row.width, y, row.start, row.end);
                     }
                 }
                 y += lineh * line_height;
             }
-            start = rows[rows.len()-1].next;
+            start = rows[rows.len() - 1].next;
         }
 
         self.states.last_mut().text_align = old_align;
     }
 
     pub fn text_glyph_positions<'a>(
-        &mut self, x: f32, y: f32, text: &str,
+        &mut self,
+        x: f32,
+        y: f32,
+        text: &str,
         positions: &'a mut [GlyphPosition],
     ) -> &'a [GlyphPosition] {
         let state = self.states.last();
@@ -357,11 +361,12 @@ impl Context {
         let (start, end) = str_start_end(text);
         self.fs.sync_state(state, scale);
 
-        let mut iter = self.fs.text_iter_optional(x*scale, y*scale, start, end);
+        let mut iter = self.fs.text_iter_optional(x * scale, y * scale, start, end);
         let mut prev_iter = iter;
 
         while let Some(mut q) = iter.next() {
-            if iter.prev_glyph_index < 0 && self.alloc_text_atlas() { // can not retrieve glyph?
+            if iter.prev_glyph_index < 0 && self.alloc_text_atlas() {
+                // can not retrieve glyph?
                 iter = prev_iter;
                 q = iter.next().unwrap(); // try again
             }
@@ -380,7 +385,11 @@ impl Context {
     }
 
     pub fn text_box_bounds(
-        &mut self, x: f32, mut y: f32, break_row_width: f32, text: &str,
+        &mut self,
+        x: f32,
+        mut y: f32,
+        break_row_width: f32,
+        text: &str,
     ) -> Rect {
         let (halign, valign);
 
@@ -390,7 +399,8 @@ impl Context {
             let invscale = 1.0 / scale;
             let old_align = state.text_align;
             halign = state.text_align & (Align::LEFT | Align::CENTER | Align::RIGHT);
-            valign = state.text_align & (Align::TOP  | Align::MIDDLE | Align::BOTTOM | Align::BASELINE);
+            valign =
+                state.text_align & (Align::TOP | Align::MIDDLE | Align::BOTTOM | Align::BASELINE);
 
             if state.font_id == FONS_INVALID {
                 return Rect::default();
@@ -416,13 +426,15 @@ impl Context {
         loop {
             let text = unsafe { raw_str(start, end) };
             let rows = self.text_break_lines(text, break_row_width, &mut rows);
-            if rows.is_empty() { break }
+            if rows.is_empty() {
+                break;
+            }
             for row in rows {
                 // Horizontal bounds
                 let dx = if halign.contains(Align::LEFT) {
                     0.0
-                } else if halign.contains(Align::CENTER) { 
-                    break_row_width*0.5 - row.width*0.5
+                } else if halign.contains(Align::CENTER) {
+                    break_row_width * 0.5 - row.width * 0.5
                 } else if halign.contains(Align::RIGHT) {
                     break_row_width - row.width
                 } else {
@@ -439,12 +451,15 @@ impl Context {
 
                 y += lineh * self.states.last().line_height;
             }
-            start = rows[rows.len()-1].next;
+            start = rows[rows.len() - 1].next;
         }
 
         self.states.last_mut().text_align = old_align;
 
-        Rect { min: point2(minx, miny), max: point2(maxx, maxy) }
+        Rect {
+            min: point2(minx, miny),
+            max: point2(maxx, maxy),
+        }
     }
 
     pub fn text_metrics(&mut self) -> Option<Metrics> {
@@ -467,8 +482,10 @@ impl Context {
     }
 
     pub fn text_break_lines<'a>(
-        &mut self, text: &str,
-        mut break_row_width: f32, rows: &'a mut [TextRow],
+        &mut self,
+        text: &str,
+        mut break_row_width: f32,
+        rows: &'a mut [TextRow],
     ) -> &'a [TextRow] {
         let state = self.states.last();
         let scale = font_scale(state) * self.device_px_ratio;
@@ -509,7 +526,8 @@ impl Context {
         let mut prev_iter = iter;
 
         while let Some(mut q) = iter.next() {
-            if iter.prev_glyph_index < 0 && self.alloc_text_atlas() { // can not retrieve glyph?
+            if iter.prev_glyph_index < 0 && self.alloc_text_atlas() {
+                // can not retrieve glyph?
                 iter = prev_iter;
                 q = iter.next().unwrap(); // try again
             }
@@ -519,18 +537,29 @@ impl Context {
             let _type = if [9, 11, 12, 32, 0x00a0].contains(&cp) {
                 // [\t \v \f space nbsp]
                 Codepoint::Space
-            } else if cp == 10 { // \n
-                if pcodepoint == 13 { Codepoint::Space } else { Codepoint::Newline }
-            } else if cp == 13 { // \r
-                if pcodepoint == 10 { Codepoint::Space } else { Codepoint::Newline }
-            } else if cp == 0x0085 { // NEL
+            } else if cp == 10 {
+                // \n
+                if pcodepoint == 13 {
+                    Codepoint::Space
+                } else {
+                    Codepoint::Newline
+                }
+            } else if cp == 13 {
+                // \r
+                if pcodepoint == 10 {
+                    Codepoint::Space
+                } else {
+                    Codepoint::Newline
+                }
+            } else if cp == 0x0085 {
+                // NEL
                 Codepoint::Newline
-            } else if  (cp >= 0x4E00 && cp <= 0x9FFF) ||
-                (cp >= 0x3000 && cp <= 0x30FF) ||
-                (cp >= 0xFF00 && cp <= 0xFFEF) ||
-                (cp >= 0x1100 && cp <= 0x11FF) ||
-                (cp >= 0x3130 && cp <= 0x318F) ||
-                (cp >= 0xAC00 && cp <= 0xD7AF)
+            } else if (cp >= 0x4E00 && cp <= 0x9FFF)
+                || (cp >= 0x3000 && cp <= 0x30FF)
+                || (cp >= 0xFF00 && cp <= 0xFFEF)
+                || (cp >= 0x1100 && cp <= 0x11FF)
+                || (cp >= 0x3130 && cp <= 0x318F)
+                || (cp >= 0xAC00 && cp <= 0xD7AF)
             {
                 Codepoint::CjkChar
             } else {
@@ -540,8 +569,16 @@ impl Context {
             if _type == Codepoint::Newline {
                 // Always handle new lines.
                 rows[nrows] = TextRow {
-                    start: if !row_start.is_null() { row_start } else { iter.str_0 },
-                    end: if !row_end.is_null() { row_end } else { iter.str_0 },
+                    start: if !row_start.is_null() {
+                        row_start
+                    } else {
+                        iter.str_0
+                    },
+                    end: if !row_end.is_null() {
+                        row_end
+                    } else {
+                        iter.str_0
+                    },
                     width: row_width * invscale,
                     minx: row_minx * invscale,
                     maxx: row_maxx * invscale,
@@ -562,103 +599,109 @@ impl Context {
                 row_minx = 0.0;
                 row_maxx = 0.0;
             } else if row_start.is_null() {
-            // Skip white space until the beginning of the line
-            if _type == Codepoint::Char || _type == Codepoint::CjkChar {
-                // The current char is the row so far
-                row_startx = iter.x;
-                row_start = iter.str_0;
-                row_end = iter.next;
-                row_width = iter.nextx - row_startx; // q.x1 - rowStartX;
-                row_minx = q.x0 - row_startx;
-                row_maxx = q.x1 - row_startx;
-
-                word_start = iter.str_0;
-                word_startx = iter.x;
-                word_minx = q.x0 - row_startx;
-                // Set null break point
-                break_end = row_start;
-                break_width = 0.0;
-                break_maxx = 0.0;
-            }
-        } else {
-            let next_width = iter.nextx - row_startx;
-
-            // track last non-white space character
-            if _type == Codepoint::Char || _type == Codepoint::CjkChar {
-                row_end = iter.next;
-                row_width = iter.nextx - row_startx;
-                row_maxx = q.x1 - row_startx;
-            }
-            // track last end of a word
-            if ((ptype == Codepoint::Char || ptype == Codepoint::CjkChar) && _type == Codepoint::Space)
-                || _type == Codepoint::CjkChar {
-                break_end = iter.str_0;
-                break_width = row_width;
-                break_maxx = row_maxx;
-            }
-            // track last beginning of a word
-            if ptype == Codepoint::Space && _type == Codepoint::Char || _type == Codepoint::CjkChar {
-                word_start = iter.str_0;
-                word_startx = iter.x;
-                word_minx = q.x0 - row_startx;
-            }
-
-            // Break to new line when a character is beyond break width.
-            if (_type == Codepoint::Char || _type == Codepoint::CjkChar) && next_width > break_row_width {
-                // The run length is too long, need to break to new line.
-                if break_end == row_start {
-                    // The current word is longer than the row length, just break it from here.
-                    rows[nrows] = TextRow {
-                        start: row_start,
-                        end: iter.str_0,
-                        width: row_width * invscale,
-                        minx:  row_minx * invscale,
-                        maxx:  row_maxx * invscale,
-                        next: iter.str_0,
-                    };
-                    nrows += 1;
-                    if nrows >= rows.len() {
-                        return &rows[..nrows];
-                    }
+                // Skip white space until the beginning of the line
+                if _type == Codepoint::Char || _type == Codepoint::CjkChar {
+                    // The current char is the row so far
                     row_startx = iter.x;
                     row_start = iter.str_0;
                     row_end = iter.next;
-                    row_width = iter.nextx - row_startx;
+                    row_width = iter.nextx - row_startx; // q.x1 - rowStartX;
                     row_minx = q.x0 - row_startx;
                     row_maxx = q.x1 - row_startx;
 
                     word_start = iter.str_0;
                     word_startx = iter.x;
                     word_minx = q.x0 - row_startx;
-                } else {
-                    // Break the line from the end of the last word,
-                    // and start new line from the beginning of the new.
-                    rows[nrows] = TextRow {
-                        start: row_start,
-                        end: break_end,
-                        width: break_width * invscale,
-                        minx: row_minx * invscale,
-                        maxx: break_maxx * invscale,
-                        next: word_start,
-                    };
-                    nrows += 1;
-                    if nrows >= rows.len() {
-                        return &rows[..nrows];
-                    }
-                    row_startx = word_startx;
-                    row_start = word_start;
+                    // Set null break point
+                    break_end = row_start;
+                    break_width = 0.0;
+                    break_maxx = 0.0;
+                }
+            } else {
+                let next_width = iter.nextx - row_startx;
+
+                // track last non-white space character
+                if _type == Codepoint::Char || _type == Codepoint::CjkChar {
                     row_end = iter.next;
                     row_width = iter.nextx - row_startx;
-                    row_minx = word_minx;
                     row_maxx = q.x1 - row_startx;
-                    // No change to the word start
                 }
-                // Set null break point
-                break_end = row_start;
-                break_width = 0.0;
-                break_maxx = 0.0;
+                // track last end of a word
+                if ((ptype == Codepoint::Char || ptype == Codepoint::CjkChar)
+                    && _type == Codepoint::Space)
+                    || _type == Codepoint::CjkChar
+                {
+                    break_end = iter.str_0;
+                    break_width = row_width;
+                    break_maxx = row_maxx;
+                }
+                // track last beginning of a word
+                if ptype == Codepoint::Space && _type == Codepoint::Char
+                    || _type == Codepoint::CjkChar
+                {
+                    word_start = iter.str_0;
+                    word_startx = iter.x;
+                    word_minx = q.x0 - row_startx;
+                }
+
+                // Break to new line when a character is beyond break width.
+                if (_type == Codepoint::Char || _type == Codepoint::CjkChar)
+                    && next_width > break_row_width
+                {
+                    // The run length is too long, need to break to new line.
+                    if break_end == row_start {
+                        // The current word is longer than the row length, just break it from here.
+                        rows[nrows] = TextRow {
+                            start: row_start,
+                            end: iter.str_0,
+                            width: row_width * invscale,
+                            minx: row_minx * invscale,
+                            maxx: row_maxx * invscale,
+                            next: iter.str_0,
+                        };
+                        nrows += 1;
+                        if nrows >= rows.len() {
+                            return &rows[..nrows];
+                        }
+                        row_startx = iter.x;
+                        row_start = iter.str_0;
+                        row_end = iter.next;
+                        row_width = iter.nextx - row_startx;
+                        row_minx = q.x0 - row_startx;
+                        row_maxx = q.x1 - row_startx;
+
+                        word_start = iter.str_0;
+                        word_startx = iter.x;
+                        word_minx = q.x0 - row_startx;
+                    } else {
+                        // Break the line from the end of the last word,
+                        // and start new line from the beginning of the new.
+                        rows[nrows] = TextRow {
+                            start: row_start,
+                            end: break_end,
+                            width: break_width * invscale,
+                            minx: row_minx * invscale,
+                            maxx: break_maxx * invscale,
+                            next: word_start,
+                        };
+                        nrows += 1;
+                        if nrows >= rows.len() {
+                            return &rows[..nrows];
+                        }
+                        row_startx = word_startx;
+                        row_start = word_start;
+                        row_end = iter.next;
+                        row_width = iter.nextx - row_startx;
+                        row_minx = word_minx;
+                        row_maxx = q.x1 - row_startx;
+                        // No change to the word start
+                    }
+                    // Set null break point
+                    break_end = row_start;
+                    break_width = 0.0;
+                    break_maxx = 0.0;
+                }
             }
-        }
 
             pcodepoint = iter.codepoint;
             ptype = _type;

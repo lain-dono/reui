@@ -3,12 +3,12 @@ use slotmap::Key;
 use std::ptr::null;
 
 use crate::{
-    backend::{BackendGL, Backend, Image, ImageFlags, TEXTURE_ALPHA, TEXTURE_RGBA},
-    cache::{PathCache, LineCap, LineJoin},
-    vg::*,
-    font::*,
-    math::{Offset, Transform, Color},
+    backend::{Backend, BackendGL, Image, ImageFlags, TEXTURE_ALPHA, TEXTURE_RGBA},
+    cache::{LineCap, LineJoin, PathCache},
     canvas::Picture,
+    font::*,
+    math::{Color, Offset, Transform},
+    vg::*,
 };
 
 const INIT_COMMANDS_SIZE: usize = 256;
@@ -177,7 +177,9 @@ impl Context {
             return;
         }
 
-        let (iw, ih) = self.image_size(font_image).expect("font image in end_frame (1)");
+        let (iw, ih) = self
+            .image_size(font_image)
+            .expect("font image in end_frame (1)");
         let mut j = 0;
         let font_images = self.font_images;
         for &m in &font_images {
@@ -224,7 +226,8 @@ impl Context {
         );
 
         Self {
-            params, fs,
+            params,
+            fs,
 
             states: States::new(),
 
@@ -319,14 +322,32 @@ impl Context {
 
     /// Creates image from specified image data.
     /// Returns handle to the image.
-    pub fn create_image_rgba(&mut self, w: u32, h: u32, flags: ImageFlags, data: *const u8) -> Image {
+    pub fn create_image_rgba(
+        &mut self,
+        w: u32,
+        h: u32,
+        flags: ImageFlags,
+        data: *const u8,
+    ) -> Image {
         self.params.create_texture(TEXTURE_RGBA, w, h, flags, data)
     }
 
     /// Updates image data specified by image handle.
     pub fn update_image(&mut self, image: Image, data: &[u8]) {
-        let (w, h) = self.params.texture_size(image).expect("update_image available");
-        self.params.update_texture(image, 0, 0, w, h, data);
+        let (w, h) = self
+            .params
+            .texture_size(image)
+            .expect("update_image available");
+        self.params.update_texture(
+            crate::backend::SubImage {
+                image,
+                x: 0,
+                y: 0,
+                w,
+                h,
+            },
+            data,
+        );
     }
 
     /// Returns the dimensions of a created image.

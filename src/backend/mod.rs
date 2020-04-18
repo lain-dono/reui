@@ -1,11 +1,12 @@
+mod gl_backend;
 mod gl_shader;
-mod params;
+mod gl_textures;
 
 pub mod gl {
     include!(concat!(env!("OUT_DIR"), "/gl_bindings.rs"));
 }
 
-pub use self::params::{BackendGL, NFlags};
+pub use self::gl_backend::BackendGL;
 
 slotmap::new_key_type! {
     pub struct Image;
@@ -25,9 +26,25 @@ bitflags::bitflags!(
 
 use crate::{
     cache::{Path, Vertex},
-    math::Transform,
     vg::{Paint, Scissor},
 };
+
+fn check_error(msg: &str) {
+    if true {
+        let err = unsafe { gl::GetError() };
+        if err != gl::NO_ERROR {
+            log::debug!("GL Error {:08x} after {}", err, msg);
+        }
+    }
+}
+
+pub struct SubImage {
+    pub image: Image,
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+}
 
 pub trait Backend {
     fn reset(&mut self);
@@ -58,18 +75,8 @@ pub trait Backend {
 
     fn texture_size(&self, image: Image) -> Option<(u32, u32)>;
 
-    fn update_texture(
-        &mut self,
-        image: Image,
-        _x: i32,
-        y: i32,
-        _w: u32,
-        h: u32,
-        data: &[u8],
-    ) -> bool;
-
+    fn update_texture(&mut self, image: SubImage, data: &[u8]) -> bool;
     fn delete_texture(&mut self, image: Image) -> bool;
-
     fn create_texture(
         &mut self,
         kind: i32,

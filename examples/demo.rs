@@ -14,7 +14,6 @@ fn main() {
         perf::{GraphStyle, PerfGraph},
         //Context,
         BackendGL,
-        NFlags,
         gl,
     };
 
@@ -41,8 +40,7 @@ fn main() {
         glfwSetKeyCallback(window, key);
         glfwMakeContextCurrent(window);
 
-        let flags = NFlags::ANTIALIAS | NFlags::STENCIL_STROKES | NFlags::DEBUG;
-        let mut vg = Context::new(BackendGL::new(flags));
+        let mut vg = Context::new(BackendGL::new());
 
         let data = DemoData::new(&mut vg);
 

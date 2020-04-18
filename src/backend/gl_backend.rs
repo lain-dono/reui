@@ -6,12 +6,15 @@ use crate::{
     vg::{Paint, Scissor},
 };
 
-use super::gl::{
-    self,
-    types::{GLint, GLsizei, GLsizeiptr, GLuint},
+use super::{
+    gl::{
+        self,
+        types::{GLint, GLsizei, GLsizeiptr, GLuint},
+    },
+    gl_shader::Shader,
+    gl_textures::TextureManager,
+    Image, ImageFlags, TEXTURE_RGBA,
 };
-use super::gl_shader::Shader;
-use super::{Image, ImageFlags, TEXTURE_RGBA};
 
 use slotmap::Key;
 
@@ -99,21 +102,6 @@ fn max_vert_count(paths: &[Path]) -> usize {
     })
 }
 
-bitflags::bitflags!(
-    #[repr(transparent)]
-    pub struct NFlags: i32 {
-        // Flag indicating if geometry based anti-aliasing is used (may not be needed when using MSAA).
-        const ANTIALIAS = 1;
-        // Flag indicating if strokes should be drawn using stencil buffer. The rendering will be a little
-        // slower, but path overlaps (i.e. self-intersecting or sharp turns) will be drawn just once.
-        const STENCIL_STROKES = 1<<1;
-        // Flag indicating that additional debug checks are done.
-        const DEBUG = 1<<2;
-    }
-);
-
-//const IMAGE_PREMULTIPLIED: i32 = 1<<4;
-
 const SHADER_FILLGRAD: f32 = 0.0;
 const SHADER_FILLIMG: f32 = 1.0;
 const SHADER_SIMPLE: f32 = 2.0;
@@ -183,40 +171,6 @@ struct PathGL {
     stroke_count: usize,
 }
 
-#[derive(Debug)]
-struct Texture {
-    tex: GLuint,
-
-    width: u32,
-    height: u32,
-
-    kind: i32,
-    flags: ImageFlags,
-}
-
-impl Drop for Texture {
-    fn drop(&mut self) {
-        if self.tex != 0 {
-            unsafe {
-                gl::DeleteTextures(1, &self.tex);
-            }
-            self.tex = 0;
-        }
-    }
-}
-
-impl Default for Texture {
-    fn default() -> Self {
-        Self {
-            tex: 0,
-            width: 0,
-            height: 0,
-            kind: 0,
-            flags: ImageFlags::empty(),
-        }
-    }
-}
-
 #[repr(u8)]
 #[derive(PartialEq, Eq)]
 enum CallKind {
@@ -281,26 +235,24 @@ pub struct BackendGL {
     verts: Vec<Vertex>,
     uniforms: Vec<FragUniforms>,
 
-    textures: slotmap::SlotMap<Image, Texture>,
+    textures: TextureManager<Image>,
 
     shader: Shader,
     view: [f32; 2],
 
     vert_buf: Buffer,
-    flags: NFlags,
 }
 
 impl BackendGL {
-    pub fn new(flags: NFlags) -> Self {
+    pub fn new() -> Self {
         check_error("init");
         let shader = Shader::new();
         check_error("shader & uniform locations");
 
         Self {
             shader,
-            flags,
             view: [0f32; 2],
-            textures: slotmap::SlotMap::with_key(),
+            textures: TextureManager::new(),
             vert_buf: Buffer::new(),
 
             // Per frame buffers
@@ -310,7 +262,6 @@ impl BackendGL {
             uniforms: Vec::new(),
         }
     }
-
 
     fn alloc_verts(&mut self, n: usize) -> usize {
         let start = self.verts.len();
@@ -332,15 +283,7 @@ impl BackendGL {
     fn set_uniforms(&self, offset: usize, image: Image) {
         let frag = self.frag_uniform(offset);
         self.shader.bind_frag(&frag.array);
-        unsafe {
-            if !image.is_null() {
-                let tex = self.find_texture(image);
-                gl::BindTexture(gl::TEXTURE_2D, tex.map(|t| t.tex).unwrap_or(0));
-                check_error("tex paint tex");
-            } else {
-                gl::BindTexture(gl::TEXTURE_2D, 0);
-            }
-        }
+        self.textures.bind(image);
     }
 
     fn frag_uniform(&self, idx: usize) -> &FragUniforms {
@@ -349,10 +292,6 @@ impl BackendGL {
 
     fn frag_uniform_mut<'a>(&mut self, idx: usize) -> &'a mut FragUniforms {
         unsafe { &mut from_raw_parts_mut(self.uniforms.as_mut_ptr(), self.uniforms.len())[idx] }
-    }
-
-    fn find_texture(&self, image: Image) -> Option<&Texture> {
-        self.textures.get(image)
     }
 
     fn convert_paint(
@@ -384,7 +323,7 @@ impl BackendGL {
         frag.set_stroke_thr(stroke_thr);
 
         if !paint.image.is_null() {
-            let tex = match self.find_texture(paint.image) {
+            let tex = match self.textures.find_texture(paint.image) {
                 Some(tex) => tex,
                 None => return false,
             };
@@ -473,15 +412,13 @@ impl BackendGL {
         self.set_uniforms(data.uniform_offset + 1, data.image);
         check_error("fill fill");
 
-        if self.flags.contains(NFlags::ANTIALIAS) {
-            unsafe {
-                gl::StencilFunc(gl::EQUAL, 0x00, 0xff);
-                gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
-            }
-            // Draw fringes
-            for path in &self.paths[start..end] {
-                gl_draw_strip(path.stroke_offset, path.stroke_count);
-            }
+        unsafe {
+            gl::StencilFunc(gl::EQUAL, 0x00, 0xff);
+            gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
+        }
+        // Draw fringes
+        for path in &self.paths[start..end] {
+            gl_draw_strip(path.stroke_offset, path.stroke_count);
         }
 
         // Draw fill
@@ -502,61 +439,52 @@ impl BackendGL {
         let start = path_offset as usize;
         let end = start + path_count as usize;
 
-        if self.flags.contains(NFlags::STENCIL_STROKES) {
-            unsafe {
-                gl::Enable(gl::STENCIL_TEST);
-                gl::StencilMask(0xff);
-            }
+        unsafe {
+            gl::Enable(gl::STENCIL_TEST);
+            gl::StencilMask(0xff);
+        }
 
-            // Fill the stroke base without overlap
-            unsafe {
-                gl::StencilFunc(gl::EQUAL, 0x0, 0xff);
-                gl::StencilOp(gl::KEEP, gl::KEEP, gl::INCR);
-            }
-            self.set_uniforms(data.uniform_offset + 1, data.image);
-            check_error("stroke fill 0");
-            for path in &self.paths[start..end] {
-                gl_draw_strip(path.stroke_offset, path.stroke_count);
-            }
+        // Fill the stroke base without overlap
+        unsafe {
+            gl::StencilFunc(gl::EQUAL, 0x0, 0xff);
+            gl::StencilOp(gl::KEEP, gl::KEEP, gl::INCR);
+        }
+        self.set_uniforms(data.uniform_offset + 1, data.image);
+        check_error("stroke fill 0");
+        for path in &self.paths[start..end] {
+            gl_draw_strip(path.stroke_offset, path.stroke_count);
+        }
 
-            // Draw anti-aliased pixels.
-            self.set_uniforms(data.uniform_offset, data.image);
-            unsafe {
-                gl::StencilFunc(gl::EQUAL, 0x00, 0xff);
-                gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
-            }
-            for path in &self.paths[start..end] {
-                gl_draw_strip(path.stroke_offset, path.stroke_count);
-            }
+        // Draw anti-aliased pixels.
+        self.set_uniforms(data.uniform_offset, data.image);
+        unsafe {
+            gl::StencilFunc(gl::EQUAL, 0x00, 0xff);
+            gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
+        }
+        for path in &self.paths[start..end] {
+            gl_draw_strip(path.stroke_offset, path.stroke_count);
+        }
 
-            // Clear stencil buffer.
-            unsafe {
-                gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
-                gl::StencilFunc(gl::ALWAYS, 0x0, 0xff);
-                gl::StencilOp(gl::ZERO, gl::ZERO, gl::ZERO);
-            }
-            check_error("stroke fill 1");
-            for path in &self.paths[start..end] {
-                gl_draw_strip(path.stroke_offset, path.stroke_count);
-            }
+        // Clear stencil buffer.
+        unsafe {
+            gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
+            gl::StencilFunc(gl::ALWAYS, 0x0, 0xff);
+            gl::StencilOp(gl::ZERO, gl::ZERO, gl::ZERO);
+        }
+        check_error("stroke fill 1");
+        for path in &self.paths[start..end] {
+            gl_draw_strip(path.stroke_offset, path.stroke_count);
+        }
 
-            unsafe {
-                gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
-                gl::Disable(gl::STENCIL_TEST);
-            }
+        unsafe {
+            gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+            gl::Disable(gl::STENCIL_TEST);
+        }
 
         //convertPaint(
         //  gl,
         //  self.frag_uniform_mut(gl, uniform_offset + 1), paint,
         // scissor, strokeWidth, fringe, 1.0 - 0.5/255.0);
-        } else {
-            self.set_uniforms(data.uniform_offset, data.image);
-            check_error("stroke fill");
-            // Draw Strokes
-            for path in &self.paths[start..end] {
-                gl_draw_strip(path.stroke_offset, path.stroke_count);
-            }
-        }
     }
 }
 
@@ -700,20 +628,13 @@ impl super::Backend for BackendGL {
         }
 
         // Fill shader
-        let uniform_offset;
-        if self.flags.contains(NFlags::STENCIL_STROKES) {
-            uniform_offset = self.alloc_frag_uniforms(2);
+        let uniform_offset = self.alloc_frag_uniforms(2);
 
-            let a = self.frag_uniform_mut(uniform_offset);
-            let b = self.frag_uniform_mut(uniform_offset + 1);
+        let a = self.frag_uniform_mut(uniform_offset);
+        let b = self.frag_uniform_mut(uniform_offset + 1);
 
-            self.convert_paint(a, paint, scissor, stroke_width, fringe, -1.0);
-            self.convert_paint(b, paint, scissor, stroke_width, fringe, 1.0 - 0.5 / 255.0);
-        } else {
-            uniform_offset = self.alloc_frag_uniforms(1);
-            let a = self.frag_uniform_mut(uniform_offset);
-            self.convert_paint(a, paint, scissor, stroke_width, fringe, -1.0);
-        }
+        self.convert_paint(a, paint, scissor, stroke_width, fringe, -1.0);
+        self.convert_paint(b, paint, scissor, stroke_width, fringe, 1.0 - 0.5 / 255.0);
 
         self.calls.push(Call {
             kind: CallKind::STROKE,
@@ -824,62 +745,16 @@ impl super::Backend for BackendGL {
     }
 
     fn texture_size(&self, image: Image) -> Option<(u32, u32)> {
-        self.find_texture(image).map(|t| (t.width, t.height))
+        self.textures.texture_size(image)
     }
 
-    fn update_texture(
-        &mut self,
-        image: Image,
-        _x: i32,
-        y: i32,
-        _w: u32,
-        h: u32,
-        data: &[u8],
-    ) -> bool {
-        let tex = if let Some(tex) = self.find_texture(image) {
-            tex
-        } else {
-            return false;
-        };
-
-        // No support for all of skip, need to update a whole row at a time.
-        let (kind, stride) = if tex.kind == TEXTURE_RGBA {
-            (gl::RGBA, tex.width * 4)
-        } else {
-            (gl::LUMINANCE, tex.width)
-        };
-
-        let stride = y * stride as i32;
-        let data = &data[stride as usize..];
-
-        let x = 0;
-        let w = tex.width;
-
-        unsafe {
-            gl::BindTexture(gl::TEXTURE_2D, tex.tex);
-            gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
-
-            gl::TexSubImage2D(
-                gl::TEXTURE_2D,
-                0,
-                x,
-                y,
-                w as i32,
-                h as i32,
-                kind,
-                gl::UNSIGNED_BYTE,
-                data.as_ptr() as *const libc::c_void,
-            );
-
-            gl::PixelStorei(gl::UNPACK_ALIGNMENT, 4);
-            gl::BindTexture(gl::TEXTURE_2D, 0);
-        }
-
-        true
+    fn update_texture(&mut self, image: super::SubImage, data: &[u8]) -> bool {
+        self.textures
+            .update_texture(image.image, image.x, image.y, image.w, image.h, data)
     }
 
     fn delete_texture(&mut self, image: Image) -> bool {
-        self.textures.remove(image).is_some()
+        self.textures.delete_texture(image)
     }
 
     fn create_texture(
@@ -890,70 +765,6 @@ impl super::Backend for BackendGL {
         flags: ImageFlags,
         data: *const u8,
     ) -> Image {
-        // GL 1.4 and later has support for generating mipmaps using a tex parameter.
-        let mipmaps = gl::FALSE as i32;
-
-        let kind_tex = if kind == TEXTURE_RGBA {
-            gl::RGBA
-        } else {
-            gl::LUMINANCE
-        };
-
-        let min = if flags.contains(ImageFlags::NEAREST) {
-            gl::NEAREST
-        } else {
-            gl::LINEAR
-        };
-
-        let mag = if flags.contains(ImageFlags::NEAREST) {
-            gl::NEAREST
-        } else {
-            gl::LINEAR
-        };
-        let wrap = if flags.contains(ImageFlags::REPEAT) {
-            gl::REPEAT
-        } else {
-            gl::CLAMP_TO_EDGE
-        };
-
-        let mut tex = 0;
-        unsafe {
-            gl::GenTextures(1, &mut tex);
-            gl::BindTexture(gl::TEXTURE_2D, tex);
-            gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
-
-            gl::TexParameteri(gl::TEXTURE_2D, gl::GENERATE_MIPMAP_HINT, mipmaps);
-
-            gl::TexImage2D(
-                gl::TEXTURE_2D,
-                0,
-                kind_tex as i32,
-                w as i32,
-                h as i32,
-                0,
-                kind_tex,
-                gl::UNSIGNED_BYTE,
-                data as *const libc::c_void,
-            );
-
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, min as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, mag as i32);
-
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, wrap as i32);
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, wrap as i32);
-
-            gl::PixelStorei(gl::UNPACK_ALIGNMENT, 4);
-
-            check_error("create tex");
-            gl::BindTexture(gl::TEXTURE_2D, 0);
-        }
-
-        self.textures.insert(Texture {
-            kind,
-            flags,
-            tex,
-            width: w,
-            height: h,
-        })
+        self.textures.create_texture(kind, w, h, flags, data)
     }
 }
