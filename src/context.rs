@@ -36,10 +36,6 @@ impl Context {
         self.backend.begin_frame(width, height, dpi);
     }
 
-    pub fn cancel_frame(&mut self) {
-        self.backend.cancel_frame()
-    }
-
     pub fn end_frame(&mut self) {
         self.backend.end_frame();
     }

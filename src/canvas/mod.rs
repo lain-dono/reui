@@ -164,13 +164,9 @@ impl<'a> Canvas<'a> {
                 paint.stroke_miter_limit,
             );
 
-            self.ctx.backend.draw_stroke(
-                paint_stroke,
-                scissor,
-                fringe,
-                stroke_width,
-                &cache.paths,
-            );
+            self.ctx
+                .backend
+                .draw_stroke(paint_stroke, scissor, fringe, stroke_width, &cache.paths);
         } else {
             let w = if paint.is_antialias {
                 cache.fringe_width

@@ -116,13 +116,7 @@ impl Default for FragUniforms {
 }
 
 impl FragUniforms {
-    fn fill(
-        paint: &Paint,
-        scissor: Scissor,
-        width: f32,
-        fringe: f32,
-        stroke_thr: f32,
-    ) -> Self {
+    fn fill(paint: &Paint, scissor: Scissor, width: f32, fringe: f32, stroke_thr: f32) -> Self {
         let (scissor_mat, scissor_ext, scissor_scale);
         if scissor.extent[0] < -0.5 || scissor.extent[1] < -0.5 {
             scissor_mat = [0.0; 4];
@@ -196,8 +190,8 @@ struct PathGL {
 #[repr(u8)]
 #[derive(PartialEq, Eq)]
 enum CallKind {
-    FILL,
     CONVEXFILL,
+    FILL,
     STROKE,
 }
 
@@ -284,115 +278,15 @@ impl BackendGL {
 
     fn alloc_paths(&mut self, count: u32) -> RawSlice {
         let start = self.paths.len();
-        self.paths.resize_with(start + count as usize, Default::default);
+        self.paths
+            .resize_with(start + count as usize, Default::default);
         RawSlice::new(start as u32, count)
     }
 
     fn set_uniforms(&self, offset: usize) {
         let uniform = (&self.uniforms[offset]) as *const _ as *const _;
         unsafe { gl::Uniform4fv(self.shader.loc_frag, 7, uniform) }
-    }
-
-    fn fill(&self, uniform_offset: usize, path: RawSlice, triangle: RawSlice) {
-        let range = path.range();
-
-        // Draw shapes
-        unsafe {
-            gl::Enable(gl::STENCIL_TEST);
-            gl::StencilMask(0xff);
-            gl::StencilFunc(gl::ALWAYS, 0, 0xff);
-            gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
-        }
-
-        // set bindpoint for solid loc
-        self.set_uniforms(uniform_offset);
-        check_error("fill simple");
-
-        unsafe {
-            gl::StencilOpSeparate(gl::FRONT, gl::KEEP, gl::KEEP, gl::INCR_WRAP);
-            gl::StencilOpSeparate(gl::BACK, gl::KEEP, gl::KEEP, gl::DECR_WRAP);
-            gl::Disable(gl::CULL_FACE);
-        }
-        for path in &self.paths[range.clone()] {
-            gl_draw_strip(path.fill);
-        }
-
-        // Draw anti-aliased pixels
-        unsafe {
-            gl::Enable(gl::CULL_FACE);
-            gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
-        }
-
-        self.set_uniforms(uniform_offset + 1);
-        check_error("fill fill");
-
-        unsafe {
-            gl::StencilFunc(gl::EQUAL, 0x00, 0xff);
-            gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
-        }
-        // Draw fringes
-        for path in &self.paths[range] {
-            gl_draw_strip(path.stroke);
-        }
-
-        // Draw fill
-        if triangle.count == 4 {
-            unsafe {
-                gl::StencilFunc(gl::NOTEQUAL, 0x00, 0xff);
-                gl::StencilOp(gl::ZERO, gl::ZERO, gl::ZERO);
-            }
-            gl_draw_strip(RawSlice::new(triangle.offset, 4));
-        }
-
-        unsafe {
-            gl::Disable(gl::STENCIL_TEST);
-        }
-    }
-
-    fn stroke(&self, uniform_offset: usize, path: RawSlice) {
-        let range = path.range();
-
-        unsafe {
-            gl::Enable(gl::STENCIL_TEST);
-            gl::StencilMask(0xff);
-        }
-
-        // Fill the stroke base without overlap
-        unsafe {
-            gl::StencilFunc(gl::EQUAL, 0x0, 0xff);
-            gl::StencilOp(gl::KEEP, gl::KEEP, gl::INCR);
-        }
-        self.set_uniforms(uniform_offset + 1);
-        check_error("stroke fill 0");
-        for path in &self.paths[range.clone()] {
-            gl_draw_strip(path.stroke);
-        }
-
-        // Draw anti-aliased pixels.
-        self.set_uniforms(uniform_offset);
-        unsafe {
-            gl::StencilFunc(gl::EQUAL, 0x00, 0xff);
-            gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
-        }
-        for path in &self.paths[range.clone()] {
-            gl_draw_strip(path.stroke);
-        }
-
-        // Clear stencil buffer.
-        unsafe {
-            gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
-            gl::StencilFunc(gl::ALWAYS, 0x0, 0xff);
-            gl::StencilOp(gl::ZERO, gl::ZERO, gl::ZERO);
-        }
-        check_error("stroke fill 1");
-        for path in &self.paths[range] {
-            gl_draw_strip(path.stroke);
-        }
-
-        unsafe {
-            gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
-            gl::Disable(gl::STENCIL_TEST);
-        }
+        check_error("set_uniforms");
     }
 }
 
@@ -437,7 +331,7 @@ impl super::Backend for BackendGL {
         }
 
         // Setup uniforms for draw calls
-        let (triangle_offset, uniform_offset) = if kind == CallKind::FILL {
+        let uniform_offset = if kind == CallKind::FILL {
             // Quad
             let quad = &mut self.verts[offset as usize..offset as usize + 4];
             quad[0].set([bounds[2], bounds[3]], [0.5, 1.0]);
@@ -453,18 +347,18 @@ impl super::Backend for BackendGL {
 
             // Fill shader
             ab[1] = FragUniforms::fill(&paint, scissor, fringe, fringe, -1.0);
-            (offset, uniform_offset)
+            uniform_offset
         } else {
             // Fill shader
             let (uniform_offset, a) = self.uniforms.alloc(1);
             a[0] = FragUniforms::fill(&paint, scissor, fringe, fringe, -1.0);
-            (0, uniform_offset)
+            uniform_offset
         };
 
         self.calls.push(Call {
             kind,
             uniform_offset,
-            triangle: RawSlice::new(triangle_offset, triangle_count),
+            triangle: RawSlice::new(offset, triangle_count),
             path,
         })
     }
@@ -516,20 +410,15 @@ impl super::Backend for BackendGL {
         }
 
         unsafe {
-            gl::UseProgram(self.shader.prog);
-
             // Setup require GL state.
 
+            gl::UseProgram(self.shader.prog);
             gl::Enable(gl::CULL_FACE);
             gl::CullFace(gl::BACK);
             gl::FrontFace(gl::CCW);
             gl::Enable(gl::BLEND);
             gl::Disable(gl::DEPTH_TEST);
-            gl::Disable(gl::SCISSOR_TEST);
             gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
-            gl::StencilMask(0xffff_ffff);
-            gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
-            gl::StencilFunc(gl::ALWAYS, 0, 0xffff_ffff);
             gl::ActiveTexture(gl::TEXTURE0);
 
             // upload vertex data
@@ -552,15 +441,71 @@ impl super::Backend for BackendGL {
 
             for call in &self.calls {
                 match call.kind {
-                    CallKind::FILL => self.fill(call.uniform_offset, call.path, call.triangle),
                     CallKind::CONVEXFILL => {
+                        gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+                        stencil(0, None);
                         self.set_uniforms(call.uniform_offset);
                         for path in &self.paths[call.path.range()] {
                             gl_draw_strip(path.fill);
                             gl_draw_strip(path.stroke); // fringes
                         }
                     }
-                    CallKind::STROKE => self.stroke(call.uniform_offset, call.path),
+
+                    CallKind::FILL => {
+                        let range = call.path.range();
+
+                        // Draw shapes
+                        gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
+                        gl::Disable(gl::CULL_FACE);
+                        self.set_uniforms(call.uniform_offset);
+                        stencil(0, Some(FILL_SHAPES));
+                        for path in &self.paths[range.clone()] {
+                            gl_draw_strip(path.fill);
+                        }
+
+                        // Draw anti-aliased pixels
+                        gl::Enable(gl::CULL_FACE);
+                        gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+
+                        // Draw fringes
+                        self.set_uniforms(call.uniform_offset + 1);
+                        stencil(0, Some(FILL_FRINGES));
+                        for path in &self.paths[range] {
+                            gl_draw_strip(path.stroke);
+                        }
+
+                        // Draw fill
+                        if call.triangle.count == 4 {
+                            stencil(0, Some(FILL_END));
+                            gl_draw_strip(call.triangle);
+                        }
+                    }
+                    CallKind::STROKE => {
+                        let range = call.path.range();
+
+                        gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+
+                        // Fill the stroke base without overlap
+                        stencil(0, Some(STROKE_BASE));
+                        self.set_uniforms(call.uniform_offset + 1);
+                        for path in &self.paths[range.clone()] {
+                            gl_draw_strip(path.stroke);
+                        }
+
+                        // Draw anti-aliased pixels.
+                        self.set_uniforms(call.uniform_offset);
+                        stencil(0, Some(STROKE_AA));
+                        for path in &self.paths[range.clone()] {
+                            gl_draw_strip(path.stroke);
+                        }
+
+                        // Clear stencil buffer
+                        gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
+                        stencil(0, Some(STROKE_CLEAR));
+                        for path in &self.paths[range] {
+                            gl_draw_strip(path.stroke);
+                        }
+                    }
                 }
             }
 
@@ -573,5 +518,116 @@ impl super::Backend for BackendGL {
 
         // Reset calls
         self.cancel_frame();
+    }
+}
+
+const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
+
+macro_rules! stencil_state {
+    ($name: ident, $front:expr, $back:expr) => {
+        const $name: wgpu::DepthStencilStateDescriptor = stencil_state(FORMAT, $front, $back);
+    };
+}
+
+const fn stencil_state(
+    format: wgpu::TextureFormat,
+    stencil_front: wgpu::StencilStateFaceDescriptor,
+    stencil_back: wgpu::StencilStateFaceDescriptor,
+) -> wgpu::DepthStencilStateDescriptor {
+    wgpu::DepthStencilStateDescriptor {
+        format,
+        depth_write_enabled: false,
+        depth_compare: wgpu::CompareFunction::Always,
+        stencil_front,
+        stencil_back,
+        stencil_read_mask: 0xFF,
+        stencil_write_mask: 0xFF,
+    }
+}
+
+stencil_state!(FILL_SHAPES, ALWAYS_KEEP_INCR_WRAP, ALWAYS_KEEP_DECR_WRAP);
+stencil_state!(FILL_FRINGES, EQ_KEEP, EQ_KEEP);
+stencil_state!(FILL_END, NE_ZERO, NE_ZERO);
+
+stencil_state!(STROKE_BASE, EQ_KEEP_INCR, EQ_KEEP_INCR);
+stencil_state!(STROKE_AA, EQ_KEEP, EQ_KEEP);
+stencil_state!(STROKE_CLEAR, ALWAYS_ZERO, ALWAYS_ZERO);
+
+macro_rules! stencil_face {
+    ($name:ident, $comp:ident, $fail:ident, $pass:ident) => {
+        const $name: wgpu::StencilStateFaceDescriptor = wgpu::StencilStateFaceDescriptor {
+            compare: wgpu::CompareFunction::$comp,
+            fail_op: wgpu::StencilOperation::$fail,
+            depth_fail_op: wgpu::StencilOperation::$fail,
+            pass_op: wgpu::StencilOperation::$pass,
+        };
+    };
+}
+
+stencil_face!(ALWAYS_ZERO, Always, Zero, Zero);
+stencil_face!(NE_ZERO, NotEqual, Zero, Zero);
+stencil_face!(EQ_KEEP, Equal, Keep, Keep);
+stencil_face!(EQ_KEEP_INCR, Equal, Keep, IncrementClamp);
+stencil_face!(ALWAYS_KEEP_INCR_WRAP, Always, Keep, IncrementWrap);
+stencil_face!(ALWAYS_KEEP_DECR_WRAP, Always, Keep, DecrementWrap);
+
+unsafe fn stencil(reference: u32, state: Option<wgpu::DepthStencilStateDescriptor>) {
+    // ignore: format, depth_write_enabled, depth_compare
+    if let Some(state) = state {
+        gl::Enable(gl::STENCIL_TEST);
+
+        assert_eq!(state.stencil_write_mask, state.stencil_read_mask);
+
+        let mask = state.stencil_write_mask;
+        sep_stencil(gl::FRONT, state.stencil_front, reference, mask);
+        sep_stencil(gl::BACK, state.stencil_back, reference, mask);
+    } else {
+        gl::Disable(gl::STENCIL_TEST);
+
+        gl::StencilMask(0xffff_ffff);
+        gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
+        gl::StencilFunc(gl::ALWAYS, 0, 0xffff_ffff);
+    }
+    check_error("stencil");
+}
+
+unsafe fn sep_stencil(
+    face: gl::types::GLenum,
+    state: wgpu::StencilStateFaceDescriptor,
+    reference: u32,
+    mask: u32,
+) {
+    let func = match state.compare {
+        wgpu::CompareFunction::Undefined => unimplemented!(),
+        wgpu::CompareFunction::Never => gl::NEVER,
+        wgpu::CompareFunction::Less => gl::LESS,
+        wgpu::CompareFunction::Equal => gl::EQUAL,
+        wgpu::CompareFunction::LessEqual => gl::LEQUAL,
+        wgpu::CompareFunction::Greater => gl::GREATER,
+        wgpu::CompareFunction::NotEqual => gl::NOTEQUAL,
+        wgpu::CompareFunction::GreaterEqual => gl::GEQUAL,
+        wgpu::CompareFunction::Always => gl::ALWAYS,
+    };
+
+    let sfail = conv_op(state.fail_op);
+    let dpfail = conv_op(state.depth_fail_op);
+    let dppass = conv_op(state.pass_op);
+
+    assert_eq!(sfail, dpfail);
+
+    gl::StencilOpSeparate(face, sfail, dpfail, dppass);
+    gl::StencilFuncSeparate(face, func, reference as i32, mask);
+}
+
+fn conv_op(op: wgpu::StencilOperation) -> gl::types::GLenum {
+    match op {
+        wgpu::StencilOperation::Keep => gl::KEEP,
+        wgpu::StencilOperation::Zero => gl::ZERO,
+        wgpu::StencilOperation::Replace => gl::REPLACE,
+        wgpu::StencilOperation::Invert => gl::INVERT,
+        wgpu::StencilOperation::IncrementClamp => gl::INCR,
+        wgpu::StencilOperation::DecrementClamp => gl::DECR,
+        wgpu::StencilOperation::IncrementWrap => gl::INCR_WRAP,
+        wgpu::StencilOperation::DecrementWrap => gl::DECR_WRAP,
     }
 }
