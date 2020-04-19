@@ -1,6 +1,6 @@
+mod commands;
 mod gl_backend;
 mod gl_shader;
-
 mod paint;
 
 pub mod gl {
