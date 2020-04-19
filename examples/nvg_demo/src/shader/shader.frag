@@ -57,18 +57,16 @@ void main() {
         discard;
     }
 
-    vec4 color;
-    if (state.type == 0) {
-        // Stencil fill
-        color = vec4(1.0, 1.0, 1.0, 1.0);
-    } else if (state.type == 2) {
+    if (state.type == 2) {
         // Calculate gradient color using box gradient
         vec2 pt = applyTransform(state.paint_transform, v_Position);
         float d = clamp((sdroundrect(pt, state.extent, state.radius) + state.feather*0.5) / state.feather, 0.0, 1.0);
-        color = mix(state.inner_color, state.outer_color,d);
+        vec4 color = mix(state.inner_color, state.outer_color,d);
         // Combine alpha
         color *= strokeAlpha * scissor;
+        Target0 = color;
+    } else if (state.type == 0) {
+        // Stencil fill
+        Target0 = vec4(1.0, 1.0, 1.0, 1.0);
     }
-
-    Target0 = color;
 }

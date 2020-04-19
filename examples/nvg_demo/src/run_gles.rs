@@ -44,8 +44,15 @@ pub fn main() {
 
         glfwSetTime(0.0);
 
+        let mut counter = crate::time::Counter::new();
+
         while !glfwWindowShouldClose(window) {
-            let time = glfwGetTime();
+            let _time = glfwGetTime();
+            let time = counter.update();
+
+            if counter.index == 0 {
+                println!("awerage: {}ms", counter.average_ms());
+            }
 
             let (mut mx, mut my) = (0.0, 0.0);
             glfwGetCursorPos(window, &mut mx, &mut my);

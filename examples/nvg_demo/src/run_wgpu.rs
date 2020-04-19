@@ -6,8 +6,8 @@ use winit::{
     window::Window,
 };
 
-use wgpu_vg::backend::{CallKind, CmdBuffer, FragUniforms, Paint, Scissor};
-use wgpu_vg::cache::{Path, Vertex};
+use wgpu_vg::backend::{CallKind, CmdBuffer, FragUniforms};
+use wgpu_vg::cache::Vertex;
 use wgpu_vg::canvas::Canvas;
 use wgpu_vg::context::Context;
 use wgpu_vg::math::{point2, rect};
@@ -49,6 +49,8 @@ struct Pipeline {
     frag: [wgpu::Buffer; 2],
     bind: [wgpu::BindGroup; 2],
 
+    bind_layout: wgpu::BindGroupLayout,
+
     convex: wgpu::RenderPipeline,
     fill_shapes: wgpu::RenderPipeline,
 
@@ -80,7 +82,7 @@ impl Pipeline {
             [a, b]
         };
 
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             bindings: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -97,7 +99,7 @@ impl Pipeline {
         });
 
         let b0 = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &layout,
+            layout: &bind_layout,
             bindings: &[
                 wgpu::Binding {
                     binding: 0,
@@ -118,7 +120,7 @@ impl Pipeline {
         });
 
         let b1 = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &layout,
+            layout: &bind_layout,
             bindings: &[
                 wgpu::Binding {
                     binding: 0,
@@ -139,13 +141,15 @@ impl Pipeline {
         });
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            bind_group_layouts: &[&layout],
+            bind_group_layouts: &[&bind_layout],
         });
 
         Self {
             view,
             frag,
             bind: [b0, b1],
+
+            bind_layout,
 
             convex: PipelineBuilder::convex().build(device, &layout, shader),
 
@@ -184,9 +188,8 @@ impl Pipeline {
             let ptr = cmd.verts.as_ptr() as *const _;
             let len = cmd.verts.len();
             let data: &[u8] = unsafe { std::slice::from_raw_parts(ptr, len * v_size) };
-            let size = data.len() as wgpu::BufferAddress;
             (
-                size,
+                data.len() as wgpu::BufferAddress,
                 device.create_buffer_with_data(&data, wgpu::BufferUsage::VERTEX),
             )
         };
@@ -195,7 +198,8 @@ impl Pipeline {
             let ptr = cmd.uniforms.as_ptr() as *const _;
             let len = cmd.uniforms.len();
             let data: &[u8] = unsafe { std::slice::from_raw_parts(ptr, len * u_size) };
-            device.create_buffer_with_data(&data, wgpu::BufferUsage::COPY_SRC)
+            let usage = wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_SRC;
+            device.create_buffer_with_data(&data, usage)
         };
 
         fn copy_uniform(
@@ -214,9 +218,11 @@ impl Pipeline {
                 CallKind::CONVEXFILL => {
                     copy_uniform(encoder, &uniforms, &self.frag[0], call.uniform_offset);
 
+                    let off = call.uniform_offset as u32 * u_size as u32;
+
                     let mut rpass = create_pass(encoder, view, depth);
                     rpass.set_pipeline(&self.convex);
-                    rpass.set_vertex_buffer(0, &vertices, 0, vbytes);
+                    rpass.set_vertex_buffer(0, &vertices, 0, 0);
                     rpass.set_bind_group(0, &self.bind[0], &[]);
                     for path in &cmd.paths[call.path.range()] {
                         rpass.draw(path.fill.range32(), 0..1);
@@ -230,7 +236,7 @@ impl Pipeline {
                     copy_uniform(encoder, &uniforms, &self.frag[1], call.uniform_offset + 1);
 
                     let mut rpass = create_pass(encoder, view, depth);
-                    rpass.set_vertex_buffer(0, &vertices, 0, vbytes);
+                    rpass.set_vertex_buffer(0, &vertices, 0, 0);
 
                     rpass.set_pipeline(&self.fill_shapes);
                     rpass.set_bind_group(0, &self.bind[0], &[]);
@@ -248,7 +254,6 @@ impl Pipeline {
                     // Draw fill
                     if call.triangle.count == 4 {
                         rpass.set_pipeline(&self.fill_end);
-                        rpass.set_bind_group(0, &self.bind[1], &[]);
                         rpass.draw(call.triangle.range32(), 0..1);
                     }
                 }
@@ -259,7 +264,7 @@ impl Pipeline {
                     copy_uniform(encoder, &uniforms, &self.frag[1], call.uniform_offset + 1);
 
                     let mut rpass = create_pass(encoder, view, depth);
-                    rpass.set_vertex_buffer(0, &vertices, 0, vbytes);
+                    rpass.set_vertex_buffer(0, &vertices, 0, 0);
 
                     // Fill the stroke base without overlap
                     rpass.set_pipeline(&self.stroke_base);
@@ -277,7 +282,6 @@ impl Pipeline {
 
                     // Clear stencil buffer
                     rpass.set_pipeline(&self.stroke_clear);
-                    rpass.set_bind_group(0, &self.bind[0], &[]);
                     for path in &cmd.paths[range] {
                         rpass.draw(path.stroke.range32(), 0..1);
                     }
@@ -329,10 +333,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
 
     let (mut mx, mut my) = (0.0f32, 0.0f32);
 
-    use std::time::{Duration, Instant};
-
-    let mut time = Instant::now();
-    let mut tt = Duration::new(1, 0);
+    let mut counter = crate::time::Counter::new();
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -354,7 +355,21 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                 mx = position.x as f32;
                 my = position.y as f32;
             }
+
+            Event::WindowEvent {
+                event: WindowEvent::MouseInput { .. },
+                ..
+            } => {
+                let ms = counter.average_ms();
+                println!("average: {}ms", ms);
+            }
             Event::RedrawRequested(_) => {
+                let time = counter.update();
+
+                if counter.index == 0 {
+                    println!("awerage: {}ms", counter.average_ms());
+                }
+
                 let frame = swap_chain
                     .get_next_texture()
                     .expect("Timeout when acquiring next swap chain texture");
@@ -382,12 +397,6 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                     rpass.draw(0..3, 0..1);
                 }
 
-                let now = Instant::now();
-                let delta = now.duration_since(time);
-                time = now;
-                tt += delta;
-                let time = tt.as_millis() as f32 / 1000.0;
-
                 {
                     let scale = window.scale_factor() as f32;
                     let size = window.inner_size();
@@ -402,7 +411,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                         point2(mx as f32, my as f32) / scale,
                         (win_w as f32, win_h as f32).into(),
                         time as f32,
-                        false, //BLOWUP != 0,
+                        false,
                     );
 
                     if true {
