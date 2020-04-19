@@ -12,7 +12,12 @@ pub struct Context {
     pub(crate) picture: Picture,
     pub(crate) states: Vec<State>,
     pub(crate) cache: PathCache,
+    pub(crate) cmd: crate::backend::CmdBuffer,
     pub(crate) backend: Box<dyn Backend>,
+
+    width: f32,
+    height: f32,
+    dpi: f32,
 }
 
 impl Context {
@@ -26,6 +31,12 @@ impl Context {
                 cmd: Offset::zero(),
                 xform: Transform::identity(),
             },
+
+            cmd: crate::backend::CmdBuffer::new(),
+
+            width: 1.0,
+            height: 1.0,
+            dpi: 1.0,
         }
     }
 
@@ -33,14 +44,17 @@ impl Context {
         self.states.clear();
         self.states.push(Default::default());
         self.cache.set_dpi(dpi);
-        self.backend.begin_frame(width, height, dpi);
+        self.width = width;
+        self.height = height;
+        self.dpi = dpi;
     }
 
     pub fn end_frame(&mut self) {
-        self.backend.end_frame();
+        self.backend.draw_commands(&self.cmd, self.width, self.height, self.dpi);
+        self.cmd.clear();
     }
 
-    pub fn begin_path(&mut self) {
+    pub fn _begin_path(&mut self) {
         self.picture.commands.clear();
         self.cache.clear();
     }

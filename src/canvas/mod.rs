@@ -165,7 +165,7 @@ impl<'a> Canvas<'a> {
             );
 
             self.ctx
-                .backend
+                .cmd
                 .draw_stroke(paint_stroke, scissor, fringe, stroke_width, &cache.paths);
         } else {
             let w = if paint.is_antialias {
@@ -178,7 +178,7 @@ impl<'a> Canvas<'a> {
             cache.expand_fill(w, StrokeJoin::Miter, 2.4);
 
             let paint_fill = convert_paint(paint, xform);
-            self.ctx.backend.draw_fill(
+            self.ctx.cmd.draw_fill(
                 paint_fill,
                 scissor,
                 cache.fringe_width,
@@ -291,7 +291,8 @@ impl<'a> Canvas<'a> {
     /// and that has the radius given by the second argument, with the Paint given in the third argument.
     /// Whether the circle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_circle(&mut self, c: Offset, radius: f32, paint: Paint) {
-        self.ctx.begin_path();
+        self.ctx.cache.clear();
+        self.ctx.picture.commands.clear();
         self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.picture.circle(c.x, c.y, radius);
         self.fill_or_stroke(&paint, false);
@@ -320,7 +321,8 @@ impl<'a> Canvas<'a> {
     /// Draws a line between the given points using the given paint.
     /// The line is stroked, the value of the Paint.style is ignored for this call. [...]
     pub fn draw_line(&mut self, p1: Offset, p2: Offset, paint: Paint) {
-        self.ctx.begin_path();
+        self.ctx.cache.clear();
+        self.ctx.picture.commands.clear();
         self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.picture.move_to(p1);
         self.ctx.picture.line_to(p2);
@@ -331,7 +333,8 @@ impl<'a> Canvas<'a> {
         if points.len() < 2 {
             return;
         }
-        self.ctx.begin_path();
+        self.ctx.cache.clear();
+        self.ctx.picture.commands.clear();
         self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.picture.move_to(points[0]);
         for p in points.iter().skip(1) {
@@ -345,7 +348,8 @@ impl<'a> Canvas<'a> {
     pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
         let (cx, cy) = (rect.min.x, rect.min.y);
         let (rx, ry) = (rect.dx(), rect.dy());
-        self.ctx.begin_path();
+        self.ctx.cache.clear();
+        self.ctx.picture.commands.clear();
         self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.picture.ellipse(cx, cy, rx, ry);
         self.fill_or_stroke(&paint, false);
@@ -364,7 +368,8 @@ impl<'a> Canvas<'a> {
     /// If the path is filled, then sub-paths within it are implicitly closed (see Path.close).
     pub fn draw_path(&mut self, path: &mut [f32], paint: Paint) {
         self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
-        self.ctx.begin_path();
+        self.ctx.cache.clear();
+        self.ctx.picture.commands.clear();
         self.ctx.picture.append_commands(path);
         self.fill_or_stroke(&paint, false);
     }
@@ -372,7 +377,8 @@ impl<'a> Canvas<'a> {
     pub fn draw_path_cloned(&mut self, path: &[f32], paint: Paint) {
         let mut path = path.to_owned();
         self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
-        self.ctx.begin_path();
+        self.ctx.cache.clear();
+        self.ctx.picture.commands.clear();
         self.ctx.picture.append_commands(&mut path);
         self.fill_or_stroke(&paint, false);
     }
@@ -392,7 +398,8 @@ impl<'a> Canvas<'a> {
     /// Draws a rectangle with the given Paint.
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
-        self.ctx.begin_path();
+        self.ctx.cache.clear();
+        self.ctx.picture.commands.clear();
         self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.picture.rect(rect);
         self.fill_or_stroke(&paint, false);
@@ -401,7 +408,8 @@ impl<'a> Canvas<'a> {
     /// Draws a rounded rectangle with the given Paint.
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rrect(&mut self, rrect: RRect, paint: Paint) {
-        self.ctx.begin_path();
+        self.ctx.cache.clear();
+        self.ctx.picture.commands.clear();
         self.ctx.picture.xform = self.ctx.states.last().unwrap().xform;
         self.ctx.picture.rrect_varying(
             rrect.rect(),

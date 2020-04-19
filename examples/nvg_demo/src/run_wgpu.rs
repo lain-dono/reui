@@ -6,43 +6,13 @@ use winit::{
     window::Window,
 };
 
-use wgpu_vg::backend::{Paint, Scissor};
+use wgpu_vg::backend::{Paint, Scissor, CmdBuffer};
 use wgpu_vg::cache::Path;
 
 struct Backend {}
 
 impl wgpu_vg::backend::Backend for Backend {
-    fn draw_fill(
-        &mut self,
-        paint: Paint,
-        scissor: Scissor,
-        fringe: f32,
-        bounds: [f32; 4],
-        paths: &[Path],
-    ) {
-        unimplemented!()
-    }
-
-    fn draw_stroke(
-        &mut self,
-        paint: Paint,
-        scissor: Scissor,
-        fringe: f32,
-        stroke_width: f32,
-        paths: &[Path],
-    ) {
-        unimplemented!()
-    }
-
-    fn begin_frame(&mut self, width: f32, height: f32, pixel_ratio: f32) {
-        unimplemented!()
-    }
-
-    fn cancel_frame(&mut self) {
-        unimplemented!()
-    }
-
-    fn end_frame(&mut self) {
+    fn draw_commands(&mut self, cmd: &CmdBuffer, width: f32, height: f32, pixel_ratio: f32) {
         unimplemented!()
     }
 }

@@ -49,7 +49,7 @@ impl FragUniforms {
             scissor_ext = [1.0, 1.0];
             scissor_scale = [1.0, 1.0];
         } else {
-            let xform = &scissor.xform;
+            let xform = scissor.xform;
             let (re, im) = (xform.re, xform.im);
             let scale = (re * re + im * im).sqrt() / fringe;
 
@@ -185,14 +185,20 @@ pub struct CmdBuffer {
     pub uniforms: VecAlloc<FragUniforms>,
 }
 
-impl CmdBuffer {
-    pub fn new() -> Self {
+impl Default for CmdBuffer {
+    fn default() -> Self {
         Self {
             calls: Vec::new(),
             paths: Vec::new(),
             verts: Vec::new(),
             uniforms: VecAlloc::new(),
         }
+    }
+}
+
+impl CmdBuffer {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn clear(&mut self) {

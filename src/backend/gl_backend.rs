@@ -2,49 +2,103 @@ use super::{
     commands::{CallKind, CmdBuffer, RawSlice},
     gl,
     gl::types::{GLint, GLsizei, GLsizeiptr, GLuint},
-    gl_shader::Shader,
 };
-use crate::{
-    backend::{Paint, Scissor},
-    cache::{Path, Vertex},
-};
-use std::{mem, ptr::null};
+use crate::cache::Vertex;
+use std::{mem, ptr};
 
-struct Buffer(GLuint);
+// TODO: mediump float may not be enough for GLES2 in iOS.
+// see the following discussion: https://github.com/memononen/nanovg/issues/46
+static VERT: &[u8] = b"
+uniform vec2 viewSize;
 
-impl Drop for Buffer {
-    fn drop(&mut self) {
-        if self.0 != 0 {
-            unsafe { gl::DeleteBuffers(1, &self.0) }
-            self.0 = 0;
-        }
-    }
+attribute vec2 a_Position;
+attribute vec2 a_TexCoord;
+
+varying vec2 v_Position;
+varying vec2 v_TexCoord;
+
+void main() {
+    v_TexCoord = a_TexCoord;
+    v_Position = a_Position;
+    gl_Position = vec4(
+        2.0 * a_Position.x / viewSize.x - 1.0,
+        1.0 - 2.0 * a_Position.y / viewSize.y,
+        0.0, 1.0);
+}
+\0";
+
+static FRAG: &[u8] = b"
+#define UNIFORMARRAY_SIZE 7
+
+//precision highp float;
+
+varying vec2 v_Position;
+varying vec2 v_TexCoord;
+
+uniform vec4 frag[UNIFORMARRAY_SIZE];
+
+#define scissorTransform frag[0]
+#define paintTransform frag[1]
+
+#define innerCol frag[2]
+#define outerCol frag[3]
+#define scissorExt frag[4].xy
+#define scissorScale frag[4].zw
+#define extent frag[5].xy
+#define radius frag[5].z
+#define feather frag[5].w
+#define strokeMult frag[6].x
+#define strokeThr frag[6].y
+
+#define type int(frag[6].w)
+
+float sdroundrect(vec2 pt, vec2 ext, float rad) {
+    vec2 ext2 = ext - vec2(rad,rad);
+    vec2 d = abs(pt) - ext2;
+    return min(max(d.x,d.y),0.0) + length(max(d,0.0)) - rad;
 }
 
-impl Default for Buffer {
-    fn default() -> Self {
-        Self(unsafe {
-            // Create dynamic vertex array
-            let mut buf = 0;
-            gl::GenBuffers(1, &mut buf);
-            gl::Finish();
-            buf
-        })
-    }
+vec2 applyTransform(vec4 transform, vec2 pt) {
+    float re = transform.x;
+    float im = transform.y;
+    return transform.zw + vec2(pt.x * re - pt.y * im, pt.x * im + pt.y * re);
 }
 
-impl Buffer {
-    pub fn new() -> Self {
-        Self::default()
+// Scissoring
+float scissorMask(vec2 p) {
+    vec2 sc = vec2(0.5,0.5) -
+        (abs(applyTransform(scissorTransform, p)) - scissorExt) * scissorScale;
+    return clamp(sc.x,0.0,1.0) * clamp(sc.y,0.0,1.0);
+}
+
+// Stroke - from [0..1] to clipped pyramid, where the slope is 1px.
+float strokeMask() {
+    return min(1.0, (1.0-abs(v_TexCoord.x*2.0-1.0))*strokeMult) * min(1.0, v_TexCoord.y);
+}
+
+void main(void) {
+    float scissor = scissorMask(v_Position);
+
+    float strokeAlpha = strokeMask();
+    if (strokeAlpha < strokeThr) {
+        discard;
     }
 
-    pub unsafe fn bind_and_upload<T: Sized>(&self, data: &[T]) {
-        let size = (data.len() * std::mem::size_of::<T>()) as GLsizeiptr;
-        let ptr = data.as_ptr() as *const _;
-        gl::BindBuffer(gl::ARRAY_BUFFER, self.0);
-        gl::BufferData(gl::ARRAY_BUFFER, size as GLsizeiptr, ptr, gl::STREAM_DRAW);
+    vec4 result;
+    if (type == 0) {            // Gradient
+        // Calculate gradient color using box gradient
+        vec2 pt = applyTransform(paintTransform, v_Position);
+        float d = clamp((sdroundrect(pt, extent, radius) + feather*0.5) / feather, 0.0, 1.0);
+        vec4 color = mix(innerCol,outerCol,d);
+        // Combine alpha
+        color *= strokeAlpha * scissor;
+        result = color;
+    } else if (type == 2) {        // Stencil fill
+        result = vec4(1,1,1,1);
     }
-}
+
+    gl_FragColor = result;
+}\0";
 
 fn check_error(_msg: &str) {
     #[cfg(build = "debug")]
@@ -56,26 +110,26 @@ fn check_error(_msg: &str) {
     }
 }
 
-fn gl_draw_strip(slice: RawSlice) {
-    if slice.count > 0 {
-        let (first, count) = (slice.offset as GLint, slice.count as GLsizei);
-        unsafe { gl::DrawArrays(gl::TRIANGLE_STRIP, first, count) }
+pub struct BackendGL {
+    vert_buf: GLuint,
+    prog: GLuint,
+    loc_viewsize: GLint,
+    loc_frag: GLint,
+}
+
+impl Drop for BackendGL {
+    fn drop(&mut self) {
+        if self.vert_buf != 0 {
+            unsafe { gl::DeleteBuffers(1, &self.vert_buf) }
+            self.vert_buf = 0;
+        }
     }
 }
 
-pub struct BackendGL {
-    cmd: CmdBuffer,
-
-    shader: Shader,
-    view: [f32; 2],
-
-    vert_buf: Buffer,
-}
-
 impl BackendGL {
-    fn set_uniforms(&self, offset: usize) {
-        let uniform = (&self.cmd.uniforms[offset]) as *const _ as *const _;
-        unsafe { gl::Uniform4fv(self.shader.loc_frag, 7, uniform) }
+    fn set_uniforms(&self, cmd: &CmdBuffer, offset: usize) {
+        let uniform = (&cmd.uniforms[offset]) as *const _ as *const _;
+        unsafe { gl::Uniform4fv(self.loc_frag, 7, uniform) }
         check_error("set_uniforms");
     }
 }
@@ -83,60 +137,71 @@ impl BackendGL {
 impl Default for BackendGL {
     fn default() -> Self {
         check_error("init");
-        let shader = Shader::new();
-        check_error("shader & uniform locations");
 
-        Self {
-            cmd: CmdBuffer::new(),
-            shader,
-            view: [0f32; 2],
-            vert_buf: Buffer::new(),
+        let (vshader, fshader) = (VERT.as_ptr() as *const i8, FRAG.as_ptr() as *const i8);
+
+        unsafe {
+            let prog = gl::CreateProgram();
+            let vert = gl::CreateShader(gl::VERTEX_SHADER);
+            let frag = gl::CreateShader(gl::FRAGMENT_SHADER);
+            gl::ShaderSource(vert, 1, &vshader, ptr::null());
+            gl::ShaderSource(frag, 1, &fshader, ptr::null());
+
+            gl::CompileShader(vert);
+            let mut status = 0i32;
+            gl::GetShaderiv(vert, gl::COMPILE_STATUS, &mut status);
+            assert_eq!(status, 1);
+
+            gl::CompileShader(frag);
+            gl::GetShaderiv(frag, gl::COMPILE_STATUS, &mut status);
+            assert_eq!(status, 1);
+
+            gl::AttachShader(prog, vert);
+            gl::AttachShader(prog, frag);
+
+            gl::BindAttribLocation(prog, 0, b"a_Position\0".as_ptr() as *const i8);
+            gl::BindAttribLocation(prog, 1, b"a_TexCoord\0".as_ptr() as *const i8);
+
+            gl::LinkProgram(prog);
+            gl::GetProgramiv(prog, gl::LINK_STATUS, &mut status);
+            assert_eq!(status, 1);
+
+            check_error("shader & uniform locations");
+
+            // Create dynamic vertex array
+            let mut vert_buf = 0;
+            gl::GenBuffers(1, &mut vert_buf);
+            gl::Finish();
+
+            Self {
+                vert_buf,
+                prog,
+                loc_viewsize: gl::GetUniformLocation(prog, b"viewSize\0".as_ptr() as *const i8),
+                loc_frag: gl::GetUniformLocation(prog, b"frag\0".as_ptr() as *const i8),
+            }
         }
     }
 }
 
 impl super::Backend for BackendGL {
-    fn draw_fill(
-        &mut self,
-        paint: Paint,
-        scissor: Scissor,
-        fringe: f32,
-        bounds: [f32; 4],
-        paths: &[Path],
-    ) {
-        self.cmd.draw_fill(paint, scissor, fringe, bounds, paths);
-    }
-
-    fn draw_stroke(
-        &mut self,
-        paint: Paint,
-        scissor: Scissor,
-        fringe: f32,
-        stroke_width: f32,
-        paths: &[Path],
-    ) {
-        self.cmd
-            .draw_stroke(paint, scissor, fringe, stroke_width, paths);
-    }
-
-    fn begin_frame(&mut self, width: f32, height: f32, pixel_ratio: f32) {
-        self.view = [width / pixel_ratio, height / pixel_ratio];
-    }
-
-    fn cancel_frame(&mut self) {
-        self.cmd.clear();
-    }
-
-    fn end_frame(&mut self) {
-        if self.cmd.calls.is_empty() {
-            self.cmd.clear();
+    fn draw_commands(&mut self, cmd: &CmdBuffer, width: f32, height: f32, pixel_ratio: f32) {
+        if cmd.calls.is_empty() {
             return;
         }
+
+        unsafe fn gl_draw_strip(slice: RawSlice) {
+            if slice.count > 0 {
+                let (first, count) = (slice.offset as GLint, slice.count as GLsizei);
+                gl::DrawArrays(gl::TRIANGLE_STRIP, first, count)
+            }
+        }
+
+        let view = [width / pixel_ratio, height / pixel_ratio];
 
         unsafe {
             // Setup require GL state.
 
-            gl::UseProgram(self.shader.prog);
+            gl::UseProgram(self.prog);
             gl::Enable(gl::CULL_FACE);
             gl::CullFace(gl::BACK);
             gl::FrontFace(gl::CCW);
@@ -146,30 +211,37 @@ impl super::Backend for BackendGL {
             gl::ActiveTexture(gl::TEXTURE0);
 
             // upload vertex data
-            self.vert_buf.bind_and_upload(&self.cmd.verts);
+
+            {
+                let size = (cmd.verts.len() * mem::size_of::<Vertex>()) as GLsizeiptr;
+                let ptr = cmd.verts.as_ptr() as *const _;
+                gl::BindBuffer(gl::ARRAY_BUFFER, self.vert_buf);
+                gl::BufferData(gl::ARRAY_BUFFER, size as GLsizeiptr, ptr, gl::STREAM_DRAW);
+            }
+
             let size = mem::size_of::<Vertex>();
 
             gl::EnableVertexAttribArray(0);
             gl::EnableVertexAttribArray(1);
 
             let two = (2 * mem::size_of::<f32>()) as *const _;
-            gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, size as i32, null());
+            gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, size as i32, ptr::null());
             gl::VertexAttribPointer(1, 2, gl::UNSIGNED_SHORT, gl::TRUE, size as i32, two);
 
             // set view and texture just once per frame.
-            gl::Uniform2fv(self.shader.loc_viewsize, 1, &self.view as *const f32);
+            gl::Uniform2fv(self.loc_viewsize, 1, &view as *const f32);
 
             // alpha blending
             let (src, dst) = (gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
             gl::BlendFuncSeparate(src, dst, src, dst);
 
-            for call in &self.cmd.calls {
+            for call in &cmd.calls {
                 match call.kind {
                     CallKind::CONVEXFILL => {
                         gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
                         stencil(0, None);
-                        self.set_uniforms(call.uniform_offset);
-                        for path in &self.cmd.paths[call.path.range()] {
+                        self.set_uniforms(cmd, call.uniform_offset);
+                        for path in &cmd.paths[call.path.range()] {
                             gl_draw_strip(path.fill);
                             gl_draw_strip(path.stroke); // fringes
                         }
@@ -181,9 +253,9 @@ impl super::Backend for BackendGL {
                         // Draw shapes
                         gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
                         gl::Disable(gl::CULL_FACE);
-                        self.set_uniforms(call.uniform_offset);
+                        self.set_uniforms(cmd, call.uniform_offset);
                         stencil(0, Some(FILL_SHAPES));
-                        for path in &self.cmd.paths[range.clone()] {
+                        for path in &cmd.paths[range.clone()] {
                             gl_draw_strip(path.fill);
                         }
 
@@ -192,9 +264,9 @@ impl super::Backend for BackendGL {
                         gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
 
                         // Draw fringes
-                        self.set_uniforms(call.uniform_offset + 1);
+                        self.set_uniforms(cmd, call.uniform_offset + 1);
                         stencil(0, Some(FILL_FRINGES));
-                        for path in &self.cmd.paths[range] {
+                        for path in &cmd.paths[range] {
                             gl_draw_strip(path.stroke);
                         }
 
@@ -211,22 +283,22 @@ impl super::Backend for BackendGL {
 
                         // Fill the stroke base without overlap
                         stencil(0, Some(STROKE_BASE));
-                        self.set_uniforms(call.uniform_offset + 1);
-                        for path in &self.cmd.paths[range.clone()] {
+                        self.set_uniforms(cmd, call.uniform_offset + 1);
+                        for path in &cmd.paths[range.clone()] {
                             gl_draw_strip(path.stroke);
                         }
 
                         // Draw anti-aliased pixels.
-                        self.set_uniforms(call.uniform_offset);
+                        self.set_uniforms(cmd, call.uniform_offset);
                         stencil(0, Some(STROKE_AA));
-                        for path in &self.cmd.paths[range.clone()] {
+                        for path in &cmd.paths[range.clone()] {
                             gl_draw_strip(path.stroke);
                         }
 
                         // Clear stencil buffer
                         gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
                         stencil(0, Some(STROKE_CLEAR));
-                        for path in &self.cmd.paths[range] {
+                        for path in &cmd.paths[range] {
                             gl_draw_strip(path.stroke);
                         }
                     }
@@ -239,9 +311,6 @@ impl super::Backend for BackendGL {
             gl::BindBuffer(gl::ARRAY_BUFFER, 0);
             gl::UseProgram(0);
         }
-
-        // Reset calls
-        self.cmd.clear();
     }
 }
 
