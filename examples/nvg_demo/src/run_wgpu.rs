@@ -14,10 +14,6 @@ use wgpu_vg::{
 struct Backend {}
 
 impl wgpu_vg::backend::Backend for Backend {
-    fn reset(&mut self) {
-        unimplemented!()
-    }
-
     fn draw_fill(
         &mut self,
         paint: &Paint,
@@ -40,11 +36,15 @@ impl wgpu_vg::backend::Backend for Backend {
         unimplemented!()
     }
 
-    fn set_viewport(&mut self, width: f32, height: f32, pixel_ratio: f32) {
+    fn begin_frame(&mut self, width: f32, height: f32, pixel_ratio: f32) {
         unimplemented!()
     }
 
-    fn flush(&mut self) {
+    fn cancel_frame(&mut self) {
+        unimplemented!()
+    }
+
+    fn end_frame(&mut self) {
         unimplemented!()
     }
 }

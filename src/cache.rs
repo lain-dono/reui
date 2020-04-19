@@ -29,7 +29,7 @@ fn normalize(x: &mut f32, y: &mut f32) -> f32 {
     let yy = (*y) * (*y);
     let d = (xx + yy).sqrt();
     if d > 1e-6 {
-        let id = 1.0 / d;
+        let id = d.recip();
         *x *= id;
         *y *= id;
     }
@@ -171,12 +171,6 @@ impl Path {
     fn pts_fan<'a>(&self, pts: &'a [PathPoint], p0: usize, p1: usize) -> PairIterFan<'a> {
         PairIterFan::new(self.points(pts), p0, p1)
     }
-
-    /*
-    fn pts_mut<'a>(&self, pts: &'a mut [Point], p0: usize, p1: usize) -> PairIterMut<'a> {
-        PairIterMut::new(self.points_mut(pts), p0, p1)
-    }
-    */
 }
 
 struct PairIter<'a> {
@@ -188,12 +182,8 @@ struct PairIter<'a> {
 
 impl<'a> PairIter<'a> {
     fn new(pts: &'a [PathPoint], p0: usize, p1: usize) -> Self {
-        Self {
-            pts,
-            p0,
-            p1,
-            idx: 0,
-        }
+        let idx = 0;
+        Self { pts, p0, p1, idx }
     }
 }
 
@@ -223,12 +213,8 @@ struct PairIterFan<'a> {
 
 impl<'a> PairIterFan<'a> {
     fn new(pts: &'a [PathPoint], p0: usize, p1: usize) -> Self {
-        Self {
-            pts,
-            p0,
-            p1,
-            idx: 0,
-        }
+        let idx = 0;
+        Self { pts, p0, p1, idx }
     }
 }
 

@@ -11,6 +11,7 @@ pub use crate::{
     backend::Paint as BackendPaint,
     context::Context,
     math::{clamp_f32, rect, Corners, Offset, Rect, Transform},
+    state::State,
 };
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -123,27 +124,23 @@ fn convert_paint(paint: &Paint, xform: Transform) -> BackendPaint {
 
 pub struct Canvas<'a> {
     ctx: &'a mut Context,
-    save_count: usize,
 }
 
 impl<'a> Canvas<'a> {
     pub fn new(ctx: &'a mut Context) -> Self {
-        Self { ctx, save_count: 1 }
+        Self { ctx }
     }
 
     fn fill_or_stroke(&mut self, paint: &Paint, force_stroke: bool) {
         let cache = &mut self.ctx.cache;
-        let state = self.ctx.states.last_mut().unwrap();
-        let xform = state.xform;
-        let scissor = state.scissor;
+        let State { xform, scissor } = *self.ctx.states.last_mut().unwrap();
 
         if force_stroke || paint.style == PaintingStyle::Stroke {
-            let mut paint_stroke = convert_paint(paint, xform);
-
             let scale = xform.average_scale();
             let mut stroke_width = clamp_f32(paint.stroke_width * scale, 0.0, 200.0);
             let fringe_width = cache.fringe_width;
 
+            let mut paint_stroke = convert_paint(paint, xform);
             if stroke_width < cache.fringe_width {
                 // If the stroke width is less than pixel size, use alpha to emulate coverage.
                 // Since coverage is area, scale by alpha*alpha.
@@ -167,7 +164,7 @@ impl<'a> Canvas<'a> {
                 paint.stroke_miter_limit,
             );
 
-            self.ctx.params.draw_stroke(
+            self.ctx.backend.draw_stroke(
                 &paint_stroke,
                 &scissor,
                 fringe_width,
@@ -175,8 +172,6 @@ impl<'a> Canvas<'a> {
                 &cache.paths,
             );
         } else {
-            let paint_fill = convert_paint(paint, xform);
-
             let w = if paint.is_antialias {
                 cache.fringe_width
             } else {
@@ -186,9 +181,10 @@ impl<'a> Canvas<'a> {
             cache.flatten_paths(&self.ctx.picture.commands);
             cache.expand_fill(w, StrokeJoin::Miter, 2.4);
 
-            self.ctx.params.draw_fill(
+            let paint_fill = convert_paint(paint, xform);
+            self.ctx.backend.draw_fill(
                 &paint_fill,
-                &state.scissor,
+                &scissor,
                 cache.fringe_width,
                 &cache.bounds,
                 &cache.paths,
@@ -212,12 +208,11 @@ impl<'a> Canvas<'a> {
     /// This means it returns 1 for a clean canvas, and that each call to save and saveLayer increments it,
     /// and that each matching call to restore decrements it. [...]
     pub fn save_count(&mut self) -> usize {
-        self.save_count
+        self.ctx.states.len()
     }
 
     /// Saves a copy of the current transform and clip on the save stack. [...]
     pub fn save(&mut self) {
-        self.save_count += 1;
         if let Some(state) = self.ctx.states.last().cloned() {
             self.ctx.states.push(state);
         }
@@ -233,8 +228,7 @@ impl<'a> Canvas<'a> {
 
     /// Pops the current save stack, if there is anything to pop. Otherwise, does nothing. [...]
     pub fn restore(&mut self) {
-        if self.save_count > 1 {
-            self.save_count -= 1;
+        if self.ctx.states.len() > 1 {
             self.ctx.states.pop();
         }
     }

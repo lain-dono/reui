@@ -19,8 +19,6 @@ pub struct Scissor {
 }
 
 pub trait Backend {
-    fn reset(&mut self);
-
     fn draw_fill(
         &mut self,
         paint: &Paint,
@@ -39,7 +37,7 @@ pub trait Backend {
         paths: &[Path],
     );
 
-    fn set_viewport(&mut self, width: f32, height: f32, pixel_ratio: f32);
-
-    fn flush(&mut self);
+    fn begin_frame(&mut self, width: f32, height: f32, pixel_ratio: f32);
+    fn cancel_frame(&mut self);
+    fn end_frame(&mut self);
 }

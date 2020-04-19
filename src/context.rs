@@ -12,13 +12,13 @@ pub struct Context {
     pub(crate) picture: Picture,
     pub(crate) states: Vec<State>,
     pub(crate) cache: PathCache,
-    pub(crate) params: Box<dyn Backend>,
+    pub(crate) backend: Box<dyn Backend>,
 }
 
 impl Context {
-    pub fn new(params: Box<dyn Backend>) -> Self {
+    pub fn new(backend: Box<dyn Backend>) -> Self {
         Self {
-            params,
+            backend,
             states: Vec::with_capacity(256),
             cache: PathCache::new(),
             picture: Picture {
@@ -33,15 +33,15 @@ impl Context {
         self.states.clear();
         self.states.push(Default::default());
         self.cache.set_dpi(dpi);
-        self.params.set_viewport(width, height, dpi);
+        self.backend.begin_frame(width, height, dpi);
     }
 
     pub fn cancel_frame(&mut self) {
-        self.params.reset()
+        self.backend.cancel_frame()
     }
 
     pub fn end_frame(&mut self) {
-        self.params.flush();
+        self.backend.end_frame();
     }
 
     pub fn begin_path(&mut self) {
