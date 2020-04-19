@@ -6,7 +6,7 @@ pub mod gl {
     include!(concat!(env!("OUT_DIR"), "/gl_bindings.rs"));
 }
 
-pub use self::commands::CmdBuffer;
+pub use self::commands::{CmdBuffer, FragUniforms, CallKind};
 pub use self::gl_backend::BackendGL;
 pub use self::paint::Paint;
 use crate::math::Transform;

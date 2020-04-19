@@ -85,7 +85,7 @@ void main(void) {
     }
 
     vec4 result;
-    if (type == 0) {            // Gradient
+    if (type == 2) {            // Gradient
         // Calculate gradient color using box gradient
         vec2 pt = applyTransform(paintTransform, v_Position);
         float d = clamp((sdroundrect(pt, extent, radius) + feather*0.5) / feather, 0.0, 1.0);
@@ -93,7 +93,7 @@ void main(void) {
         // Combine alpha
         color *= strokeAlpha * scissor;
         result = color;
-    } else if (type == 2) {        // Stencil fill
+    } else if (type == 0) {        // Stencil fill
         result = vec4(1,1,1,1);
     }
 

@@ -1,18 +1,13 @@
 #version 450
 
-layout(location = 0) out vec4 Target0;
-
-void main() {
-    Target0 = vec4(1.0, 0.0, 0.0, 1.0);
-}
-
-/*
 //precision highp float;
+
+layout(location = 0) out vec4 Target0;
 
 layout(location = 0) in vec2 v_Position;
 layout(location = 1) in vec2 v_TexCoord;
 
-layout(std140, set = 0, binding = 1) uniform State {
+layout(set = 0, binding = 1) uniform State {
     vec4 scissor_transform;
     vec4 paint_transform;
     vec4 inner_color;
@@ -25,8 +20,10 @@ layout(std140, set = 0, binding = 1) uniform State {
     float stroke_mul;
     float stroke_thr;
     float _padding;
-    int type;
+    float type;
 } state;
+
+
 
 float sdroundrect(vec2 pt, vec2 ext, float rad) {
     vec2 ext2 = ext - vec2(rad,rad);
@@ -52,7 +49,7 @@ float strokeMask() {
     return min(1.0, (1.0-abs(v_TexCoord.x*2.0-1.0))*state.stroke_mul) * min(1.0, v_TexCoord.y);
 }
 
-void _main() {
+void main() {
     float scissor = scissorMask(v_Position);
 
     float strokeAlpha = strokeMask();
@@ -61,6 +58,9 @@ void _main() {
     }
 
     if (state.type == 0) {
+        // Stencil fill
+        Target0 = vec4(1.0, 1.0, 1.0, 1.0);
+    } else if (state.type == 2) {
         // Calculate gradient color using box gradient
         vec2 pt = applyTransform(state.paint_transform, v_Position);
         float d = clamp((sdroundrect(pt, state.extent, state.radius) + state.feather*0.5) / state.feather, 0.0, 1.0);
@@ -68,9 +68,8 @@ void _main() {
         // Combine alpha
         color *= strokeAlpha * scissor;
         Target0 = color;
-    } else if (state.type == 2) {
-        // Stencil fill
-        Target0 = vec4(1.0, 1.0, 1.0, 1.0);
     }
+    /*
+    Target0 = vec4(1.0, 0.0, 0.0, 1.0);
+    */
 }
-*/

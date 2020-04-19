@@ -3,6 +3,9 @@ use crate::{
     cache::{Path, Vertex},
 };
 
+pub const SHADER_FILLGRAD: f32 = 2.0;
+pub const SHADER_SIMPLE: f32 = 0.0;
+
 #[inline]
 fn copy_verts(dst: &mut [Vertex], slice: RawSlice, src: &[Vertex]) -> u32 {
     (&mut dst[slice.range()]).copy_from_slice(src);
@@ -17,9 +20,6 @@ fn max_vert_count(paths: &[Path]) -> usize {
         acc + fill + stroke
     })
 }
-
-pub const SHADER_FILLGRAD: f32 = 0.0;
-pub const SHADER_SIMPLE: f32 = 2.0;
 
 #[repr(C, align(4))]
 pub struct FragUniforms {
@@ -69,7 +69,7 @@ impl FragUniforms {
             extent: paint.extent,
 
             stroke_mul: (width * 0.5 + fringe * 0.5) / fringe,
-            stroke_thr: stroke_thr,
+            stroke_thr,
             kind: SHADER_FILLGRAD,
             radius: paint.radius,
             feather: paint.feather,
@@ -135,6 +135,11 @@ impl RawSlice {
     #[inline]
     pub fn new(offset: u32, count: u32) -> Self {
         Self { offset, count }
+    }
+
+    #[inline]
+    pub fn range32(self) -> std::ops::Range<u32> {
+        self.offset..self.offset + self.count
     }
 
     #[inline]

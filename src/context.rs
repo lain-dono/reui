@@ -9,11 +9,11 @@ use crate::{
 const INIT_COMMANDS_SIZE: usize = 256;
 
 pub struct Context {
-    pub(crate) picture: Picture,
-    pub(crate) states: Vec<State>,
-    pub(crate) cache: PathCache,
-    pub(crate) cmd: crate::backend::CmdBuffer,
-    pub(crate) backend: Box<dyn Backend>,
+    pub picture: Picture,
+    pub states: Vec<State>,
+    pub cache: PathCache,
+    pub cmd: crate::backend::CmdBuffer,
+    pub backend: Box<dyn Backend>,
 
     width: f32,
     height: f32,
