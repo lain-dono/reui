@@ -26,7 +26,7 @@ impl State {
         let [x, y, w, h] = rect.to_xywh();
 
         let translate = Transform::translation(x + w * 0.5, y + h * 0.5);
-        self.scissor.xform.append_mut(translate);
+        self.scissor.xform = self.xform.append(translate);
 
         self.scissor.extent[0] = w * 0.5;
         self.scissor.extent[1] = h * 0.5;
