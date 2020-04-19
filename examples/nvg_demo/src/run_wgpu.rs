@@ -45,9 +45,9 @@ impl Shader {
 }
 
 struct Pipeline {
-    view_buffer: wgpu::Buffer,
-    frag_buffer: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
+    view: wgpu::Buffer,
+    frag: [wgpu::Buffer; 2],
+    bind: [wgpu::BindGroup; 2],
 
     convex: wgpu::RenderPipeline,
     fill_shapes: wgpu::RenderPipeline,
@@ -67,15 +67,17 @@ impl Pipeline {
     fn new(device: &wgpu::Device, shader: &Shader) -> Self {
         let usage = wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST;
 
-        let view_buffer = {
+        let view = {
             let data = [0.0f32, 0.0f32];
             let data: [u8; Self::VIEW_SIZE as usize] = unsafe { std::mem::transmute(data) };
             device.create_buffer_with_data(&data, usage)
         };
 
-        let frag_buffer = {
+        let frag = {
             let data = [0u8; Self::FRAG_SIZE as usize];
-            device.create_buffer_with_data(&data, usage)
+            let a = device.create_buffer_with_data(&data, usage);
+            let b = device.create_buffer_with_data(&data, usage);
+            [a, b]
         };
 
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -94,20 +96,41 @@ impl Pipeline {
             label: None,
         });
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let b0 = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &layout,
             bindings: &[
                 wgpu::Binding {
                     binding: 0,
                     resource: wgpu::BindingResource::Buffer {
-                        buffer: &view_buffer,
+                        buffer: &view,
                         range: 0..Self::VIEW_SIZE,
                     },
                 },
                 wgpu::Binding {
                     binding: 1,
                     resource: wgpu::BindingResource::Buffer {
-                        buffer: &frag_buffer,
+                        buffer: &frag[0],
+                        range: 0..Self::FRAG_SIZE,
+                    },
+                },
+            ],
+            label: None,
+        });
+
+        let b1 = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &layout,
+            bindings: &[
+                wgpu::Binding {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &view,
+                        range: 0..Self::VIEW_SIZE,
+                    },
+                },
+                wgpu::Binding {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &frag[1],
                         range: 0..Self::FRAG_SIZE,
                     },
                 },
@@ -120,9 +143,9 @@ impl Pipeline {
         });
 
         Self {
-            view_buffer,
-            frag_buffer,
-            bind_group,
+            view,
+            frag,
+            bind: [b0, b1],
 
             convex: PipelineBuilder::convex().build(device, &layout, shader),
 
@@ -154,7 +177,7 @@ impl Pipeline {
             let data = [width, height, 0.0, 0.0];
             let data: [u8; 4 * 4] = unsafe { std::mem::transmute(data) };
             let tmp = device.create_buffer_with_data(&data, wgpu::BufferUsage::COPY_SRC);
-            encoder.copy_buffer_to_buffer(&tmp, 0, &self.view_buffer, 0, 4 * 2);
+            encoder.copy_buffer_to_buffer(&tmp, 0, &self.view, 0, 4 * 2);
         }
 
         let (vbytes, vertices) = {
@@ -168,38 +191,97 @@ impl Pipeline {
             )
         };
 
-        let src_uniforms = {
+        let uniforms = {
             let ptr = cmd.uniforms.as_ptr() as *const _;
             let len = cmd.uniforms.len();
             let data: &[u8] = unsafe { std::slice::from_raw_parts(ptr, len * u_size) };
             device.create_buffer_with_data(&data, wgpu::BufferUsage::COPY_SRC)
         };
 
+        fn copy_uniform(
+            encoder: &mut wgpu::CommandEncoder,
+            src: &wgpu::Buffer,
+            dst: &wgpu::Buffer,
+            offset: usize,
+        ) {
+            let offset = offset as wgpu::BufferAddress;
+            let u_size = std::mem::size_of::<FragUniforms>() as wgpu::BufferAddress;
+            encoder.copy_buffer_to_buffer(src, offset * u_size, dst, 0, u_size);
+        }
+
         for call in &cmd.calls {
             match call.kind {
                 CallKind::CONVEXFILL => {
-                    let src_offset = call.uniform_offset * u_size;
-                    encoder.copy_buffer_to_buffer(
-                        &src_uniforms,
-                        src_offset as wgpu::BufferAddress,
-                        &self.frag_buffer,
-                        0 as wgpu::BufferAddress,
-                        u_size as wgpu::BufferAddress,
-                    );
+                    copy_uniform(encoder, &uniforms, &self.frag[0], call.uniform_offset);
 
                     let mut rpass = create_pass(encoder, view, depth);
                     rpass.set_pipeline(&self.convex);
                     rpass.set_vertex_buffer(0, &vertices, 0, vbytes);
-                    rpass.set_bind_group(0, &self.bind_group, &[]);
-
+                    rpass.set_bind_group(0, &self.bind[0], &[]);
                     for path in &cmd.paths[call.path.range()] {
                         rpass.draw(path.fill.range32(), 0..1);
                         rpass.draw(path.stroke.range32(), 0..1); // fringes
-                        //gl_draw_strip(path.fill);
-                        //gl_draw_strip(path.stroke);
                     }
                 }
-                _ => (),
+                CallKind::FILL => {
+                    let range = call.path.range();
+
+                    copy_uniform(encoder, &uniforms, &self.frag[0], call.uniform_offset);
+                    copy_uniform(encoder, &uniforms, &self.frag[1], call.uniform_offset + 1);
+
+                    let mut rpass = create_pass(encoder, view, depth);
+                    rpass.set_vertex_buffer(0, &vertices, 0, vbytes);
+
+                    rpass.set_pipeline(&self.fill_shapes);
+                    rpass.set_bind_group(0, &self.bind[0], &[]);
+                    for path in &cmd.paths[range.clone()] {
+                        rpass.draw(path.fill.range32(), 0..1);
+                    }
+
+                    // Draw fringes
+                    rpass.set_pipeline(&self.fill_fringes);
+                    rpass.set_bind_group(0, &self.bind[1], &[]);
+                    for path in &cmd.paths[range] {
+                        rpass.draw(path.stroke.range32(), 0..1);
+                    }
+
+                    // Draw fill
+                    if call.triangle.count == 4 {
+                        rpass.set_pipeline(&self.fill_end);
+                        rpass.set_bind_group(0, &self.bind[1], &[]);
+                        rpass.draw(call.triangle.range32(), 0..1);
+                    }
+                }
+                CallKind::STROKE => {
+                    let range = call.path.range();
+
+                    copy_uniform(encoder, &uniforms, &self.frag[0], call.uniform_offset);
+                    copy_uniform(encoder, &uniforms, &self.frag[1], call.uniform_offset + 1);
+
+                    let mut rpass = create_pass(encoder, view, depth);
+                    rpass.set_vertex_buffer(0, &vertices, 0, vbytes);
+
+                    // Fill the stroke base without overlap
+                    rpass.set_pipeline(&self.stroke_base);
+                    rpass.set_bind_group(0, &self.bind[1], &[]);
+                    for path in &cmd.paths[range.clone()] {
+                        rpass.draw(path.stroke.range32(), 0..1);
+                    }
+
+                    // Draw anti-aliased pixels.
+                    rpass.set_pipeline(&self.stroke_aa);
+                    rpass.set_bind_group(0, &self.bind[0], &[]);
+                    for path in &cmd.paths[range.clone()] {
+                        rpass.draw(path.stroke.range32(), 0..1);
+                    }
+
+                    // Clear stencil buffer
+                    rpass.set_pipeline(&self.stroke_clear);
+                    rpass.set_bind_group(0, &self.bind[0], &[]);
+                    for path in &cmd.paths[range] {
+                        rpass.draw(path.stroke.range32(), 0..1);
+                    }
+                }
             }
         }
     }
@@ -247,6 +329,11 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
 
     let (mut mx, mut my) = (0.0f32, 0.0f32);
 
+    use std::time::{Duration, Instant};
+
+    let mut time = Instant::now();
+    let mut tt = Duration::new(1, 0);
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
         match event {
@@ -290,10 +377,16 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                 {
                     let mut rpass = create_pass(&mut encoder, &frame.view, &depth);
                     rpass.set_pipeline(&pipeline.convex);
-                    rpass.set_bind_group(0, &pipeline.bind_group, &[]);
+                    rpass.set_bind_group(0, &pipeline.bind[0], &[]);
                     rpass.set_vertex_buffer(0, &vert_buffer, 0, 0);
                     rpass.draw(0..3, 0..1);
                 }
+
+                let now = Instant::now();
+                let delta = now.duration_since(time);
+                time = now;
+                tt += delta;
+                let time = tt.as_millis() as f32 / 1000.0;
 
                 {
                     let scale = window.scale_factor() as f32;
@@ -302,8 +395,6 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                     let win_h = size.height as f32 / scale;
 
                     vg.begin_frame(win_w, win_h, scale);
-
-                    let time = 123;
 
                     let mut ctx = Canvas::new(&mut vg);
                     super::canvas::render_demo(
@@ -353,10 +444,11 @@ pub fn main() {
     let event_loop = EventLoop::new();
     let window = winit::window::Window::new(&event_loop).unwrap();
     window.set_title("Anti-aliased vector graphics (wgpu-rs)");
+    window.set_inner_size(winit::dpi::PhysicalSize::new(2000, 1200));
 
     env_logger::init();
     // Temporarily avoid srgb formats for the swapchain on the web
-    futures::executor::block_on(run(event_loop, window, wgpu::TextureFormat::Bgra8Unorm));
+    futures::executor::block_on(run(event_loop, window, FORMAT));
 }
 
 fn clear_pass(
@@ -364,13 +456,19 @@ fn clear_pass(
     view: &wgpu::TextureView,
     depth: &wgpu::TextureView,
 ) {
+    let clear_color = wgpu::Color {
+        r: 0.3,
+        g: 0.3,
+        b: 0.32,
+        a: 1.0,
+    };
     let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
             attachment: view,
             resolve_target: None,
             load_op: wgpu::LoadOp::Clear,
             store_op: wgpu::StoreOp::Store,
-            clear_color: wgpu::Color::GREEN,
+            clear_color,
         }],
         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
             attachment: depth,
@@ -459,7 +557,7 @@ impl PipelineBuilder {
     }
 
     fn fill_shapes() -> Self {
-        Self::new(wgpu::ColorWrite::empty(), Some(FILL_SHAPES))
+        Self::new(wgpu::ColorWrite::empty(), Some(FILL_SHAPES)).no_culling()
     }
     fn fill_fringes() -> Self {
         Self::new(wgpu::ColorWrite::ALL, Some(FILL_FRINGES))
@@ -469,7 +567,7 @@ impl PipelineBuilder {
     }
 
     fn stroke_base() -> Self {
-        Self::new(wgpu::ColorWrite::ALL, Some(STROKE_BASE)).no_culling()
+        Self::new(wgpu::ColorWrite::ALL, Some(STROKE_BASE))
     }
     fn stroke_aa() -> Self {
         Self::new(wgpu::ColorWrite::ALL, Some(STROKE_AA))
@@ -509,7 +607,7 @@ impl PipelineBuilder {
             }),
             primitive_topology: wgpu::PrimitiveTopology::TriangleStrip,
             color_states: &[wgpu::ColorStateDescriptor {
-                format: wgpu::TextureFormat::Bgra8Unorm,
+                format: FORMAT,
                 color_blend: wgpu::BlendDescriptor {
                     src_factor: wgpu::BlendFactor::One,
                     dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,

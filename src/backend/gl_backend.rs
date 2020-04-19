@@ -258,9 +258,9 @@ impl super::Backend for BackendGL {
                         for path in &cmd.paths[range.clone()] {
                             gl_draw_strip(path.fill);
                         }
+                        gl::Enable(gl::CULL_FACE);
 
                         // Draw anti-aliased pixels
-                        gl::Enable(gl::CULL_FACE);
                         gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
 
                         // Draw fringes
