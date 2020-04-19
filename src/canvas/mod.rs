@@ -138,13 +138,13 @@ impl<'a> Canvas<'a> {
         if force_stroke || paint.style == PaintingStyle::Stroke {
             let scale = xform.average_scale();
             let mut stroke_width = clamp_f32(paint.stroke_width * scale, 0.0, 200.0);
-            let fringe_width = cache.fringe_width;
+            let fringe = cache.fringe_width;
 
             let mut paint_stroke = convert_paint(paint, xform);
             if stroke_width < cache.fringe_width {
                 // If the stroke width is less than pixel size, use alpha to emulate coverage.
                 // Since coverage is area, scale by alpha*alpha.
-                let alpha = clamp_f32(stroke_width / fringe_width, 0.0, 1.0);
+                let alpha = clamp_f32(stroke_width / fringe, 0.0, 1.0);
                 paint_stroke.inner_color.a *= alpha * alpha;
                 paint_stroke.outer_color.a *= alpha * alpha;
                 stroke_width = cache.fringe_width;
@@ -158,16 +158,16 @@ impl<'a> Canvas<'a> {
             cache.flatten_paths(&self.ctx.picture.commands);
             cache.expand_stroke(
                 stroke_width * 0.5,
-                fringe_width,
+                fringe,
                 paint.stroke_cap,
                 paint.stroke_join,
                 paint.stroke_miter_limit,
             );
 
             self.ctx.backend.draw_stroke(
-                &paint_stroke,
-                &scissor,
-                fringe_width,
+                paint_stroke,
+                scissor,
+                fringe,
                 stroke_width,
                 &cache.paths,
             );
@@ -183,10 +183,10 @@ impl<'a> Canvas<'a> {
 
             let paint_fill = convert_paint(paint, xform);
             self.ctx.backend.draw_fill(
-                &paint_fill,
-                &scissor,
+                paint_fill,
+                scissor,
                 cache.fringe_width,
-                &cache.bounds,
+                cache.bounds,
                 &cache.paths,
             );
         }

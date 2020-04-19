@@ -1,13 +1,11 @@
-use super::gl::{
-    self,
-    types::{GLint, GLuint},
-};
+use super::gl;
+use super::gl::types::{GLint, GLuint};
 use std::ptr::null;
 
 pub struct Shader {
-    prog: GLuint,
-    loc_viewsize: GLint,
-    loc_frag: GLint,
+    pub(super) prog: GLuint,
+    pub(crate) loc_viewsize: GLint,
+    pub(crate) loc_frag: GLint,
 }
 
 impl Shader {
@@ -51,31 +49,6 @@ impl Shader {
                 loc_viewsize: gl::GetUniformLocation(prog, b"viewSize\0".as_ptr() as *const i8),
                 loc_frag: gl::GetUniformLocation(prog, b"frag\0".as_ptr() as *const i8),
             }
-        }
-    }
-
-    pub fn bind(&self) {
-        unsafe {
-            gl::UseProgram(self.prog);
-        }
-    }
-
-    pub fn unbind(&self) {
-        unsafe {
-            gl::UseProgram(0);
-        }
-    }
-
-    pub fn bind_frag(&self, array: &[f32; 7 * 4]) {
-        unsafe {
-            gl::Uniform4fv(self.loc_frag, 7, &(array[0]));
-        }
-    }
-
-    pub fn bind_view(&self, view: *const [f32; 2]) {
-        unsafe {
-            //gl::Uniform1i(self.loc_tex, 0);
-            gl::Uniform2fv(self.loc_viewsize, 1, view as *const f32);
         }
     }
 }

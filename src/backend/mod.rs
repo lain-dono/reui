@@ -21,17 +21,17 @@ pub struct Scissor {
 pub trait Backend {
     fn draw_fill(
         &mut self,
-        paint: &Paint,
-        scissor: &Scissor,
+        paint: Paint,
+        scissor: Scissor,
         fringe: f32,
-        bounds: &[f32; 4],
+        bounds: [f32; 4],
         paths: &[Path],
     );
 
     fn draw_stroke(
         &mut self,
-        paint: &Paint,
-        scissor: &Scissor,
+        paint: Paint,
+        scissor: Scissor,
         fringe: f32,
         stroke_width: f32,
         paths: &[Path],

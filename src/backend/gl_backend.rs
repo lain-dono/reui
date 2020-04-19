@@ -22,13 +22,13 @@ impl Drop for Buffer {
 
 impl Default for Buffer {
     fn default() -> Self {
-        let mut buf = 0;
-        // Create dynamic vertex array
-        unsafe {
+        Self(unsafe {
+            // Create dynamic vertex array
+            let mut buf = 0;
             gl::GenBuffers(1, &mut buf);
             gl::Finish();
-        }
-        Buffer(buf)
+            buf
+        })
     }
 }
 
@@ -37,17 +37,11 @@ impl Buffer {
         Self::default()
     }
 
-    pub fn bind_and_upload<T: Sized>(&self, data: &[T]) {
+    pub unsafe fn bind_and_upload<T: Sized>(&self, data: &[T]) {
         let size = (data.len() * std::mem::size_of::<T>()) as GLsizeiptr;
         let ptr = data.as_ptr() as *const _;
-        unsafe {
-            gl::BindBuffer(gl::ARRAY_BUFFER, self.0);
-            gl::BufferData(gl::ARRAY_BUFFER, size as GLsizeiptr, ptr, gl::STREAM_DRAW);
-        }
-    }
-
-    pub fn unbind(&self) {
-        unsafe { gl::BindBuffer(gl::ARRAY_BUFFER, 0) }
+        gl::BindBuffer(gl::ARRAY_BUFFER, self.0);
+        gl::BufferData(gl::ARRAY_BUFFER, size as GLsizeiptr, ptr, gl::STREAM_DRAW);
     }
 }
 
@@ -62,7 +56,7 @@ fn check_error(_msg: &str) {
 }
 
 #[inline]
-fn copy_verts(dst: &mut [Vertex], slice: RawSlice, src: &[Vertex]) -> usize {
+fn copy_verts(dst: &mut [Vertex], slice: RawSlice, src: &[Vertex]) -> u32 {
     (&mut dst[slice.range()]).copy_from_slice(src);
     slice.count
 }
@@ -116,21 +110,15 @@ impl Default for FragUniforms {
             stroke_mul: 0f32,
             stroke_thr: 0f32,
             padding: [0u8; 4],
-            kind: 0f32,
+            kind: SHADER_FILLGRAD,
         }
     }
 }
 
-impl AsRef<[f32; 7 * 4]> for FragUniforms {
-    fn as_ref(&self) -> &[f32; 7 * 4] {
-        unsafe { &*(self as *const Self as *const _) }
-    }
-}
-
 impl FragUniforms {
-    fn convert_paint(
+    fn fill(
         paint: &Paint,
-        scissor: &Scissor,
+        scissor: Scissor,
         width: f32,
         fringe: f32,
         stroke_thr: f32,
@@ -175,29 +163,27 @@ impl FragUniforms {
 
 #[derive(Clone, Copy, Default)]
 struct RawSlice {
-    offset: usize,
-    count: usize,
+    offset: u32,
+    count: u32,
 }
 
 impl RawSlice {
     #[inline]
-    fn new(offset: usize, count: usize) -> Self {
+    fn new(offset: u32, count: u32) -> Self {
         Self { offset, count }
     }
 
     #[inline]
     fn range(self) -> std::ops::Range<usize> {
-        self.offset..self.offset + self.count
+        let (offset, count) = (self.offset as usize, self.count as usize);
+        offset..offset + count
     }
 }
 
 fn gl_draw_strip(slice: RawSlice) {
-    unsafe {
-        gl::DrawArrays(
-            gl::TRIANGLE_STRIP,
-            slice.offset as GLint,
-            slice.count as GLsizei,
-        )
+    if slice.count > 0 {
+        let (first, count) = (slice.offset as GLint, slice.count as GLsizei);
+        unsafe { gl::DrawArrays(gl::TRIANGLE_STRIP, first, count) }
     }
 }
 
@@ -238,23 +224,18 @@ impl<T: Default> std::ops::DerefMut for VecAlloc<T> {
 }
 
 impl<T: Default> VecAlloc<T> {
+    #[inline]
     fn new() -> Self {
         Self(Vec::new())
     }
 
+    #[inline]
     fn clear(&mut self) {
         self.0.clear();
     }
 
-    /*
-    fn alloc(&mut self, n: usize) -> usize {
-        let start = self.0.len();
-        self.0.resize_with(start + n, Default::default);
-        start
-    }
-    */
-
-    fn alloc_slice(&mut self, n: usize) -> (usize, &mut [T]) {
+    #[inline]
+    fn alloc(&mut self, n: usize) -> (usize, &mut [T]) {
         let start = self.0.len();
         self.0.resize_with(start + n, Default::default);
         (start, &mut self.0[start..start + n])
@@ -295,42 +276,24 @@ impl Default for BackendGL {
 }
 
 impl BackendGL {
-    fn alloc_verts(&mut self, n: usize) -> usize {
+    fn alloc_verts(&mut self, n: usize) -> u32 {
         let start = self.verts.len();
         self.verts.resize_with(start + n, Default::default);
-        start
+        start as u32
     }
 
-    fn alloc_paths(&mut self, count: usize) -> RawSlice {
+    fn alloc_paths(&mut self, count: u32) -> RawSlice {
         let start = self.paths.len();
-        self.paths.resize_with(start + count, Default::default);
-        RawSlice::new(start, count)
+        self.paths.resize_with(start + count as usize, Default::default);
+        RawSlice::new(start as u32, count)
     }
 
     fn set_uniforms(&self, offset: usize) {
-        self.shader.bind_frag(self.uniforms[offset].as_ref());
+        let uniform = (&self.uniforms[offset]) as *const _ as *const _;
+        unsafe { gl::Uniform4fv(self.shader.loc_frag, 7, uniform) }
     }
 
-    fn convex_fill(&self, uniform_offset: usize, path: RawSlice) {
-        self.set_uniforms(uniform_offset);
-        check_error("convex fill");
-
-        for path in &self.paths[path.range()] {
-            gl_draw_strip(path.fill);
-            // Draw fringes
-            if path.stroke.count > 0 {
-                gl_draw_strip(path.stroke);
-            }
-        }
-    }
-
-    fn fill(
-        &self,
-        uniform_offset: usize,
-        path: RawSlice,
-        triangle_offset: usize,
-        triangle_count: usize,
-    ) {
+    fn fill(&self, uniform_offset: usize, path: RawSlice, triangle: RawSlice) {
         let range = path.range();
 
         // Draw shapes
@@ -373,12 +336,12 @@ impl BackendGL {
         }
 
         // Draw fill
-        if triangle_count == 4 {
+        if triangle.count == 4 {
             unsafe {
                 gl::StencilFunc(gl::NOTEQUAL, 0x00, 0xff);
                 gl::StencilOp(gl::ZERO, gl::ZERO, gl::ZERO);
             }
-            gl_draw_strip(RawSlice::new(triangle_offset, 4));
+            gl_draw_strip(RawSlice::new(triangle.offset, 4));
         }
 
         unsafe {
@@ -430,11 +393,6 @@ impl BackendGL {
             gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
             gl::Disable(gl::STENCIL_TEST);
         }
-
-        //convertPaint(
-        //  gl,
-        //  self.frag_uniform_mut(gl, uniform_offset + 1), paint,
-        // scissor, strokeWidth, fringe, 1.0 - 0.5/255.0);
     }
 }
 
@@ -448,65 +406,59 @@ impl super::Backend for BackendGL {
 
     fn draw_fill(
         &mut self,
-        paint: &Paint,
-        scissor: &Scissor,
+        paint: Paint,
+        scissor: Scissor,
         fringe: f32,
-        bounds: &[f32; 4],
+        bounds: [f32; 4],
         paths: &[Path],
     ) {
-        let path = self.alloc_paths(paths.len());
+        let path = self.alloc_paths(paths.len() as u32);
 
         let (kind, triangle_count) = if paths.len() == 1 && paths[0].convex {
-            (CallKind::CONVEXFILL, 0) // Bounding box fill quad not needed for convex fill
+            (CallKind::CONVEXFILL, 0u32) // Bounding box fill quad not needed for convex fill
         } else {
-            (CallKind::FILL, 4)
+            (CallKind::FILL, 4u32)
         };
 
         // Allocate vertices for all the paths.
-        let maxverts = max_vert_count(paths) + triangle_count;
+        let maxverts = max_vert_count(paths) + triangle_count as usize;
         let mut offset = self.alloc_verts(maxverts);
 
         for (i, src) in paths.iter().enumerate() {
-            let dst = &mut self.paths[i + path.offset];
+            let dst = &mut self.paths[i + path.offset as usize];
             if let Some(fill) = &src.fill {
-                dst.fill = RawSlice::new(offset, fill.len());
+                dst.fill = RawSlice::new(offset, fill.len() as u32);
                 offset += copy_verts(&mut self.verts, dst.fill, fill);
             }
             if let Some(stroke) = &src.stroke {
-                dst.stroke = RawSlice::new(offset, stroke.len());
+                dst.stroke = RawSlice::new(offset, stroke.len() as u32);
                 offset += copy_verts(&mut self.verts, dst.stroke, stroke);
             }
         }
 
         // Setup uniforms for draw calls
-        let triangle_offset;
-        let uniform_offset = if kind == CallKind::FILL {
+        let (triangle_offset, uniform_offset) = if kind == CallKind::FILL {
             // Quad
-            triangle_offset = offset;
-            let quad = &mut self.verts[triangle_offset..];
+            let quad = &mut self.verts[offset as usize..offset as usize + 4];
             quad[0].set([bounds[2], bounds[3]], [0.5, 1.0]);
             quad[1].set([bounds[2], bounds[1]], [0.5, 1.0]);
             quad[2].set([bounds[0], bounds[3]], [0.5, 1.0]);
             quad[3].set([bounds[0], bounds[1]], [0.5, 1.0]);
 
-            let (uniform_offset, ab) = self.uniforms.alloc_slice(2);
+            let (uniform_offset, ab) = self.uniforms.alloc(2);
 
             // Simple shader for stencil
-            ab[0] = FragUniforms {
-                stroke_thr: -1.0,
-                kind: SHADER_SIMPLE,
-                ..Default::default()
-            };
+            ab[0].stroke_thr = -1.0;
+            ab[0].kind = SHADER_SIMPLE;
 
             // Fill shader
-            ab[1] = FragUniforms::convert_paint(paint, scissor, fringe, fringe, -1.0);
-            uniform_offset
+            ab[1] = FragUniforms::fill(&paint, scissor, fringe, fringe, -1.0);
+            (offset, uniform_offset)
         } else {
-            triangle_offset = 0;
-            let (uniform_offset, a) = self.uniforms.alloc_slice(1);
             // Fill shader
-            a[0] = FragUniforms::convert_paint(paint, scissor, fringe, fringe, -1.0);
-            uniform_offset
+            let (uniform_offset, a) = self.uniforms.alloc(1);
+            a[0] = FragUniforms::fill(&paint, scissor, fringe, fringe, -1.0);
+            (0, uniform_offset)
         };
 
         self.calls.push(Call {
@@ -519,31 +471,31 @@ impl super::Backend for BackendGL {
 
     fn draw_stroke(
         &mut self,
-        paint: &Paint,
-        scissor: &Scissor,
+        paint: Paint,
+        scissor: Scissor,
         fringe: f32,
         stroke_width: f32,
         paths: &[Path],
     ) {
-        let path = self.alloc_paths(paths.len());
+        let path = self.alloc_paths(paths.len() as u32);
 
         // Allocate vertices for all the paths.
         let maxverts = max_vert_count(paths);
         let mut offset = self.alloc_verts(maxverts);
 
         for (i, src) in paths.iter().enumerate() {
-            let dst = &mut self.paths[i + path.offset];
+            let dst = &mut self.paths[i + path.offset as usize];
             if let Some(stroke) = &src.stroke {
-                dst.stroke = RawSlice::new(offset, stroke.len());
+                dst.stroke = RawSlice::new(offset, stroke.len() as u32);
                 offset += copy_verts(&mut self.verts, dst.stroke, stroke);
             }
         }
 
         // Fill shader
         let thr = 1.0 - 0.5 / 255.0;
-        let (uniform_offset, ab) = self.uniforms.alloc_slice(2);
-        ab[0] = FragUniforms::convert_paint(paint, scissor, stroke_width, fringe, -1.0);
-        ab[1] = FragUniforms::convert_paint(paint, scissor, stroke_width, fringe, thr);
+        let (uniform_offset, ab) = self.uniforms.alloc(2);
+        ab[0] = FragUniforms::fill(&paint, scissor, stroke_width, fringe, -1.0);
+        ab[1] = FragUniforms::fill(&paint, scissor, stroke_width, fringe, thr);
 
         self.calls.push(Call {
             kind: CallKind::STROKE,
@@ -563,9 +515,9 @@ impl super::Backend for BackendGL {
             return;
         }
 
-        self.shader.bind();
-
         unsafe {
+            gl::UseProgram(self.shader.prog);
+
             // Setup require GL state.
 
             gl::Enable(gl::CULL_FACE);
@@ -579,55 +531,45 @@ impl super::Backend for BackendGL {
             gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
             gl::StencilFunc(gl::ALWAYS, 0, 0xffff_ffff);
             gl::ActiveTexture(gl::TEXTURE0);
-        }
 
-        // Upload vertex data
-        self.vert_buf.bind_and_upload(&self.verts);
-        let size = mem::size_of::<Vertex>();
+            // upload vertex data
+            self.vert_buf.bind_and_upload(&self.verts);
+            let size = mem::size_of::<Vertex>();
 
-        unsafe {
             gl::EnableVertexAttribArray(0);
             gl::EnableVertexAttribArray(1);
 
             let two = (2 * mem::size_of::<f32>()) as *const _;
             gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, size as i32, null());
             gl::VertexAttribPointer(1, 2, gl::UNSIGNED_SHORT, gl::TRUE, size as i32, two);
-        }
 
-        // Set view and texture just once per frame.
-        self.shader.bind_view(&self.view);
+            // set view and texture just once per frame.
+            gl::Uniform2fv(self.shader.loc_viewsize, 1, &self.view as *const f32);
 
-        unsafe {
-            gl::BlendFuncSeparate(
-                gl::ONE,
-                gl::ONE_MINUS_SRC_ALPHA,
-                gl::ONE,
-                gl::ONE_MINUS_SRC_ALPHA,
-            );
-        }
+            // alpha blending
+            let (src, dst) = (gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
+            gl::BlendFuncSeparate(src, dst, src, dst);
 
-        for call in &self.calls {
-            match call.kind {
-                CallKind::FILL => self.fill(
-                    call.uniform_offset,
-                    call.path,
-                    call.triangle.offset,
-                    call.triangle.count,
-                ),
-                CallKind::CONVEXFILL => self.convex_fill(call.uniform_offset, call.path),
-                CallKind::STROKE => self.stroke(call.uniform_offset, call.path),
+            for call in &self.calls {
+                match call.kind {
+                    CallKind::FILL => self.fill(call.uniform_offset, call.path, call.triangle),
+                    CallKind::CONVEXFILL => {
+                        self.set_uniforms(call.uniform_offset);
+                        for path in &self.paths[call.path.range()] {
+                            gl_draw_strip(path.fill);
+                            gl_draw_strip(path.stroke); // fringes
+                        }
+                    }
+                    CallKind::STROKE => self.stroke(call.uniform_offset, call.path),
+                }
             }
-        }
 
-        unsafe {
             gl::DisableVertexAttribArray(0);
             gl::DisableVertexAttribArray(1);
-
             gl::Disable(gl::CULL_FACE);
+            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
+            gl::UseProgram(0);
         }
-
-        self.vert_buf.unbind();
-        self.shader.unbind();
 
         // Reset calls
         self.cancel_frame();
