@@ -7,9 +7,10 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
     let (width, height) = wsize.into();
 
     {
-        draw_colorwheel(ctx, rect(width - 300.0, height - 300.0, 250.0, 250.0), time);
         draw_eyes(ctx, rect(width - 250.0, 50.0, 150.0, 100.0), mouse, time);
         draw_graph(ctx, 0.0, height / 2.0, width, height / 2.0, time);
+        draw_colorwheel(ctx, rect(width - 300.0, height - 300.0, 250.0, 250.0), time);
+
         // Line joints
         draw_lines(ctx, 120.0, height - 50.0, 600.0, 50.0, time);
         // Line caps

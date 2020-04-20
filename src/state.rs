@@ -1,12 +1,92 @@
-use crate::{
-    backend::Scissor,
-    math::{point2, Rect, Transform},
-};
+use crate::math::{point2, Rect, Transform};
+
+#[derive(Clone, Copy)]
+pub struct Scissor {
+    pub xform: Transform,
+    pub extent: [f32; 2],
+}
+
+#[derive(Default)]
+pub struct States(State, Vec<State>);
+
+impl States {
+    #[inline]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self(Default::default(), Vec::with_capacity(capacity))
+    }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        self.0 = Default::default();
+        self.1.clear();
+    }
+
+    #[inline]
+    pub fn save_count(&mut self) -> usize {
+        self.1.len()
+    }
+
+    #[inline]
+    pub fn save(&mut self) {
+        self.1.push(self.last().clone())
+    }
+
+    #[inline]
+    pub fn restore(&mut self) -> bool {
+        self.1.pop().is_some()
+    }
+
+    #[inline]
+    pub fn transform(&self) -> Transform {
+        self.last().xform
+    }
+
+    #[inline]
+    pub fn decompose(&self) -> (Transform, Scissor) {
+        let State { xform, scissor } = self.last().clone();
+        (xform, scissor)
+    }
+
+    #[inline]
+    pub fn pre_transform(&mut self, m: Transform) {
+        self.last_mut().xform.append_mut(m);
+    }
+
+    #[inline]
+    pub fn set_scissor(&mut self, rect: Rect) {
+        self.last_mut().set_scissor(rect);
+    }
+
+    #[inline]
+    pub fn intersect_scissor(&mut self, rect: Rect) {
+        self.last_mut().intersect_scissor(rect)
+    }
+
+    #[inline]
+    pub fn reset_scissor(&mut self) {
+        self.last_mut().reset_scissor()
+    }
+
+    #[inline(always)]
+    fn last(&self) -> &State {
+        self.1.last().unwrap_or(&self.0)
+    }
+
+    #[inline(always)]
+    fn last_mut(&mut self) -> &mut State {
+        self.1.last_mut().unwrap_or(&mut self.0)
+    }
+}
 
 #[derive(Clone)]
-pub struct State {
-    pub xform: Transform,
-    pub scissor: Scissor,
+struct State {
+    xform: Transform,
+    scissor: Scissor,
 }
 
 impl Default for State {
@@ -22,7 +102,7 @@ impl Default for State {
 }
 
 impl State {
-    pub fn set_scissor(&mut self, rect: Rect) {
+    fn set_scissor(&mut self, rect: Rect) {
         let [x, y, w, h] = rect.to_xywh();
 
         let translate = Transform::translation(x + w * 0.5, y + h * 0.5);
@@ -32,7 +112,7 @@ impl State {
         self.scissor.extent[1] = h * 0.5;
     }
 
-    pub fn intersect_scissor(&mut self, r: Rect) {
+    fn intersect_scissor(&mut self, r: Rect) {
         // If no previous scissor has been set, set the scissor as current scissor.
         if self.scissor.extent[0] < 0.0 {
             self.set_scissor(r);
@@ -67,7 +147,7 @@ impl State {
         });
     }
 
-    pub fn reset_scissor(&mut self) {
+    fn reset_scissor(&mut self) {
         self.scissor.xform = Transform::identity();
         self.scissor.extent = [-1.0, -1.0];
     }

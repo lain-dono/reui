@@ -1,10 +1,13 @@
-use super::{
-    commands::{CallKind, CmdBuffer, RawSlice},
-    gl,
-    gl::types::{GLint, GLsizei, GLsizeiptr, GLuint},
-};
+use super::commands::{CallKind, CmdBuffer, RawSlice};
 use crate::cache::Vertex;
 use std::{mem, ptr};
+
+use self::gles::types::{GLint, GLsizei, GLsizeiptr, GLuint};
+
+#[allow(clippy::module_inception)]
+pub mod gles {
+    include!(concat!(env!("OUT_DIR"), "/gl_bindings.rs"));
+}
 
 // TODO: mediump float may not be enough for GLES2 in iOS.
 // see the following discussion: https://github.com/memononen/nanovg/issues/46
@@ -103,8 +106,8 @@ void main(void) {
 fn check_error(_msg: &str) {
     #[cfg(build = "debug")]
     {
-        let err = unsafe { gl::GetError() };
-        if err != gl::NO_ERROR {
+        let err = unsafe { gles::GetError() };
+        if err != gles::NO_ERROR {
             println!("GL Error {:08x} after {}", err, _msg);
         }
     }
@@ -120,17 +123,9 @@ pub struct BackendGL {
 impl Drop for BackendGL {
     fn drop(&mut self) {
         if self.vert_buf != 0 {
-            unsafe { gl::DeleteBuffers(1, &self.vert_buf) }
+            unsafe { gles::DeleteBuffers(1, &self.vert_buf) }
             self.vert_buf = 0;
         }
-    }
-}
-
-impl BackendGL {
-    fn set_uniforms(&self, cmd: &CmdBuffer, offset: usize) {
-        let uniform = (&cmd.uniforms[offset]) as *const _ as *const _;
-        unsafe { gl::Uniform4fv(self.loc_frag, 7, uniform) }
-        check_error("set_uniforms");
     }
 }
 
@@ -141,50 +136,56 @@ impl Default for BackendGL {
         let (vshader, fshader) = (VERT.as_ptr() as *const i8, FRAG.as_ptr() as *const i8);
 
         unsafe {
-            let prog = gl::CreateProgram();
-            let vert = gl::CreateShader(gl::VERTEX_SHADER);
-            let frag = gl::CreateShader(gl::FRAGMENT_SHADER);
-            gl::ShaderSource(vert, 1, &vshader, ptr::null());
-            gl::ShaderSource(frag, 1, &fshader, ptr::null());
+            let prog = gles::CreateProgram();
+            let vert = gles::CreateShader(gles::VERTEX_SHADER);
+            let frag = gles::CreateShader(gles::FRAGMENT_SHADER);
+            gles::ShaderSource(vert, 1, &vshader, ptr::null());
+            gles::ShaderSource(frag, 1, &fshader, ptr::null());
 
-            gl::CompileShader(vert);
+            gles::CompileShader(vert);
             let mut status = 0i32;
-            gl::GetShaderiv(vert, gl::COMPILE_STATUS, &mut status);
+            gles::GetShaderiv(vert, gles::COMPILE_STATUS, &mut status);
             assert_eq!(status, 1);
 
-            gl::CompileShader(frag);
-            gl::GetShaderiv(frag, gl::COMPILE_STATUS, &mut status);
+            gles::CompileShader(frag);
+            gles::GetShaderiv(frag, gles::COMPILE_STATUS, &mut status);
             assert_eq!(status, 1);
 
-            gl::AttachShader(prog, vert);
-            gl::AttachShader(prog, frag);
+            gles::AttachShader(prog, vert);
+            gles::AttachShader(prog, frag);
 
-            gl::BindAttribLocation(prog, 0, b"a_Position\0".as_ptr() as *const i8);
-            gl::BindAttribLocation(prog, 1, b"a_TexCoord\0".as_ptr() as *const i8);
+            gles::BindAttribLocation(prog, 0, b"a_Position\0".as_ptr() as *const i8);
+            gles::BindAttribLocation(prog, 1, b"a_TexCoord\0".as_ptr() as *const i8);
 
-            gl::LinkProgram(prog);
-            gl::GetProgramiv(prog, gl::LINK_STATUS, &mut status);
+            gles::LinkProgram(prog);
+            gles::GetProgramiv(prog, gles::LINK_STATUS, &mut status);
             assert_eq!(status, 1);
 
             check_error("shader & uniform locations");
 
             // Create dynamic vertex array
             let mut vert_buf = 0;
-            gl::GenBuffers(1, &mut vert_buf);
-            gl::Finish();
+            gles::GenBuffers(1, &mut vert_buf);
+            gles::Finish();
 
             Self {
                 vert_buf,
                 prog,
-                loc_viewsize: gl::GetUniformLocation(prog, b"viewSize\0".as_ptr() as *const i8),
-                loc_frag: gl::GetUniformLocation(prog, b"frag\0".as_ptr() as *const i8),
+                loc_viewsize: gles::GetUniformLocation(prog, b"viewSize\0".as_ptr() as *const i8),
+                loc_frag: gles::GetUniformLocation(prog, b"frag\0".as_ptr() as *const i8),
             }
         }
     }
 }
 
-impl super::Backend for BackendGL {
-    fn draw_commands(&mut self, cmd: &CmdBuffer, width: f32, height: f32, pixel_ratio: f32) {
+impl BackendGL {
+    fn set_uniforms(&self, cmd: &CmdBuffer, offset: usize) {
+        let uniform = (&cmd.uniforms[offset]) as *const _ as *const _;
+        unsafe { gles::Uniform4fv(self.loc_frag, 7, uniform) }
+        check_error("set_uniforms");
+    }
+
+    pub fn draw_commands(&mut self, cmd: &CmdBuffer, width: f32, height: f32, pixel_ratio: f32) {
         if cmd.calls.is_empty() {
             return;
         }
@@ -192,7 +193,7 @@ impl super::Backend for BackendGL {
         unsafe fn gl_draw_strip(slice: RawSlice) {
             if slice.count > 0 {
                 let (first, count) = (slice.offset as GLint, slice.count as GLsizei);
-                gl::DrawArrays(gl::TRIANGLE_STRIP, first, count)
+                gles::DrawArrays(gles::TRIANGLE_STRIP, first, count)
             }
         }
 
@@ -201,44 +202,49 @@ impl super::Backend for BackendGL {
         unsafe {
             // Setup require GL state.
 
-            gl::UseProgram(self.prog);
-            gl::Enable(gl::CULL_FACE);
-            gl::CullFace(gl::BACK);
-            gl::FrontFace(gl::CCW);
-            gl::Enable(gl::BLEND);
-            gl::Disable(gl::DEPTH_TEST);
-            gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
-            gl::ActiveTexture(gl::TEXTURE0);
+            gles::UseProgram(self.prog);
+            gles::Enable(gles::CULL_FACE);
+            gles::CullFace(gles::BACK);
+            gles::FrontFace(gles::CCW);
+            gles::Enable(gles::BLEND);
+            gles::Disable(gles::DEPTH_TEST);
+            gles::ColorMask(gles::TRUE, gles::TRUE, gles::TRUE, gles::TRUE);
+            gles::ActiveTexture(gles::TEXTURE0);
 
             // upload vertex data
 
             {
                 let size = (cmd.verts.len() * mem::size_of::<Vertex>()) as GLsizeiptr;
                 let ptr = cmd.verts.as_ptr() as *const _;
-                gl::BindBuffer(gl::ARRAY_BUFFER, self.vert_buf);
-                gl::BufferData(gl::ARRAY_BUFFER, size as GLsizeiptr, ptr, gl::STREAM_DRAW);
+                gles::BindBuffer(gles::ARRAY_BUFFER, self.vert_buf);
+                gles::BufferData(
+                    gles::ARRAY_BUFFER,
+                    size as GLsizeiptr,
+                    ptr,
+                    gles::STREAM_DRAW,
+                );
             }
 
             let size = mem::size_of::<Vertex>();
 
-            gl::EnableVertexAttribArray(0);
-            gl::EnableVertexAttribArray(1);
+            gles::EnableVertexAttribArray(0);
+            gles::EnableVertexAttribArray(1);
 
             let two = (2 * mem::size_of::<f32>()) as *const _;
-            gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, size as i32, ptr::null());
-            gl::VertexAttribPointer(1, 2, gl::UNSIGNED_SHORT, gl::TRUE, size as i32, two);
+            gles::VertexAttribPointer(0, 2, gles::FLOAT, gles::FALSE, size as i32, ptr::null());
+            gles::VertexAttribPointer(1, 2, gles::UNSIGNED_SHORT, gles::TRUE, size as i32, two);
 
             // set view and texture just once per frame.
-            gl::Uniform2fv(self.loc_viewsize, 1, &view as *const f32);
+            gles::Uniform2fv(self.loc_viewsize, 1, &view as *const f32);
 
             // alpha blending
-            let (src, dst) = (gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
-            gl::BlendFuncSeparate(src, dst, src, dst);
+            let (src, dst) = (gles::ONE, gles::ONE_MINUS_SRC_ALPHA);
+            gles::BlendFuncSeparate(src, dst, src, dst);
 
             for call in &cmd.calls {
                 match call.kind {
                     CallKind::CONVEXFILL => {
-                        gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+                        gles::ColorMask(gles::TRUE, gles::TRUE, gles::TRUE, gles::TRUE);
                         stencil(0, None);
                         self.set_uniforms(cmd, call.uniform_offset);
                         for path in &cmd.paths[call.path.range()] {
@@ -251,17 +257,17 @@ impl super::Backend for BackendGL {
                         let range = call.path.range();
 
                         // Draw shapes
-                        gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
-                        gl::Disable(gl::CULL_FACE);
+                        gles::ColorMask(gles::FALSE, gles::FALSE, gles::FALSE, gles::FALSE);
+                        gles::Disable(gles::CULL_FACE);
                         self.set_uniforms(cmd, call.uniform_offset);
                         stencil(0, Some(FILL_SHAPES));
                         for path in &cmd.paths[range.clone()] {
                             gl_draw_strip(path.fill);
                         }
-                        gl::Enable(gl::CULL_FACE);
+                        gles::Enable(gles::CULL_FACE);
 
                         // Draw anti-aliased pixels
-                        gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+                        gles::ColorMask(gles::TRUE, gles::TRUE, gles::TRUE, gles::TRUE);
 
                         // Draw fringes
                         self.set_uniforms(cmd, call.uniform_offset + 1);
@@ -279,7 +285,7 @@ impl super::Backend for BackendGL {
                     CallKind::STROKE => {
                         let range = call.path.range();
 
-                        gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+                        gles::ColorMask(gles::TRUE, gles::TRUE, gles::TRUE, gles::TRUE);
 
                         // Fill the stroke base without overlap
                         stencil(0, Some(STROKE_BASE));
@@ -296,7 +302,7 @@ impl super::Backend for BackendGL {
                         }
 
                         // Clear stencil buffer
-                        gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
+                        gles::ColorMask(gles::FALSE, gles::FALSE, gles::FALSE, gles::FALSE);
                         stencil(0, Some(STROKE_CLEAR));
                         for path in &cmd.paths[range] {
                             gl_draw_strip(path.stroke);
@@ -305,11 +311,11 @@ impl super::Backend for BackendGL {
                 }
             }
 
-            gl::DisableVertexAttribArray(0);
-            gl::DisableVertexAttribArray(1);
-            gl::Disable(gl::CULL_FACE);
-            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
-            gl::UseProgram(0);
+            gles::DisableVertexAttribArray(0);
+            gles::DisableVertexAttribArray(1);
+            gles::Disable(gles::CULL_FACE);
+            gles::BindBuffer(gles::ARRAY_BUFFER, 0);
+            gles::UseProgram(0);
         }
     }
 }
@@ -367,39 +373,39 @@ stencil_face!(ALWAYS_KEEP_DECR_WRAP, Always, Keep, DecrementWrap);
 unsafe fn stencil(reference: u32, state: Option<wgpu::DepthStencilStateDescriptor>) {
     // ignore: format, depth_write_enabled, depth_compare
     if let Some(state) = state {
-        gl::Enable(gl::STENCIL_TEST);
+        gles::Enable(gles::STENCIL_TEST);
 
         assert_eq!(state.stencil_write_mask, state.stencil_read_mask);
 
         let mask = state.stencil_write_mask;
-        sep_stencil(gl::FRONT, state.stencil_front, reference, mask);
-        sep_stencil(gl::BACK, state.stencil_back, reference, mask);
+        sep_stencil(gles::FRONT, state.stencil_front, reference, mask);
+        sep_stencil(gles::BACK, state.stencil_back, reference, mask);
     } else {
-        gl::Disable(gl::STENCIL_TEST);
+        gles::Disable(gles::STENCIL_TEST);
 
-        gl::StencilMask(0xffff_ffff);
-        gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
-        gl::StencilFunc(gl::ALWAYS, 0, 0xffff_ffff);
+        gles::StencilMask(0xffff_ffff);
+        gles::StencilOp(gles::KEEP, gles::KEEP, gles::KEEP);
+        gles::StencilFunc(gles::ALWAYS, 0, 0xffff_ffff);
     }
     check_error("stencil");
 }
 
 unsafe fn sep_stencil(
-    face: gl::types::GLenum,
+    face: gles::types::GLenum,
     state: wgpu::StencilStateFaceDescriptor,
     reference: u32,
     mask: u32,
 ) {
     let func = match state.compare {
         wgpu::CompareFunction::Undefined => unimplemented!(),
-        wgpu::CompareFunction::Never => gl::NEVER,
-        wgpu::CompareFunction::Less => gl::LESS,
-        wgpu::CompareFunction::Equal => gl::EQUAL,
-        wgpu::CompareFunction::LessEqual => gl::LEQUAL,
-        wgpu::CompareFunction::Greater => gl::GREATER,
-        wgpu::CompareFunction::NotEqual => gl::NOTEQUAL,
-        wgpu::CompareFunction::GreaterEqual => gl::GEQUAL,
-        wgpu::CompareFunction::Always => gl::ALWAYS,
+        wgpu::CompareFunction::Never => gles::NEVER,
+        wgpu::CompareFunction::Less => gles::LESS,
+        wgpu::CompareFunction::Equal => gles::EQUAL,
+        wgpu::CompareFunction::LessEqual => gles::LEQUAL,
+        wgpu::CompareFunction::Greater => gles::GREATER,
+        wgpu::CompareFunction::NotEqual => gles::NOTEQUAL,
+        wgpu::CompareFunction::GreaterEqual => gles::GEQUAL,
+        wgpu::CompareFunction::Always => gles::ALWAYS,
     };
 
     let sfail = conv_op(state.fail_op);
@@ -408,19 +414,19 @@ unsafe fn sep_stencil(
 
     assert_eq!(sfail, dpfail);
 
-    gl::StencilOpSeparate(face, sfail, dpfail, dppass);
-    gl::StencilFuncSeparate(face, func, reference as i32, mask);
+    gles::StencilOpSeparate(face, sfail, dpfail, dppass);
+    gles::StencilFuncSeparate(face, func, reference as i32, mask);
 }
 
-fn conv_op(op: wgpu::StencilOperation) -> gl::types::GLenum {
+fn conv_op(op: wgpu::StencilOperation) -> gles::types::GLenum {
     match op {
-        wgpu::StencilOperation::Keep => gl::KEEP,
-        wgpu::StencilOperation::Zero => gl::ZERO,
-        wgpu::StencilOperation::Replace => gl::REPLACE,
-        wgpu::StencilOperation::Invert => gl::INVERT,
-        wgpu::StencilOperation::IncrementClamp => gl::INCR,
-        wgpu::StencilOperation::DecrementClamp => gl::DECR,
-        wgpu::StencilOperation::IncrementWrap => gl::INCR_WRAP,
-        wgpu::StencilOperation::DecrementWrap => gl::DECR_WRAP,
+        wgpu::StencilOperation::Keep => gles::KEEP,
+        wgpu::StencilOperation::Zero => gles::ZERO,
+        wgpu::StencilOperation::Replace => gles::REPLACE,
+        wgpu::StencilOperation::Invert => gles::INVERT,
+        wgpu::StencilOperation::IncrementClamp => gles::INCR,
+        wgpu::StencilOperation::DecrementClamp => gles::DECR,
+        wgpu::StencilOperation::IncrementWrap => gles::INCR_WRAP,
+        wgpu::StencilOperation::DecrementWrap => gles::DECR_WRAP,
     }
 }

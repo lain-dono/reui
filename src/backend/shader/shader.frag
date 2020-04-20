@@ -3,6 +3,7 @@
 //precision highp float;
 
 
+// TODO: can be passed via per-instance vertex buffer
 struct FragState {
     vec4 scissor_transform;
     vec4 paint_transform;
@@ -25,7 +26,7 @@ layout(location = 0) in vec2 v_Position;
 layout(location = 1) in vec2 v_TexCoord;
 layout(location = 2) in flat uint v_Index;
 
-layout(std140, set = 1, binding = 0) buffer State {
+layout(std140, set = 0, binding = 1) buffer State {
     FragState states[];
 };
 
@@ -75,7 +76,4 @@ void main() {
         color *= strokeAlpha * scissor;
         Target0 = color;
     }
-
-    //float c = float(v_Index) / 200.0;
-    //Target0 = vec4(c, c, c, 1.0);
 }

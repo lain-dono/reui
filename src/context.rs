@@ -1,32 +1,29 @@
 use crate::{
-    backend::Backend,
     cache::PathCache,
-    canvas::Picture,
+    canvas::{Canvas, PictureRecorder},
     math::{Offset, Transform},
-    state::State,
+    state::States,
 };
 
 const INIT_COMMANDS_SIZE: usize = 256;
 
 pub struct Context {
-    pub picture: Picture,
-    pub states: Vec<State>,
+    pub picture: PictureRecorder,
+    pub states: States,
     pub cache: PathCache,
     pub cmd: crate::backend::CmdBuffer,
-    pub backend: Box<dyn Backend>,
 
     width: f32,
     height: f32,
     dpi: f32,
 }
 
-impl Context {
-    pub fn new(backend: Box<dyn Backend>) -> Self {
+impl Default for Context {
+    fn default() -> Self {
         Self {
-            backend,
-            states: Vec::with_capacity(256),
+            states: States::with_capacity(256),
             cache: PathCache::new(),
-            picture: Picture {
+            picture: PictureRecorder {
                 commands: Vec::with_capacity(INIT_COMMANDS_SIZE),
                 cmd: Offset::zero(),
                 xform: Transform::identity(),
@@ -39,27 +36,25 @@ impl Context {
             dpi: 1.0,
         }
     }
+}
 
-    pub fn begin_frame(&mut self, width: f32, height: f32, dpi: f32) {
+impl Context {
+    pub fn begin_frame(&mut self, width: f32, height: f32, dpi: f32) -> Canvas {
+        self.cmd.clear();
         self.states.clear();
-        self.states.push(Default::default());
         self.cache.set_dpi(dpi);
         self.width = width;
         self.height = height;
         self.dpi = dpi;
+        Canvas::new(self)
     }
 
-    pub fn end_frame(&mut self) {
-        self.backend.draw_commands(&self.cmd, self.width, self.height, self.dpi);
-        self.cmd.clear();
-    }
-
+    /*
     pub fn _begin_path(&mut self) {
         self.picture.commands.clear();
         self.cache.clear();
     }
 
-    /*
     pub fn _close_path(&mut self) {
         self.picture.close_path();
     }

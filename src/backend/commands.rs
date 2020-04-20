@@ -1,10 +1,8 @@
 use crate::{
-    backend::{Paint, Scissor},
+    backend::{FragUniforms, Paint},
     cache::{Path, Vertex},
+    state::Scissor,
 };
-
-pub const SHADER_SIMPLE: f32 = 0.0;
-pub const SHADER_FILLGRAD: f32 = 1.0;
 
 #[inline]
 fn copy_verts(dst: &mut [Vertex], slice: RawSlice, src: &[Vertex]) -> u32 {
@@ -19,89 +17,6 @@ fn max_vert_count(paths: &[Path]) -> usize {
         let stroke = path.stroke.as_ref().map(|v| v.len()).unwrap_or_default();
         acc + fill + stroke
     })
-}
-
-#[repr(C, align(4))]
-pub struct FragUniforms {
-    pub scissor_mat: [f32; 4],
-    pub paint_mat: [f32; 4],
-    pub inner_color: [f32; 4],
-    pub outer_color: [f32; 4],
-
-    pub scissor_ext: [f32; 2],
-    pub scissor_scale: [f32; 2],
-
-    pub extent: [f32; 2],
-    pub radius: f32,
-    pub feather: f32,
-
-    pub stroke_mul: f32, // scale
-    pub stroke_thr: f32, // threshold
-    pub padding: [u8; 4],
-    pub kind: f32,
-}
-
-impl FragUniforms {
-    pub fn fill(paint: &Paint, scissor: Scissor, width: f32, fringe: f32, stroke_thr: f32) -> Self {
-        let (scissor_mat, scissor_ext, scissor_scale);
-        if scissor.extent[0] < -0.5 || scissor.extent[1] < -0.5 {
-            scissor_mat = [0.0; 4];
-            scissor_ext = [1.0, 1.0];
-            scissor_scale = [1.0, 1.0];
-        } else {
-            let xform = scissor.xform;
-            let (re, im) = (xform.re, xform.im);
-            let scale = (re * re + im * im).sqrt() / fringe;
-
-            scissor_mat = xform.inverse().into();
-            scissor_ext = scissor.extent;
-            scissor_scale = [scale, scale];
-        }
-
-        Self {
-            scissor_mat,
-            scissor_ext,
-            scissor_scale,
-
-            inner_color: paint.inner_color.premul(),
-            outer_color: paint.outer_color.premul(),
-
-            extent: paint.extent,
-
-            stroke_mul: (width * 0.5 + fringe * 0.5) / fringe,
-            stroke_thr,
-            kind: SHADER_FILLGRAD,
-            radius: paint.radius,
-            feather: paint.feather,
-
-            paint_mat: paint.xform.inverse().into(),
-
-            padding: [0; 4],
-        }
-    }
-}
-
-impl Default for FragUniforms {
-    fn default() -> Self {
-        Self {
-            scissor_mat: [0f32; 4],
-            paint_mat: [0f32; 4],
-            inner_color: [0f32; 4],
-            outer_color: [0f32; 4],
-
-            scissor_ext: [0f32; 2],
-            scissor_scale: [0f32; 2],
-
-            extent: [0f32; 2],
-            radius: 0f32,
-            feather: 0f32,
-
-            stroke_mul: 0f32,
-            stroke_thr: 0f32,
-            padding: [0u8; 4],
-            kind: SHADER_FILLGRAD,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Default)]
@@ -219,19 +134,6 @@ impl CmdBuffer {
         self.uniforms.clear();
     }
 
-    pub fn alloc_verts(&mut self, n: usize) -> u32 {
-        let start = self.verts.len();
-        self.verts.resize_with(start + n, Default::default);
-        start as u32
-    }
-
-    pub fn alloc_paths(&mut self, count: u32) -> RawSlice {
-        let start = self.paths.len();
-        self.paths
-            .resize_with(start + count as usize, Default::default);
-        RawSlice::new(start as u32, count)
-    }
-
     pub fn draw_fill(
         &mut self,
         paint: Paint,
@@ -240,7 +142,7 @@ impl CmdBuffer {
         bounds: [f32; 4],
         paths: &[Path],
     ) {
-        let path = self.alloc_paths(paths.len() as u32);
+        let path = self.alloc_paths(paths);
 
         let (kind, triangle_count) = if paths.len() == 1 && paths[0].convex {
             (CallKind::CONVEXFILL, 0u32) // Bounding box fill quad not needed for convex fill
@@ -277,7 +179,6 @@ impl CmdBuffer {
 
             // Simple shader for stencil
             ab[0].stroke_thr = -1.0;
-            ab[0].kind = SHADER_SIMPLE;
 
             // Fill shader
             ab[1] = FragUniforms::fill(&paint, scissor, fringe, fringe, -1.0);
@@ -305,7 +206,7 @@ impl CmdBuffer {
         stroke_width: f32,
         paths: &[Path],
     ) {
-        let path = self.alloc_paths(paths.len() as u32);
+        let path = self.alloc_paths(paths);
 
         // Allocate vertices for all the paths.
         let maxverts = max_vert_count(paths);
@@ -331,5 +232,20 @@ impl CmdBuffer {
             triangle: RawSlice::new(0, 0),
             path,
         })
+    }
+
+    fn alloc_verts(&mut self, n: usize) -> u32 {
+        let start = self.verts.len();
+        self.verts.resize_with(start + n, Default::default);
+        start as u32
+    }
+
+    fn alloc_paths(&mut self, paths: &[Path]) -> RawSlice {
+        let count = paths.len() as u32;
+
+        let start = self.paths.len();
+        self.paths
+            .resize_with(start + count as usize, Default::default);
+        RawSlice::new(start as u32, count)
     }
 }

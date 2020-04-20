@@ -6,286 +6,11 @@ use winit::{
     window::Window,
 };
 
-use wgpu_vg::backend::{CallKind, CmdBuffer, FragUniforms};
-use wgpu_vg::cache::Vertex;
-use wgpu_vg::canvas::Canvas;
+use wgpu_vg::backend::{Pipeline, Target};
 use wgpu_vg::context::Context;
 use wgpu_vg::math::{point2, rect};
 
 use thread_profiler::profile_scope;
-
-#[allow(dead_code)]
-pub fn cast_slice<T>(data: &[T]) -> &[u8] {
-    use std::{mem::size_of, slice::from_raw_parts};
-    unsafe { from_raw_parts(data.as_ptr() as *const u8, data.len() * size_of::<T>()) }
-}
-
-fn upload_buffer<T>(
-    device: &wgpu::Device,
-    data: &[T],
-    usage: wgpu::BufferUsage,
-) -> (u64, wgpu::Buffer) {
-    let data = cast_slice(data);
-    let len = data.len() as wgpu::BufferAddress;
-    (len, device.create_buffer_with_data(&data, usage))
-}
-
-/*
-fn copy_uniform(
-    encoder: &mut wgpu::CommandEncoder,
-    src: &wgpu::Buffer,
-    dst: &wgpu::Buffer,
-    offset: usize,
-) {
-    profile_scope!("copy_uniform");
-
-    let offset = offset as wgpu::BufferAddress;
-    let u_size = std::mem::size_of::<FragUniforms>() as wgpu::BufferAddress;
-    encoder.copy_buffer_to_buffer(src, offset * u_size, dst, 0, u_size);
-}
-*/
-
-struct Backend {}
-
-impl wgpu_vg::backend::Backend for Backend {
-    fn draw_commands(&mut self, cmd: &CmdBuffer, width: f32, height: f32, pixel_ratio: f32) {
-        unimplemented!()
-    }
-}
-
-struct Shader {
-    vs_module: wgpu::ShaderModule,
-    fs_module: wgpu::ShaderModule,
-}
-
-impl Shader {
-    fn new(device: &wgpu::Device) -> std::io::Result<Self> {
-        use std::io::Cursor;
-
-        let vs = include_bytes!("shader/shader.vert.spv");
-        let vs = wgpu::read_spirv(Cursor::new(&vs[..]))?;
-        let vs_module = device.create_shader_module(&vs);
-
-        let fs = include_bytes!("shader/shader.frag.spv");
-        let fs = wgpu::read_spirv(Cursor::new(&fs[..]))?;
-        let fs_module = device.create_shader_module(&fs);
-
-        Ok(Self {
-            vs_module,
-            fs_module,
-        })
-    }
-}
-
-struct Pipeline {
-    view_buf: wgpu::Buffer,
-    view_bind: wgpu::BindGroup,
-
-    view_layout: wgpu::BindGroupLayout,
-    frag_layout: wgpu::BindGroupLayout,
-
-    convex: wgpu::RenderPipeline,
-    fill_shapes: wgpu::RenderPipeline,
-
-    fill_fringes: wgpu::RenderPipeline,
-    fill_end: wgpu::RenderPipeline,
-
-    stroke_base: wgpu::RenderPipeline,
-    stroke_aa: wgpu::RenderPipeline,
-    stroke_clear: wgpu::RenderPipeline,
-}
-
-impl Pipeline {
-    const VIEW_SIZE: u64 = 4 * 2;
-    const FRAG_SIZE: u64 = std::mem::size_of::<FragUniforms>() as u64;
-
-    fn new(device: &wgpu::Device, shader: &Shader) -> Self {
-        let usage = wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST;
-
-        let (_, view_buf) = {
-            let data: [f32; 4] = [0.0; 4];
-            upload_buffer(device, &data, usage)
-        };
-
-        let frag_buf = {
-            let data = [0u8; Self::FRAG_SIZE as usize];
-            let (_, a) = upload_buffer(device, &data, usage);
-            let (_, b) = upload_buffer(device, &data, usage);
-            [a, b]
-        };
-
-        let view_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("view_layout"),
-            bindings: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStage::VERTEX,
-                ty: wgpu::BindingType::UniformBuffer { dynamic: false },
-            }],
-        });
-
-        let frag_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("frag_layout"),
-            bindings: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStage::VERTEX,
-                ty: wgpu::BindingType::StorageBuffer { dynamic: false, readonly: true },
-            }],
-        });
-
-        let view_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("view_bind"),
-            layout: &view_layout,
-            bindings: &[wgpu::Binding {
-                binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &view_buf,
-                    range: 0..Self::VIEW_SIZE,
-                },
-            }],
-        });
-
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            bind_group_layouts: &[&view_layout, &frag_layout],
-        });
-
-        Self {
-            view_buf,
-            view_bind,
-            view_layout,
-
-            frag_layout,
-
-            convex: PipelineBuilder::convex().build(device, &layout, shader),
-
-            fill_shapes: PipelineBuilder::fill_shapes().build(device, &layout, &shader),
-            fill_fringes: PipelineBuilder::fill_fringes().build(device, &layout, &shader),
-            fill_end: PipelineBuilder::fill_end().build(device, &layout, &shader),
-
-            stroke_base: PipelineBuilder::stroke_base().build(device, &layout, &shader),
-            stroke_aa: PipelineBuilder::stroke_aa().build(device, &layout, &shader),
-            stroke_clear: PipelineBuilder::stroke_clear().build(device, &layout, &shader),
-        }
-    }
-
-    fn draw_commands(
-        &mut self,
-        cmd: &CmdBuffer,
-        width: f32,
-        height: f32,
-        pixel_ratio: f32,
-        encoder: &mut wgpu::CommandEncoder,
-        device: &wgpu::Device,
-        view: &wgpu::TextureView,
-        depth: &wgpu::TextureView,
-    ) {
-        profile_scope!("DRAW");
-
-        let v_size = 4 * 2 + 2 * 2;
-        let u_size = std::mem::size_of::<FragUniforms>();
-
-        {
-            let data = [width, height, 0.0, 0.0];
-            let (len, tmp) = upload_buffer(device, &data, wgpu::BufferUsage::COPY_SRC);
-            encoder.copy_buffer_to_buffer(&tmp, 0, &self.view_buf, 0, len);
-        }
-
-        let (vbytes, vertices) = {
-            upload_buffer(device, &cmd.verts, wgpu::BufferUsage::VERTEX)
-        };
-
-        let (ibytes, instances) = {
-            let count = cmd.uniforms.len();
-            let mut data: Vec<u32> = Vec::with_capacity(count);
-            data.extend(0..count as u32);
-
-            upload_buffer(device, &data, wgpu::BufferUsage::VERTEX)
-        };
-
-        let (uniforms_len, uniforms) = {
-            upload_buffer(device, &cmd.uniforms, wgpu::BufferUsage::STORAGE_READ)
-        };
-
-        let frag_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: &self.frag_layout,
-            bindings: &[wgpu::Binding {
-                binding: 0,
-                resource: wgpu::BindingResource::Buffer {
-                    buffer: &uniforms,
-                    range: 0..uniforms_len,
-                },
-            }],
-        });
-
-
-        let mut rpass = create_pass(encoder, view, depth);
-        rpass.set_bind_group(0, &self.view_bind, &[]);
-        rpass.set_bind_group(1, &frag_bind, &[]);
-        rpass.set_vertex_buffer(0, &vertices, 0, 0);
-
-        for call in &cmd.calls {
-            match call.kind {
-                CallKind::CONVEXFILL => {
-                    let idx = call.uniform_offset as u32;
-                    let instance0 = idx..idx + 1;
-
-                    rpass.set_pipeline(&self.convex);
-                    for path in &cmd.paths[call.path.range()] {
-                        rpass.draw(path.fill.range32(), instance0.clone());
-                        rpass.draw(path.stroke.range32(), instance0.clone()); // fringes
-                    }
-                }
-                CallKind::FILL => {
-                    let range = call.path.range();
-                    let idx = call.uniform_offset as u32;
-                    let instance0 = idx..idx + 1;
-                    let instance1 = idx+1..idx + 2;
-
-                    rpass.set_pipeline(&self.fill_shapes);
-                    for path in &cmd.paths[range.clone()] {
-                        rpass.draw(path.fill.range32(), instance0.clone());
-                    }
-
-                    // Draw fringes
-                    rpass.set_pipeline(&self.fill_fringes);
-                    for path in &cmd.paths[range] {
-                        rpass.draw(path.stroke.range32(), instance1.clone());
-                    }
-
-                    // Draw fill
-                    if call.triangle.count == 4 {
-                        rpass.set_pipeline(&self.fill_end);
-                        rpass.draw(call.triangle.range32(), instance1.clone());
-                    }
-                }
-                CallKind::STROKE => {
-                    let range = call.path.range();
-                    let idx = call.uniform_offset as u32;
-                    let instance0 = idx..idx + 1;
-                    let instance1 = idx+1..idx + 2;
-
-                    // Fill the stroke base without overlap
-                    rpass.set_pipeline(&self.stroke_base);
-                    for path in &cmd.paths[range.clone()] {
-                        rpass.draw(path.stroke.range32(), instance1.clone());
-                    }
-
-                    // Draw anti-aliased pixels.
-                    rpass.set_pipeline(&self.stroke_aa);
-                    for path in &cmd.paths[range.clone()] {
-                        rpass.draw(path.stroke.range32(), instance0.clone());
-                    }
-
-                    // Clear stencil buffer
-                    rpass.set_pipeline(&self.stroke_clear);
-                    for path in &cmd.paths[range] {
-                        rpass.draw(path.stroke.range32(), instance0.clone());
-                    }
-                }
-            }
-        }
-    }
-}
 
 async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::TextureFormat) {
     let size = window.inner_size();
@@ -310,11 +35,9 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
         })
         .await;
 
-    let shader = Shader::new(&device).unwrap();
+    let mut pipeline = Pipeline::new(&device);
 
-    let mut pipeline = Pipeline::new(&device, &shader);
-
-    let mut vg = Context::new(Box::new(Backend {}));
+    let mut vg = Context::default();
 
     let mut sc_desc = wgpu::SwapChainDescriptor {
         usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
@@ -331,8 +54,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
 
     let mut counter = crate::time::Counter::new();
 
-    let mut cc = 0;
-    let scale = window.scale_factor() as f32;
+    let mut scale = window.scale_factor() as f32;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -342,6 +64,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                 event: WindowEvent::Resized(size),
                 ..
             } => {
+                scale = window.scale_factor() as f32;
                 sc_desc.width = size.width;
                 sc_desc.height = size.height;
                 swap_chain = device.create_swap_chain(&surface, &sc_desc);
@@ -385,18 +108,17 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                 }
 
                 {
-                    let win_w = sc_desc.width as f32 / scale;
-                    let win_h = sc_desc.height as f32 / scale;
+                    let win_w = sc_desc.width as f32;
+                    let win_h = sc_desc.height as f32;
                     {
                         profile_scope!("TESSELATOR");
 
-                        vg.begin_frame(win_w, win_h, scale);
+                        let mut ctx = vg.begin_frame(win_w, win_h, scale);
 
-                        let mut ctx = Canvas::new(&mut vg);
                         super::canvas::render_demo(
                             &mut ctx,
                             point2(mx, my) / scale,
-                            point2(win_w, win_h),
+                            point2(win_w, win_h) / scale,
                             time as f32,
                             false,
                         );
@@ -413,17 +135,16 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                     }
 
                     //vg.end_frame();
-                    pipeline.draw_commands(
-                        &vg.cmd,
-                        win_w,
-                        win_h,
-                        scale,
-                        &mut encoder,
-                        &device,
-                        &frame.view,
-                        &depth,
-                    );
-                    vg.cmd.clear();
+
+                    let target = Target {
+                        width: win_w,
+                        height: win_h,
+                        scale: scale,
+                        color: &frame.view,
+                        depth: &depth,
+                    };
+
+                    pipeline.draw_commands(&vg.cmd, &mut encoder, &device, target);
                 }
 
                 {
@@ -456,6 +177,27 @@ pub fn main() {
     futures::executor::block_on(run(event_loop, window, FORMAT));
 }
 
+const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
+const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
+
+fn create_depth(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("DEPTH"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth: 1,
+        },
+        array_layer_count: 1,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: DEPTH,
+        usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+    });
+    texture.create_default_view()
+}
+
 fn clear_pass(
     encoder: &mut wgpu::CommandEncoder,
     view: &wgpu::TextureView,
@@ -486,222 +228,3 @@ fn clear_pass(
         }),
     });
 }
-
-fn create_pass<'a>(
-    encoder: &'a mut wgpu::CommandEncoder,
-    view: &'a wgpu::TextureView,
-    depth: &'a wgpu::TextureView,
-) -> wgpu::RenderPass<'a> {
-    profile_scope!("create render pass");
-
-    let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-            attachment: view,
-            resolve_target: None,
-            load_op: wgpu::LoadOp::Load,
-            store_op: wgpu::StoreOp::Store,
-            clear_color: wgpu::Color::TRANSPARENT,
-        }],
-        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
-            attachment: depth,
-            depth_load_op: wgpu::LoadOp::Load,
-            depth_store_op: wgpu::StoreOp::Store,
-            clear_depth: 0.0,
-            stencil_load_op: wgpu::LoadOp::Load,
-            stencil_store_op: wgpu::StoreOp::Store,
-            clear_stencil: 0,
-        }),
-    });
-    rpass.set_stencil_reference(0);
-    rpass
-}
-
-fn create_depth(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("DEPTH"),
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth: 1,
-        },
-        array_layer_count: 1,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: DEPTH,
-        usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
-    });
-    texture.create_default_view()
-}
-
-struct PipelineBuilder {
-    write_mask: wgpu::ColorWrite,
-    depth_stencil_state: Option<wgpu::DepthStencilStateDescriptor>,
-    cull_mode: wgpu::CullMode,
-}
-
-impl PipelineBuilder {
-    fn new(
-        write_mask: wgpu::ColorWrite,
-        depth_stencil_state: Option<wgpu::DepthStencilStateDescriptor>,
-    ) -> Self {
-        Self {
-            depth_stencil_state,
-            write_mask,
-            cull_mode: wgpu::CullMode::Back,
-        }
-    }
-
-    fn no_culling(self) -> Self {
-        Self {
-            cull_mode: wgpu::CullMode::None,
-            ..self
-        }
-    }
-
-    fn convex() -> Self {
-        Self::new(wgpu::ColorWrite::ALL, Some(CONVEX))
-    }
-
-    fn fill_shapes() -> Self {
-        Self::new(wgpu::ColorWrite::empty(), Some(FILL_SHAPES)).no_culling()
-    }
-    fn fill_fringes() -> Self {
-        Self::new(wgpu::ColorWrite::ALL, Some(FILL_FRINGES))
-    }
-    fn fill_end() -> Self {
-        Self::new(wgpu::ColorWrite::ALL, Some(FILL_END))
-    }
-
-    fn stroke_base() -> Self {
-        Self::new(wgpu::ColorWrite::ALL, Some(STROKE_BASE))
-    }
-    fn stroke_aa() -> Self {
-        Self::new(wgpu::ColorWrite::ALL, Some(STROKE_AA))
-    }
-    fn stroke_clear() -> Self {
-        Self::new(wgpu::ColorWrite::empty(), Some(STROKE_CLEAR))
-    }
-
-    fn build(
-        self,
-        device: &wgpu::Device,
-        layout: &wgpu::PipelineLayout,
-        shader: &Shader,
-    ) -> wgpu::RenderPipeline {
-        let Self {
-            depth_stencil_state,
-            write_mask,
-            cull_mode,
-        } = self;
-
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            layout,
-            vertex_stage: wgpu::ProgrammableStageDescriptor {
-                module: &shader.vs_module,
-                entry_point: "main",
-            },
-            fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-                module: &shader.fs_module,
-                entry_point: "main",
-            }),
-            rasterization_state: Some(wgpu::RasterizationStateDescriptor {
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode,
-                depth_bias: 0,
-                depth_bias_slope_scale: 0.0,
-                depth_bias_clamp: 0.0,
-            }),
-            primitive_topology: wgpu::PrimitiveTopology::TriangleStrip,
-            color_states: &[wgpu::ColorStateDescriptor {
-                format: FORMAT,
-                color_blend: wgpu::BlendDescriptor {
-                    src_factor: wgpu::BlendFactor::One,
-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                    operation: wgpu::BlendOperation::Add,
-                },
-                alpha_blend: wgpu::BlendDescriptor {
-                    src_factor: wgpu::BlendFactor::One,
-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                    operation: wgpu::BlendOperation::Add,
-                },
-                write_mask,
-            }],
-            depth_stencil_state,
-            vertex_state: wgpu::VertexStateDescriptor {
-                index_format: wgpu::IndexFormat::Uint16,
-                vertex_buffers: &[
-                    wgpu::VertexBufferDescriptor {
-                        stride: 12 as wgpu::BufferAddress,
-                        step_mode: wgpu::InputStepMode::Vertex,
-                        attributes: &wgpu::vertex_attr_array![0 => Float2, 1 => Ushort2Norm],
-                    },
-                    /*
-                    wgpu::VertexBufferDescriptor {
-                        stride: 4 as wgpu::BufferAddress,
-                        step_mode: wgpu::InputStepMode::Instance,
-                        attributes: &wgpu::vertex_attr_array![0 => Uint],
-                    },
-                    */
-                ],
-            },
-            sample_count: 1,
-            sample_mask: !0,
-            alpha_to_coverage_enabled: false,
-        })
-    }
-}
-
-const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
-const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
-
-macro_rules! stencil_state {
-    ($name: ident, $front:expr, $back:expr) => {
-        const $name: wgpu::DepthStencilStateDescriptor = stencil_state($front, $back);
-    };
-}
-
-const fn stencil_state(
-    stencil_front: wgpu::StencilStateFaceDescriptor,
-    stencil_back: wgpu::StencilStateFaceDescriptor,
-) -> wgpu::DepthStencilStateDescriptor {
-    wgpu::DepthStencilStateDescriptor {
-        format: DEPTH,
-        depth_write_enabled: false,
-        depth_compare: wgpu::CompareFunction::Always,
-        stencil_front,
-        stencil_back,
-        stencil_read_mask: 0xFF,
-        stencil_write_mask: 0xFF,
-    }
-}
-
-stencil_state!(CONVEX, UND_KEEP, UND_KEEP);
-
-stencil_state!(FILL_SHAPES, ALWAYS_KEEP_INCR_WRAP, ALWAYS_KEEP_DECR_WRAP);
-stencil_state!(FILL_FRINGES, EQ_KEEP, EQ_KEEP);
-stencil_state!(FILL_END, NE_ZERO, NE_ZERO);
-
-stencil_state!(STROKE_BASE, EQ_KEEP_INCR, EQ_KEEP_INCR);
-stencil_state!(STROKE_AA, EQ_KEEP, EQ_KEEP);
-stencil_state!(STROKE_CLEAR, ALWAYS_ZERO, ALWAYS_ZERO);
-
-macro_rules! stencil_face {
-    ($name:ident, $comp:ident, $fail:ident, $pass:ident) => {
-        const $name: wgpu::StencilStateFaceDescriptor = wgpu::StencilStateFaceDescriptor {
-            compare: wgpu::CompareFunction::$comp,
-            fail_op: wgpu::StencilOperation::$fail,
-            depth_fail_op: wgpu::StencilOperation::$fail,
-            pass_op: wgpu::StencilOperation::$pass,
-        };
-    };
-}
-
-stencil_face!(UND_KEEP, Always, Keep, Keep);
-
-stencil_face!(ALWAYS_ZERO, Always, Zero, Zero);
-stencil_face!(NE_ZERO, NotEqual, Zero, Zero);
-stencil_face!(EQ_KEEP, Equal, Keep, Keep);
-stencil_face!(EQ_KEEP_INCR, Equal, Keep, IncrementClamp);
-stencil_face!(ALWAYS_KEEP_INCR_WRAP, Always, Keep, IncrementWrap);
-stencil_face!(ALWAYS_KEEP_DECR_WRAP, Always, Keep, DecrementWrap);

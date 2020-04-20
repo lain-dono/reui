@@ -55,13 +55,13 @@ fn transform_commands(commands: &mut [f32], xform: &Transform) {
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.
 const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
 
-pub struct Picture {
+pub struct PictureRecorder {
     pub commands: Vec<f32>,
     pub cmd: Offset,
     pub xform: Transform,
 }
 
-impl Picture {
+impl PictureRecorder {
     pub(crate) fn append_commands(&mut self, vals: &mut [f32]) {
         if vals[0] as u32 != CLOSE && vals[0] as u32 != WINDING {
             self.cmd.x = vals[vals.len() - 2];

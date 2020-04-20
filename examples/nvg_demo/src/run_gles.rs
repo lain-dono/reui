@@ -1,14 +1,9 @@
 use std::ptr::null;
-use wgpu_vg::{
-    canvas::Canvas,
-    math::{point2, rect},
-};
+use wgpu_vg::math::{point2, rect};
 
 pub fn main() {
-    use wgpu_vg::{
-        backend::{gl, BackendGL},
-        context::Context,
-    };
+    use wgpu_vg::backend::gles::{gles, BackendGL};
+    use wgpu_vg::context::Context;
 
     const GLFW_CONTEXT_VERSION_MAJOR: i32 = 0x0002_2002;
     const GLFW_CONTEXT_VERSION_MINOR: i32 = 0x0002_2003;
@@ -37,8 +32,8 @@ pub fn main() {
         glfwSetKeyCallback(window, key);
         glfwMakeContextCurrent(window);
 
-        let backend = BackendGL::default();
-        let mut vg = Context::new(Box::new(backend));
+        let mut backend = BackendGL::default();
+        let mut vg = Context::default();
 
         glfwSwapInterval(0);
 
@@ -66,18 +61,17 @@ pub fn main() {
             let px_ratio = (fb_w as f32) / (win_w as f32);
 
             // Update and render
-            gl::Viewport(0, 0, fb_w, fb_h);
+            gles::Viewport(0, 0, fb_w, fb_h);
             if PREMULT != 0 {
-                gl::ClearColor(0.0, 0.0, 0.0, 0.0);
+                gles::ClearColor(0.0, 0.0, 0.0, 0.0);
             } else {
-                gl::ClearColor(0.3, 0.3, 0.32, 1.0);
+                gles::ClearColor(0.3, 0.3, 0.32, 1.0);
             }
 
-            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT);
+            gles::Clear(gles::COLOR_BUFFER_BIT | gles::DEPTH_BUFFER_BIT | gles::STENCIL_BUFFER_BIT);
 
-            vg.begin_frame(win_w as f32, win_h as f32, px_ratio * scale);
+            let mut ctx = vg.begin_frame(win_w as f32, win_h as f32, px_ratio * scale);
 
-            let mut ctx = Canvas::new(&mut vg);
             super::canvas::render_demo(
                 &mut ctx,
                 point2(mx as f32 / scale, my as f32 / scale),
@@ -92,7 +86,7 @@ pub fn main() {
 
             drop(ctx);
 
-            vg.end_frame();
+            backend.draw_commands(&vg.cmd, win_w as f32, win_h as f32, scale);
 
             glfwSwapBuffers(window);
             glfwPollEvents();
