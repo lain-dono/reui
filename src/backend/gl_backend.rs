@@ -85,7 +85,7 @@ void main(void) {
     }
 
     vec4 result;
-    if (type == 2) {            // Gradient
+    if (type == 1) {            // Gradient
         // Calculate gradient color using box gradient
         vec2 pt = applyTransform(paintTransform, v_Position);
         float d = clamp((sdroundrect(pt, extent, radius) + feather*0.5) / feather, 0.0, 1.0);

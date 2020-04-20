@@ -3,8 +3,8 @@ use crate::{
     cache::{Path, Vertex},
 };
 
-pub const SHADER_FILLGRAD: f32 = 2.0;
 pub const SHADER_SIMPLE: f32 = 0.0;
+pub const SHADER_FILLGRAD: f32 = 1.0;
 
 #[inline]
 fn copy_verts(dst: &mut [Vertex], slice: RawSlice, src: &[Vertex]) -> u32 {
@@ -149,7 +149,13 @@ impl RawSlice {
     }
 }
 
-pub struct VecAlloc<T: Default>(Vec<T>);
+pub struct VecAlloc<T: Default>(pub Vec<T>);
+
+impl<T: Default> AsRef<[T]> for VecAlloc<T> {
+    fn as_ref(&self) -> &[T] {
+        &self.0
+    }
+}
 
 impl<T: Default> std::ops::Deref for VecAlloc<T> {
     type Target = [T];
