@@ -1,4 +1,4 @@
-use wgpu_vg::{canvas::*, math::*};
+use reui::{canvas::*, math::*};
 
 const HOVER_SHADE: i32 = 15;
 

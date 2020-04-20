@@ -1,9 +1,7 @@
 use std::f32::consts::PI;
-use wgpu_vg::canvas::*;
+use reui::canvas::*;
 
 pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, blowup: bool) {
-    use wgpu_vg::canvas::*;
-
     let (width, height) = wsize.into();
 
     {

@@ -1,10 +1,9 @@
+use reui::backend::gles::{gles, BackendGL};
+use reui::context::Context;
+use reui::math::{point2, rect};
 use std::ptr::null;
-use wgpu_vg::math::{point2, rect};
 
 pub fn main() {
-    use wgpu_vg::backend::gles::{gles, BackendGL};
-    use wgpu_vg::context::Context;
-
     const GLFW_CONTEXT_VERSION_MAJOR: i32 = 0x0002_2002;
     const GLFW_CONTEXT_VERSION_MINOR: i32 = 0x0002_2003;
 

@@ -6,11 +6,9 @@ use winit::{
     window::Window,
 };
 
-use wgpu_vg::backend::{Pipeline, Target};
-use wgpu_vg::context::Context;
-use wgpu_vg::math::{point2, rect};
-
-use thread_profiler::profile_scope;
+use reui::backend::{Pipeline, Target};
+use reui::context::Context;
+use reui::math::{point2, rect};
 
 async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::TextureFormat) {
     let size = window.inner_size();
@@ -87,8 +85,6 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
             }
 
             Event::RedrawRequested(_) => {
-                profile_scope!("ALL RENDER");
-
                 let time = counter.update();
 
                 if counter.index == 0 {
@@ -102,17 +98,12 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                 let mut encoder =
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-                {
-                    profile_scope!("CLEAR");
-                    clear_pass(&mut encoder, &frame.view, &depth);
-                }
+                clear_pass(&mut encoder, &frame.view, &depth);
 
                 {
                     let win_w = sc_desc.width as f32;
                     let win_h = sc_desc.height as f32;
                     {
-                        profile_scope!("TESSELATOR");
-
                         let mut ctx = vg.begin_frame(win_w, win_h, scale);
 
                         super::canvas::render_demo(
@@ -147,26 +138,18 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                     pipeline.draw_commands(&vg.cmd, &mut encoder, &device, target);
                 }
 
-                {
-                    profile_scope!("SUBMIT");
-                    queue.submit(&[encoder.finish()]);
-                }
+                queue.submit(&[encoder.finish()]);
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
-            } => {
-                *control_flow = ControlFlow::Exit;
-                thread_profiler::write_profile("./profile.json");
-            }
+            } => *control_flow = ControlFlow::Exit,
             _ => {}
         }
     });
 }
 
 pub fn main() {
-    thread_profiler::register_thread_with_profiler();
-
     let event_loop = EventLoop::new();
     let window = winit::window::Window::new(&event_loop).unwrap();
     window.set_title("Anti-aliased vector graphics (wgpu-rs)");
