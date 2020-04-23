@@ -1,7 +1,4 @@
-use reui::{
-    math::clamp_f32, Canvas, Color, Offset, Paint, Path, RRect,
-    Rect, StrokeCap, StrokeJoin, Winding, Transform,
-};
+use reui::{math::PartialClamp, Canvas, Color, Offset, Paint, RRect, Rect, Transform};
 
 const HOVER_SHADE: i32 = 15;
 
@@ -9,9 +6,9 @@ fn offset_color(Color { r, g, b, a }: Color, delta: i32) -> Color {
     if delta != 0 {
         let offset = delta as f32 / 255.0;
         Color {
-            r: clamp_f32(r + offset, 0.0, 1.0),
-            g: clamp_f32(g + offset, 0.0, 1.0),
-            b: clamp_f32(b + offset, 0.0, 1.0),
+            r: (r + offset).clamp(0.0, 1.0),
+            g: (g + offset).clamp(0.0, 1.0),
+            b: (b + offset).clamp(0.0, 1.0),
             a,
         }
     } else {

@@ -1,4 +1,4 @@
-use crate::math::{point2, Rect, Transform};
+use crate::math::{Rect, Transform};
 
 #[derive(Clone, Copy)]
 pub struct Scissor {
@@ -142,8 +142,8 @@ impl State {
         let maxx = f32::min(ax + aw, bx + bw);
         let maxy = f32::min(ay + ah, by + bh);
         self.set_scissor(Rect {
-            min: point2(minx, miny),
-            max: point2(maxx, maxy),
+            min: (minx, miny).into(),
+            max: (maxx, maxy).into(),
         });
     }
 

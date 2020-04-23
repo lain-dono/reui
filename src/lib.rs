@@ -9,6 +9,6 @@ mod canvas;
 mod state;
 
 pub use self::{
-    canvas::{Canvas, Gradient, Paint, PaintingStyle, Path, Winding, StrokeCap, StrokeJoin},
-    math::{rect, Color, Offset, RRect, Rect, Transform},
+    canvas::{Canvas, Gradient, Paint, PaintingStyle, Path, StrokeCap, StrokeJoin, Winding},
+    math::{Color, Offset, RRect, Rect, Transform},
 };

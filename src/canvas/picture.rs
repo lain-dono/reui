@@ -1,9 +1,9 @@
 use super::Winding;
-use crate::math::{clamp_f32, clamp_i32, point2, vec2, Offset, Rect, Transform};
+use crate::math::{Offset, PartialClamp, Rect, Transform};
 
 #[inline(always)]
 fn transform_pt(pt: &mut [f32], t: &Transform) {
-    let p = t.transform_point(point2(pt[0], pt[1]));
+    let p = t.transform_point(Offset::new(pt[0], pt[1]));
     pt[0] = p.x;
     pt[1] = p.y;
 }
@@ -17,7 +17,7 @@ fn dist_pt_seg(point: Offset, p: Offset, q: Offset) -> f32 {
         t /= len
     }
 
-    (p + pq * clamp_f32(t, 0.0, 1.0) + point).square_length()
+    (p + pq * t.clamp(0.0, 1.0) + point).square_length()
 }
 
 pub const MOVETO: u32 = 0;
@@ -257,21 +257,21 @@ impl PictureRecorder {
         }
 
         // Split arc into max 90 degree segments.
-        let ndivs = clamp_i32((da.abs() / (PI * 0.5) + 0.5) as i32, 1, 5);
+        let ndivs = ((da.abs() / (PI * 0.5) + 0.5) as i32).clamp(1, 5);
         let hda = (da / ndivs as f32) / 2.0;
         let kappa = (4.0 / 3.0 * (1.0 - hda.cos()) / hda.sin()).abs();
         let kappa = if dir == Winding::CCW { -kappa } else { kappa };
 
         let mut vals = [0f32; 3 + 5 * 7];
         let mut nvals = 0;
-        let mut prev = point2(0.0, 0.0);
-        let mut prev_tan: Offset = vec2(0.0, 0.0);
+        let mut prev = Offset::new(0.0, 0.0);
+        let mut prev_tan: Offset = Offset::new(0.0, 0.0);
         for i in 0..=ndivs {
             let angle = a0 + da * (i as f32 / ndivs as f32);
             let (sn, cs) = angle.sin_cos();
-            let v = vec2(cs, sn) * r;
+            let v = Offset::new(cs, sn) * r;
             let point = c + v;
-            let tan = vec2(-v.y, v.x) * kappa;
+            let tan = Offset::new(-v.y, v.x) * kappa;
 
             if i == 0 {
                 vals[nvals] = mov as f32;
@@ -342,6 +342,6 @@ impl PictureRecorder {
             dir = Winding::CCW;
         }
 
-        self.arc(point2(cx, cy), radius, a0, a1, dir);
+        self.arc(Offset::new(cx, cy), radius, a0, a1, dir);
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     canvas::picture::{BEZIERTO, CLOSE, LINETO, MOVETO, WINDING},
     canvas::Winding,
-    math::{clamp_i32, Offset, RRect, Rect},
+    math::{Offset, PartialClamp, RRect, Rect},
 };
 use smallvec::{Array, SmallVec};
 use std::f32::consts::PI;
@@ -303,7 +303,7 @@ impl<A: Array<Item = f32>> Path<A> {
         }
 
         // Split arc into max 90 degree segments.
-        let ndivs = clamp_i32((da.abs() / (PI * 0.5) + 0.5) as i32, 1, 5);
+        let ndivs = ((da.abs() / (PI * 0.5) + 0.5) as i32).clamp(1, 5);
         let hda = (da / ndivs as f32) / 2.0;
         let kappa = (4.0 / 3.0 * (1.0 - hda.cos()) / hda.sin()).abs();
         let kappa = if dir == Winding::CCW { -kappa } else { kappa };

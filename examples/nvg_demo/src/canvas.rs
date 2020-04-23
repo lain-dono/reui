@@ -1,6 +1,5 @@
 use reui::{
-    rect, Canvas, Color, Gradient, Offset, Paint, PaintingStyle, Path, RRect, Rect, StrokeCap,
-    StrokeJoin, Winding,
+    Canvas, Color, Offset, Paint, PaintingStyle, Path, RRect, Rect, StrokeCap, StrokeJoin, Winding,
 };
 use std::f32::consts::PI;
 
@@ -8,9 +7,18 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
     let (width, height) = wsize.into();
 
     {
-        draw_eyes(ctx, rect(width - 250.0, 50.0, 150.0, 100.0), mouse, time);
+        draw_eyes(
+            ctx,
+            Rect::from_ltwh(width - 250.0, 50.0, 150.0, 100.0),
+            mouse,
+            time,
+        );
         draw_graph(ctx, 0.0, height / 2.0, width, height / 2.0, time);
-        draw_colorwheel(ctx, rect(width - 300.0, height - 300.0, 250.0, 250.0), time);
+        draw_colorwheel(
+            ctx,
+            Rect::from_ltwh(width - 300.0, height - 300.0, 250.0, 250.0),
+            time,
+        );
 
         // Line joints
         draw_lines(ctx, 120.0, height - 50.0, 600.0, 50.0, time);
@@ -26,44 +34,47 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
         }
 
         // Widgets
-        draw_window(ctx, rect(50.0, 50.0, 300.0, 400.0));
+        draw_window(ctx, Rect::from_ltwh(50.0, 50.0, 300.0, 400.0));
 
         let (x, mut y) = (60.0, 95.0);
-        draw_search_box(ctx, rect(x, y, 280.0, 25.0));
+        draw_search_box(ctx, Rect::from_ltwh(x, y, 280.0, 25.0));
         y += 40.0;
-        draw_drop_down(ctx, rect(x, y, 280.0, 28.0));
+        draw_drop_down(ctx, Rect::from_ltwh(x, y, 280.0, 28.0));
         y += 45.0;
 
         // Form
         y += 25.0;
-        draw_edit_box(ctx, rect(x, y, 280.0, 28.0));
+        draw_edit_box(ctx, Rect::from_ltwh(x, y, 280.0, 28.0));
         y += 35.0;
-        draw_edit_box(ctx, rect(x, y, 280.0, 28.0));
+        draw_edit_box(ctx, Rect::from_ltwh(x, y, 280.0, 28.0));
         y += 38.0;
-        draw_checkbox(ctx, rect(x, y, 140.0, 28.0));
-        draw_button(ctx, rect(x + 138.0, y, 140.0, 28.0), 0xFF_006080);
+        draw_checkbox(ctx, Rect::from_ltwh(x, y, 140.0, 28.0));
+        draw_button(ctx, Rect::from_ltwh(x + 138.0, y, 140.0, 28.0), 0xFF_006080);
         y += 45.0;
 
         // Slider
         y += 25.0;
-        draw_edit_box_num(ctx, rect(x + 180.0, y, 100.0, 28.0));
+        draw_edit_box_num(ctx, Rect::from_ltwh(x + 180.0, y, 100.0, 28.0));
         draw_slider(ctx, 0.4, x, y, 170.0, 28.0);
         y += 55.0;
 
-        draw_button(ctx, rect(x, y, 160.0, 28.0), 0xFF_801008);
-        draw_button(ctx, rect(x + 170.0, y, 110.0, 28.0), 0x00_000000);
+        draw_button(ctx, Rect::from_ltwh(x, y, 160.0, 28.0), 0xFF_801008);
+        draw_button(ctx, Rect::from_ltwh(x + 170.0, y, 110.0, 28.0), 0x00_000000);
     }
 
     if true {
         ctx.save();
-        super::blendish::run(ctx, time, rect(380.0, 50.0, 200.0, 200.0));
+        super::blendish::run(ctx, time, Rect::from_ltwh(380.0, 50.0, 200.0, 200.0));
         ctx.restore();
     }
 
     if false {
         // Canvas test
 
-        ctx.draw_rect(rect(50.0, 50.0, 100.0, 100.0), Paint::fill(0xFF_000000));
+        ctx.draw_rect(
+            Rect::from_ltwh(50.0, 50.0, 100.0, 100.0),
+            Paint::fill(0xFF_000000),
+        );
         ctx.draw_rrect(
             RRect::new([50.0, 50.0].into(), [100.0, 100.0].into(), 15.0),
             Paint::fill(0xFF_CC0000),
@@ -77,7 +88,7 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
     }
 
     {
-        use palette::{GammaSrgba, LinSrgba, Pixel, Srgba};
+        use palette::{LinSrgba, Pixel, Srgba};
 
         let colors: &[u32] = &[
             0xFF_001F3F,
@@ -108,7 +119,7 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
 
             let x = 80.0 + (i * 32) as f32;
             ctx.draw_rect(
-                rect(x, 10.0, 20.0, 20.0),
+                Rect::from_ltwh(x, 10.0, 20.0, 20.0),
                 Paint {
                     style: PaintingStyle::Fill,
                     color: Color {
@@ -137,13 +148,8 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
             let w = 512.0;
             let h = 20.0;
 
-            let paint = Paint::gradient(Gradient::Linear {
-                from: [x, y],
-                to: [x + w, y],
-                inner_color,
-                outer_color,
-            });
-            ctx.draw_rect(rect(x, y, w, h), paint);
+            let paint = Paint::linear_gradient([x, y], [x + w, y], inner_color, outer_color);
+            ctx.draw_rect(Rect::from_ltwh(x, y, w, h), paint);
         }
     }
 
@@ -184,30 +190,30 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
         let h = 70.0;
 
         let bg_paint = Paint::fill(0xFF_FFFFFF);
-        ctx.draw_rect(rect(x, y, w, h), bg_paint);
+        ctx.draw_rect(Rect::from_ltwh(x, y, w, h), bg_paint);
 
         let vg = srgba_paint(0xFF_18EA22);
         let vy = srgba_paint(0xFF_EAE818);
         let vc = srgba_paint(0xFF_18EAC8);
         let vm = srgba_paint(0xFF_EE46A6);
 
-        ctx.draw_rect(rect(x + 15.0 * 1.0, y, 10.0, h), vc);
-        ctx.draw_rect(rect(x + 15.0 * 2.0, y, 10.0, h), vm);
-        ctx.draw_rect(rect(x + 15.0 * 3.0, y, 10.0, h), vy);
-        ctx.draw_rect(rect(x + 15.0 * 4.0, y, 10.0, h), vg);
+        ctx.draw_rect(Rect::from_ltwh(x + 15.0 * 1.0, y, 10.0, h), vc);
+        ctx.draw_rect(Rect::from_ltwh(x + 15.0 * 2.0, y, 10.0, h), vm);
+        ctx.draw_rect(Rect::from_ltwh(x + 15.0 * 3.0, y, 10.0, h), vy);
+        ctx.draw_rect(Rect::from_ltwh(x + 15.0 * 4.0, y, 10.0, h), vg);
 
         let hr: [_; 2] = [srgba_paint(0xFF_FF0000), srgba_paint(0x7F_FF0000)];
         let hg: [_; 2] = [srgba_paint(0xFF_93FF00), srgba_paint(0x7F_93FF00)];
         let hb: [_; 2] = [srgba_paint(0xFF_007FFF), srgba_paint(0x7F_007FFF)];
 
-        ctx.draw_rect(rect(x, y + 15.0 * 1.0, w, 5.0), hr[0]);
-        ctx.draw_rect(rect(x, y + 15.0 * 1.0 + 5.0, w, 5.0), hr[1]);
+        ctx.draw_rect(Rect::from_ltwh(x, y + 15.0 * 1.0, w, 5.0), hr[0]);
+        ctx.draw_rect(Rect::from_ltwh(x, y + 15.0 * 1.0 + 5.0, w, 5.0), hr[1]);
 
-        ctx.draw_rect(rect(x, y + 15.0 * 2.0, w, 5.0), hg[0]);
-        ctx.draw_rect(rect(x, y + 15.0 * 2.0 + 5.0, w, 5.0), hg[1]);
+        ctx.draw_rect(Rect::from_ltwh(x, y + 15.0 * 2.0, w, 5.0), hg[0]);
+        ctx.draw_rect(Rect::from_ltwh(x, y + 15.0 * 2.0 + 5.0, w, 5.0), hg[1]);
 
-        ctx.draw_rect(rect(x, y + 15.0 * 3.0, w, 5.0), hb[0]);
-        ctx.draw_rect(rect(x, y + 15.0 * 3.0 + 5.0, w, 5.0), hb[1]);
+        ctx.draw_rect(Rect::from_ltwh(x, y + 15.0 * 3.0, w, 5.0), hb[0]);
+        ctx.draw_rect(Rect::from_ltwh(x, y + 15.0 * 3.0 + 5.0, w, 5.0), hb[1]);
     }
 }
 
@@ -222,18 +228,18 @@ pub fn draw_window(ctx: &mut Canvas, rr: Rect) {
 
     // Drop shadow
     let mut path: Path<[_; 128]> = Path::new();
-    path.add_rect(rect(x - 10.0, y - 10.0, w + 20.0, h + 20.0));
+    path.add_rect(Rect::from_ltwh(x - 10.0, y - 10.0, w + 20.0, h + 20.0));
     path.add_rrect(rrect);
     path.path_winding(Winding::CW);
     ctx.draw_path(
         &mut path,
-        Paint::gradient(Gradient::Box {
-            rect: Rect::from_ltwh(x, y + 2.0, rr.dx(), rr.dy()),
-            radius: corner_radius * 2.0,
-            feather: 10.0,
-            inner_color: 0x80_000000,
-            outer_color: 0x00_000000,
-        }),
+        Paint::box_gradient(
+            Rect::from_ltwh(x, y + 2.0, rr.dx(), rr.dy()),
+            corner_radius * 2.0,
+            10.0,
+            0x80_000000,
+            0x00_000000,
+        ),
     );
 
     // Header
@@ -262,13 +268,13 @@ pub fn draw_search_box(ctx: &mut Canvas, rr: Rect) {
     let rrect = RRect::from_rect_and_radius(rr, corner_radius);
     ctx.draw_rrect(
         rrect,
-        Paint::gradient(Gradient::Box {
-            rect: rect(x, y + 1.5, rr.dx(), rr.dy()),
-            radius: h / 2.0,
-            feather: 5.0,
-            inner_color: 0x10_000000,
-            outer_color: 0x60_000000,
-        }),
+        Paint::box_gradient(
+            Rect::from_ltwh(x, y + 1.5, rr.dx(), rr.dy()),
+            h / 2.0,
+            5.0,
+            0x10_000000,
+            0x60_000000,
+        ),
     );
 }
 
@@ -313,13 +319,13 @@ pub fn draw_checkbox(ctx: &mut Canvas, rr: Rect) {
     );
     ctx.draw_rrect(
         rrect,
-        Paint::gradient(Gradient::Box {
-            rect: rect(x + 1.0, y + (h * 0.5).floor() - 9.0 + 1.0, 18.0, 18.0),
-            radius: 3.0,
-            feather: 3.0,
-            inner_color: 0x20_000000,
-            outer_color: 0x60_000000,
-        }),
+        Paint::box_gradient(
+            Rect::from_ltwh(x + 1.0, y + (h * 0.5).floor() - 9.0 + 1.0, 18.0, 18.0),
+            3.0,
+            3.0,
+            0x20_000000,
+            0x60_000000,
+        ),
     );
 }
 
@@ -366,8 +372,8 @@ pub fn draw_eyes(ctx: &mut Canvas, rr: Rect, mouse: Offset, time: f32) {
         0x20_000000,
         0x10_000000,
     );
-    ctx.draw_oval(rect(lx + 3.0, ly + 16.0, ex, ey), bg);
-    ctx.draw_oval(rect(rx + 3.0, ry + 16.0, ex, ey), bg);
+    ctx.draw_oval(Rect::from_ltwh(lx + 3.0, ly + 16.0, ex, ey), bg);
+    ctx.draw_oval(Rect::from_ltwh(rx + 3.0, ry + 16.0, ex, ey), bg);
 
     let bg = Paint::linear_gradient(
         [x, y + h * 0.25],
@@ -375,8 +381,8 @@ pub fn draw_eyes(ctx: &mut Canvas, rr: Rect, mouse: Offset, time: f32) {
         0xFF_DCDCDC,
         0xFF_808080,
     );
-    ctx.draw_oval(rect(lx, ly, ex, ey), bg);
-    ctx.draw_oval(rect(rx, ry, ex, ey), bg);
+    ctx.draw_oval(Rect::from_ltwh(lx, ly, ex, ey), bg);
+    ctx.draw_oval(Rect::from_ltwh(rx, ry, ex, ey), bg);
 
     let mut dx = (mx - rx) / (ex * 10.0);
     let mut dy = (my - ry) / (ey * 10.0);
@@ -388,7 +394,7 @@ pub fn draw_eyes(ctx: &mut Canvas, rr: Rect, mouse: Offset, time: f32) {
     dx *= ex * 0.4;
     dy *= ey * 0.5;
     ctx.draw_oval(
-        rect(lx + dx, ly + dy + ey * 0.25 * (1.0 - blink), br, br * blink),
+        Rect::from_ltwh(lx + dx, ly + dy + ey * 0.25 * (1.0 - blink), br, br * blink),
         Paint::fill(0xFF_202020),
     );
 
@@ -402,30 +408,30 @@ pub fn draw_eyes(ctx: &mut Canvas, rr: Rect, mouse: Offset, time: f32) {
     dx *= ex * 0.4;
     dy *= ey * 0.5;
     ctx.draw_oval(
-        rect(rx + dx, ry + dy + ey * 0.25 * (1.0 - blink), br, br * blink),
+        Rect::from_ltwh(rx + dx, ry + dy + ey * 0.25 * (1.0 - blink), br, br * blink),
         Paint::fill(0xFF_202020),
     );
 
     ctx.draw_oval(
-        rect(lx, ly, ex, ey),
-        Paint::gradient(Gradient::Radial {
-            center: [lx - ex * 0.25, ly - ey * 0.5],
-            inr: ex * 0.1,
-            outr: ex * 0.75,
-            inner_color: 0x80_FFFFFF,
-            outer_color: 0x00_FFFFFF,
-        }),
+        Rect::from_ltwh(lx, ly, ex, ey),
+        Paint::radial_gradient(
+            [lx - ex * 0.25, ly - ey * 0.5],
+            ex * 0.1,
+            ex * 0.75,
+            0x80_FFFFFF,
+            0x00_FFFFFF,
+        ),
     );
 
     ctx.draw_oval(
-        rect(rx, ry, ex, ey),
-        Paint::gradient(Gradient::Radial {
-            center: [rx - ex * 0.25, ry - ey * 0.5],
-            inr: ex * 0.1,
-            outr: ex * 0.75,
-            inner_color: 0x80_FFFFFF,
-            outer_color: 0x00_FFFFFF,
-        }),
+        Rect::from_ltwh(rx, ry, ex, ey),
+        Paint::radial_gradient(
+            [rx - ex * 0.25, ry - ey * 0.5],
+            ex * 0.1,
+            ex * 0.75,
+            0x80_FFFFFF,
+            0x00_FFFFFF,
+        ),
     );
 }
 
@@ -465,12 +471,12 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
     path.line_to(x, y + h);
     ctx.draw_path(
         &mut path,
-        Paint::gradient(Gradient::Linear {
-            from: [x, y],
-            to: [x, y + h],
-            inner_color: Color::rgba(0, 160, 192, 0).to_bgra(),
-            outer_color: Color::rgba(0, 160, 192, 64).to_bgra(),
-        }),
+        Paint::linear_gradient(
+            [x, y],
+            [x, y + h],
+            Color::rgba(0, 160, 192, 0).to_bgra(),
+            Color::rgba(0, 160, 192, 64).to_bgra(),
+        ),
     );
 
     // Graph line
@@ -506,14 +512,8 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
     for i in 0..6 {
         let [x, y] = [sx[i] - 10.0, sy[i] - 10.0 + 2.0];
         ctx.draw_rect(
-            rect(x, y, 20.0, 20.0),
-            Paint::gradient(Gradient::Radial {
-                center: [sx[i], sy[i] + 2.0],
-                inr: 3.0,
-                outr: 8.0,
-                inner_color: 0x20_000000,
-                outer_color: 0x00_000000,
-            }),
+            Rect::from_ltwh(x, y, 20.0, 20.0),
+            Paint::radial_gradient([sx[i], sy[i] + 2.0], 3.0, 8.0, 0x20_000000, 0x00_000000),
         );
     }
 
@@ -539,10 +539,10 @@ pub fn draw_caps(ctx: &mut Canvas, x: f32, y: f32, width: f32) {
     let line_width = 8.0;
 
     ctx.draw_rect(
-        rect(x - line_width / 2.0, y, width + line_width, 40.0),
+        Rect::from_ltwh(x - line_width / 2.0, y, width + line_width, 40.0),
         Paint::fill(0x20_FFFFFF),
     );
-    ctx.draw_rect(rect(x, y, width, 40.0), Paint::fill(0x20_FFFFFF));
+    ctx.draw_rect(Rect::from_ltwh(x, y, width, 40.0), Paint::fill(0x20_FFFFFF));
 
     let paint = Paint::stroke(0xFF_000000).stroke_width(line_width);
 
@@ -604,13 +604,13 @@ pub fn draw_lines(ctx: &mut Canvas, x: f32, y: f32, w: f32, _h: f32, t: f32) {
 fn draw_edit_box_base(ctx: &mut Canvas, rr: Rect) {
     let [x, y, w, h] = rr.to_xywh();
 
-    let bg = Paint::gradient(Gradient::Box {
-        rect: rect(x + 1.0, y + 1.0 + 1.5, w - 2.0, h - 2.0),
-        radius: 3.0,
-        feather: 4.0,
-        inner_color: 0x20_FFFFFF,
-        outer_color: 0x20_202020,
-    });
+    let bg = Paint::box_gradient(
+        Rect::from_ltwh(x + 1.0, y + 1.0 + 1.5, w - 2.0, h - 2.0),
+        3.0,
+        4.0,
+        0x20_FFFFFF,
+        0x20_202020,
+    );
 
     ctx.draw_rrect(
         RRect::new(
@@ -647,18 +647,18 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, x: f32, y: f32, w: f32, h: f32) {
     // Slot
     ctx.draw_rrect(
         RRect::new([x, cy - 2.0].into(), [w, 4.0].into(), 2.0),
-        Paint::gradient(Gradient::Box {
-            rect: rect(x, cy - 2.0 + 1.0, w, 4.0),
-            radius: 2.0,
-            feather: 2.0,
-            inner_color: 0x20_000000,
-            outer_color: 0x80_000000,
-        }),
+        Paint::box_gradient(
+            Rect::from_ltwh(x, cy - 2.0 + 1.0, w, 4.0),
+            2.0,
+            2.0,
+            0x20_000000,
+            0x80_000000,
+        ),
     );
 
     // Knob Shadow
     let mut path: Path<[_; 128]> = Path::new();
-    path.add_rect(rect(
+    path.add_rect(Rect::from_ltwh(
         x + (pos * w).floor() - kr - 5.0,
         cy - kr - 5.0,
         kr * 2.0 + 5.0 + 5.0,
@@ -668,22 +668,17 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, x: f32, y: f32, w: f32, h: f32) {
     path.path_winding(Winding::CW);
     ctx.draw_path(
         &mut path,
-        Paint::gradient(Gradient::Radial {
-            center: [x + (pos * w).floor(), cy + 1.0],
-            inr: kr - 3.0,
-            outr: kr + 3.0,
-            inner_color: 0x40_000000,
-            outer_color: 0x00_000000,
-        }),
+        Paint::radial_gradient(
+            [x + (pos * w).floor(), cy + 1.0],
+            kr - 3.0,
+            kr + 3.0,
+            0x40_000000,
+            0x00_000000,
+        ),
     );
 
     // Knob
-    let knob = Paint::gradient(Gradient::Linear {
-        from: [x, cy - kr],
-        to: [x, cy + kr],
-        inner_color: 0x10_FFFFFF,
-        outer_color: 0x10_000000,
-    });
+    let knob = Paint::linear_gradient([x, cy - kr], [x, cy + kr], 0x10_FFFFFF, 0x10_000000);
 
     let center = [x + (pos * w).floor(), cy].into();
     ctx.draw_circle(center, kr - 1.0, Paint::fill(0xFF_282B30));
@@ -698,7 +693,7 @@ pub fn draw_scissor(ctx: &mut Canvas, x: f32, y: f32, t: f32) {
     ctx.translate(x, y);
     ctx.rotate(f32::to_radians(5.0));
 
-    let area = rect(-20.0, -20.0, 60.0, 40.0);
+    let area = Rect::from_ltwh(-20.0, -20.0, 60.0, 40.0);
     ctx.draw_rect(area, Paint::fill(0xFF_FF0000));
     ctx.scissor(area);
 
@@ -709,11 +704,14 @@ pub fn draw_scissor(ctx: &mut Canvas, x: f32, y: f32, t: f32) {
     // Draw the intended second rectangle without any scissoring.
     ctx.save();
     ctx.reset_scissor();
-    ctx.draw_rect(rect(-20.0, -10.0, 60.0, 30.0), Paint::fill(0x40_FF8000));
+    ctx.draw_rect(
+        Rect::from_ltwh(-20.0, -10.0, 60.0, 30.0),
+        Paint::fill(0x40_FF8000),
+    );
     ctx.restore();
 
     // Draw second rectangle with combined scissoring.
-    let r = rect(-20.0, -10.0, 60.0, 30.0);
+    let r = Rect::from_ltwh(-20.0, -10.0, 60.0, 30.0);
     ctx.intersect_scissor(r);
     ctx.draw_rect(r, Paint::fill(0xFF_FF8000));
 
@@ -763,23 +761,23 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
 
     // Marker on
     let paint = Paint::stroke(0xC0_FFFFFF).stroke_width(2.0);
-    ctx.draw_rect(rect(r0 - 1.0, -3.0, r1 - r0 + 2.0, 6.0), paint);
+    ctx.draw_rect(Rect::from_ltwh(r0 - 1.0, -3.0, r1 - r0 + 2.0, 6.0), paint);
 
     let paint = Paint::box_gradient(
-        rect(r0 - 3.0, -5.0, r1 - r0 + 6.0, 10.0),
+        Rect::from_ltwh(r0 - 3.0, -5.0, r1 - r0 + 6.0, 10.0),
         2.0,
         4.0,
         0x80_000000,
         0x00_000000,
     );
     path.clear();
-    path.add_rect(rect(
+    path.add_rect(Rect::from_ltwh(
         r0 - 2.0 - 10.0,
         -4.0 - 10.0,
         r1 - r0 + 4.0 + 20.0,
         8.0 + 20.0,
     ));
-    path.add_rect(rect(r0 - 2.0, -4.0, r1 - r0 + 4.0, 8.0));
+    path.add_rect(Rect::from_ltwh(r0 - 2.0, -4.0, r1 - r0 + 4.0, 8.0));
     path.path_winding(Winding::CW);
     ctx.draw_path(&mut path, paint);
 
@@ -816,7 +814,7 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
 
     let paint = Paint::radial_gradient([ax, ay], 7.0, 9.0, 0x40_000000, 0x00_000000);
     path.clear();
-    path.add_rect(rect(ax - 20.0, ay - 20.0, 40.0, 40.0));
+    path.add_rect(Rect::from_ltwh(ax - 20.0, ay - 20.0, 40.0, 40.0));
     path.add_circle([ax, ay].into(), 7.0);
     path.path_winding(Winding::CW);
     ctx.draw_path(&mut path, paint);

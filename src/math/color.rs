@@ -1,4 +1,4 @@
-use crate::math::clamp_f32;
+use crate::math::PartialClamp;
 
 fn hue(mut h: f32, m1: f32, m2: f32) -> f32 {
     if h < 0.0 {
@@ -82,8 +82,8 @@ impl Color {
         if h < 0.0 {
             h += 1.0;
         }
-        let s = clamp_f32(s, 0.0, 1.0);
-        let l = clamp_f32(l, 0.0, 1.0);
+        let s = s.clamp(0.0, 1.0);
+        let l = l.clamp(0.0, 1.0);
 
         let m2 = if l <= 0.5 {
             l * (1.0 + s)
@@ -92,9 +92,9 @@ impl Color {
         };
         let m1 = 2.0 * l - m2;
         Self {
-            r: clamp_f32(hue(h + 1.0 / 3.0, m1, m2), 0.0, 1.0),
-            g: clamp_f32(hue(h, m1, m2), 0.0, 1.0),
-            b: clamp_f32(hue(h - 1.0 / 3.0, m1, m2), 0.0, 1.0),
+            r: hue(h + 1.0 / 3.0, m1, m2).clamp(0.0, 1.0),
+            g: hue(h, m1, m2).clamp(0.0, 1.0),
+            b: hue(h - 1.0 / 3.0, m1, m2).clamp(0.0, 1.0),
             a: f32::from(a) / 255.0,
         }
     }

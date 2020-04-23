@@ -8,7 +8,7 @@ use winit::{
 
 use reui::backend::{Pipeline, Target};
 use reui::context::Context;
-use reui::math::{point2, rect};
+use reui::math::Offset;
 
 async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::TextureFormat) {
     let size = window.inner_size();
@@ -108,8 +108,8 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
 
                         super::canvas::render_demo(
                             &mut ctx,
-                            point2(mx, my) / scale,
-                            point2(win_w, win_h) / scale,
+                            Offset::new(mx, my) / scale,
+                            Offset::new(win_w, win_h) / scale,
                             time as f32,
                             false,
                         );

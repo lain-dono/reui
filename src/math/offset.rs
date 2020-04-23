@@ -15,81 +15,59 @@ impl std::ops::Neg for Offset {
     }
 }
 
-impl std::ops::Add<Self> for Offset {
-    type Output = Self;
-    #[inline]
-    fn add(self, v: Self) -> Self {
-        Self {
-            x: self.x + v.x,
-            y: self.y + v.y,
+macro_rules! impl_op {
+    (0 $op:ident<$arg:ident>::$fn:ident($tt:tt) for $ty:ty) => {
+        impl std::ops::$op<$arg> for $ty {
+            type Output = Self;
+            #[inline]
+            fn $fn(self, v: Self) -> Self {
+                Self { x: self.x $tt v.x, y: self.y $tt v.y }
+            }
         }
-    }
-}
+    };
 
-impl std::ops::Sub<Self> for Offset {
-    type Output = Self;
-    #[inline]
-    fn sub(self, v: Self) -> Self {
-        Self {
-            x: self.x - v.x,
-            y: self.y - v.y,
+    (1 $op:ident<$arg:ident>::$fn:ident($tt:tt) for $ty:ty) => {
+        impl std::ops::$op<$arg> for $ty {
+            type Output = Self;
+            #[inline]
+            fn $fn(self, v: $arg) -> Self {
+                Self { x: self.x $tt v, y: self.y $tt v }
+            }
         }
-    }
-}
+    };
 
-impl std::ops::Mul<f32> for Offset {
-    type Output = Self;
-    #[inline]
-    fn mul(self, f: f32) -> Self {
-        Self {
-            x: self.x * f,
-            y: self.y * f,
+    (2 $op:ident<$arg:ident>::$fn:ident($tt:tt) for $ty:ty) => {
+        impl std::ops::$op<$arg> for $ty {
+            #[inline]
+            fn $fn(&mut self, v: Self) {
+                self.x $tt v.x;
+                self.y $tt v.y;
+            }
         }
-    }
-}
+    };
 
-impl std::ops::Div<f32> for Offset {
-    type Output = Self;
-    #[inline]
-    fn div(self, f: f32) -> Self {
-        Self {
-            x: self.x / f,
-            y: self.y / f,
+    (3 $op:ident<$arg:ident>::$fn:ident($tt:tt) for $ty:ty) => {
+        impl std::ops::$op<$arg> for $ty {
+            #[inline]
+            fn $fn(&mut self, v: $arg) {
+                self.x $tt v;
+                self.y $tt v;
+            }
         }
-    }
+    };
 }
 
-impl std::ops::AddAssign<Self> for Offset {
-    #[inline]
-    fn add_assign(&mut self, v: Self) {
-        self.x += v.x;
-        self.y += v.y;
-    }
-}
+impl_op!(0 Add<Self>::add(+) for Offset);
+impl_op!(0 Sub<Self>::sub(-) for Offset);
 
-impl std::ops::SubAssign<Self> for Offset {
-    #[inline]
-    fn sub_assign(&mut self, v: Self) {
-        self.x -= v.x;
-        self.y -= v.y;
-    }
-}
+impl_op!(1 Mul<f32>::mul(*) for Offset);
+impl_op!(1 Div<f32>::div(/) for Offset);
 
-impl std::ops::MulAssign<f32> for Offset {
-    #[inline]
-    fn mul_assign(&mut self, f: f32) {
-        self.x *= f;
-        self.y *= f;
-    }
-}
+impl_op!(2 AddAssign<Self>::add_assign(+=) for Offset);
+impl_op!(2 SubAssign<Self>::sub_assign(-=) for Offset);
 
-impl std::ops::DivAssign<f32> for Offset {
-    #[inline]
-    fn div_assign(&mut self, f: f32) {
-        self.x /= f;
-        self.y /= f;
-    }
-}
+impl_op!(3 MulAssign<f32>::mul_assign(*=) for Offset);
+impl_op!(3 DivAssign<f32>::div_assign(/=) for Offset);
 
 impl Into<[f32; 2]> for Offset {
     #[inline]
@@ -172,6 +150,7 @@ impl Offset {
         }
     }
 
+    #[inline]
     pub fn translate(self, x: f32, y: f32) -> Self {
         Self {
             x: self.x + x,
@@ -179,6 +158,7 @@ impl Offset {
         }
     }
 
+    #[inline]
     pub fn scale(self, x: f32, y: f32) -> Self {
         Self {
             x: self.x * x,

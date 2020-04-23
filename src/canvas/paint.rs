@@ -129,13 +129,6 @@ impl Paint {
         }
     }
 
-    pub fn gradient(gradient: Gradient) -> Self {
-        Self {
-            gradient: Some(gradient),
-            ..Self::default()
-        }
-    }
-
     pub fn linear_gradient(
         from: [f32; 2],
         to: [f32; 2],
@@ -178,5 +171,12 @@ impl Paint {
             inner_color,
             outer_color,
         })
+    }
+
+    fn gradient(gradient: Gradient) -> Self {
+        Self {
+            gradient: Some(gradient),
+            ..Self::default()
+        }
     }
 }

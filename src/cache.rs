@@ -2,7 +2,7 @@
 
 use crate::{
     canvas::{StrokeCap, StrokeJoin, Winding},
-    math::{clamp_i32, vec2, Offset},
+    math::{Offset, PartialClamp},
 };
 use std::{f32::consts::PI, slice::from_raw_parts_mut};
 
@@ -63,8 +63,8 @@ fn curve_divs(r: f32, arc: f32, tol: f32) -> usize {
 fn choose_bevel(bevel: bool, p0: &PathPoint, p1: &PathPoint, w: f32) -> [Offset; 2] {
     if bevel {
         [
-            vec2(p1.pos.x + p0.dir.y * w, p1.pos.y - p0.dir.x * w),
-            vec2(p1.pos.x + p1.dir.y * w, p1.pos.y - p1.dir.x * w),
+            Offset::new(p1.pos.x + p0.dir.y * w, p1.pos.y - p0.dir.x * w),
+            Offset::new(p1.pos.x + p1.dir.y * w, p1.pos.y - p1.dir.x * w),
         ]
     } else {
         [p1.pos + p1.ext * w, p1.pos + p1.ext * w]
@@ -294,14 +294,14 @@ impl PathCache {
 
         if path.count as usize > 0 && !self.points.is_empty() {
             let pt = self.points.last_mut().expect("last point");
-            if pt.pos.approx_eq_eps(vec2(x, y), dist_tol) {
+            if pt.pos.approx_eq_eps(Offset::new(x, y), dist_tol) {
                 pt.flags |= flags;
                 return;
             }
         }
 
         self.points.push(PathPoint {
-            pos: vec2(x, y),
+            pos: Offset::new(x, y),
             flags,
             ..Default::default()
         });
@@ -333,8 +333,8 @@ impl PathCache {
                 let p0 = pts[p0_idx].clone();
                 let p1 = &mut pts[p1_idx];
 
-                let dl0 = vec2(p0.dir.y, -p0.dir.x);
-                let dl1 = vec2(p1.dir.y, -p1.dir.x);
+                let dl0 = Offset::new(p0.dir.y, -p0.dir.x);
+                let dl1 = Offset::new(p1.dir.y, -p1.dir.x);
 
                 // Calculate extrusions
                 p1.ext = (dl0 + dl1) * 0.5;
@@ -724,8 +724,8 @@ impl PathCache {
                 // Looping
                 for (p0, p1) in path.pts_fan(&self.points, last_idx, 0) {
                     if p1.is_bevel() {
-                        let dl0 = vec2(p0.dir.y, -p0.dir.x);
-                        let dl1 = vec2(p1.dir.y, -p1.dir.x);
+                        let dl0 = Offset::new(p0.dir.y, -p0.dir.x);
+                        let dl1 = Offset::new(p1.dir.y, -p1.dir.x);
                         if p1.is_left() {
                             dst.push(p1.pos + p1.ext * woff, [0.5, 1.0]);
                         } else {
@@ -838,8 +838,8 @@ impl Verts {
         ncap: i32,
         _fringe: f32,
     ) {
-        let dl0 = vec2(p0.dir.y, -p0.dir.x);
-        let dl1 = vec2(p1.dir.y, -p1.dir.x);
+        let dl0 = Offset::new(p0.dir.y, -p0.dir.x);
+        let dl1 = Offset::new(p1.dir.y, -p1.dir.x);
 
         if p1.is_left() {
             let [l0, l1] = choose_bevel(p1.is_innerbevel(), p0, p1, lw);
@@ -851,13 +851,13 @@ impl Verts {
             self.push(p1.pos - dl0 * rw, [ru, 1.0]);
 
             let n = (a0 - a1) / PI;
-            let n = clamp_i32((n * ncap as f32).ceil() as i32, 2, ncap);
+            let n = ((n * ncap as f32).ceil() as i32).clamp(2, ncap);
             for i in 0..n {
                 let u = (i as f32) / (n - 1) as f32;
                 let a = a0 + u * (a1 - a0);
                 let (sn, cs) = a.sin_cos();
                 self.push(p1.pos, [0.5, 1.0]);
-                self.push(p1.pos + vec2(cs, sn) * rw, [ru, 1.0]);
+                self.push(p1.pos + Offset::new(cs, sn) * rw, [ru, 1.0]);
             }
 
             self.push(l1, [lu, 1.0]);
@@ -872,12 +872,12 @@ impl Verts {
             self.push(r0, [ru, 1.0]);
 
             let n = (a1 - a0) / PI;
-            let n = clamp_i32((n * ncap as f32).ceil() as i32, 2, ncap);
+            let n = ((n * ncap as f32).ceil() as i32).clamp(2, ncap);
             for i in 0..n {
                 let u = (i as f32) / (n - 1) as f32;
                 let a = a0 + u * (a1 - a0);
                 let (sn, cs) = a.sin_cos();
-                self.push(p1.pos + vec2(cs, sn) * lw, [lu, 1.0]);
+                self.push(p1.pos + Offset::new(cs, sn) * lw, [lu, 1.0]);
                 self.push(p1.pos, [0.5, 1.0]);
             }
 
@@ -896,8 +896,8 @@ impl Verts {
         ru: f32,
         _fringe: f32,
     ) {
-        let dl0 = vec2(p0.dir.y, -p0.dir.x);
-        let dl1 = vec2(p1.dir.y, -p1.dir.x);
+        let dl0 = Offset::new(p0.dir.y, -p0.dir.x);
+        let dl1 = Offset::new(p1.dir.y, -p1.dir.x);
 
         if p1.is_left() {
             let [l0, l1] = choose_bevel(p1.is_innerbevel(), p0, p1, lw);
@@ -967,10 +967,10 @@ impl Verts {
         u0: f32,
         u1: f32,
     ) {
-        let dd = vec2(dx, dy);
+        let dd = Offset::new(dx, dy);
         let p1 = p.pos - dd * d;
         let p0 = p1 - dd * aa;
-        let dl = vec2(dy, -dx) * w;
+        let dl = Offset::new(dy, -dx) * w;
         self.push(p0 + dl, [u0, 0.0]);
         self.push(p0 - dl, [u1, 0.0]);
         self.push(p1 + dl, [u0, 1.0]);
@@ -988,10 +988,10 @@ impl Verts {
         u0: f32,
         u1: f32,
     ) {
-        let dd = vec2(dx, dy);
+        let dd = Offset::new(dx, dy);
         let p1 = p.pos + dd * d;
         let p0 = p1 + dd * aa;
-        let dl = vec2(dy, -dx) * w;
+        let dl = Offset::new(dy, -dx) * w;
         self.push(p1 + dl, [u0, 1.0]);
         self.push(p1 - dl, [u1, 1.0]);
         self.push(p0 + dl, [u0, 0.0]);
@@ -1009,8 +1009,8 @@ impl Verts {
         u0: f32,
         u1: f32,
     ) {
-        let dl = vec2(dy, -dx);
-        let (a, b) = (dl * w, vec2(dx, dy) * w);
+        let dl = Offset::new(dy, -dx);
+        let (a, b) = (dl * w, Offset::new(dx, dy) * w);
         for i in 0..ncap {
             let angle = (i as f32) / ((ncap - 1) as f32) * PI;
             let (sin, cos) = angle.sin_cos();
@@ -1032,10 +1032,10 @@ impl Verts {
         u0: f32,
         u1: f32,
     ) {
-        let dl = vec2(dy, -dx);
+        let dl = Offset::new(dy, -dx);
         self.push(p.pos + dl * w, [u0, 1.0]);
         self.push(p.pos - dl * w, [u1, 1.0]);
-        let (a, b) = (dl * w, vec2(dx, dy) * w);
+        let (a, b) = (dl * w, Offset::new(dx, dy) * w);
         for i in 0..ncap {
             let angle = (i as f32) / ((ncap - 1) as f32) * PI;
             let (sin, cos) = angle.sin_cos();

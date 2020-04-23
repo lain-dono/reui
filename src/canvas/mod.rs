@@ -9,7 +9,7 @@ pub use crate::canvas::{
 };
 use crate::{
     context::Context,
-    math::{clamp_f32, Offset, RRect, Rect, Transform},
+    math::{Offset, PartialClamp, RRect, Rect, Transform},
 };
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -35,13 +35,13 @@ impl<'a> Canvas<'a> {
 
         if force_stroke || paint.style == PaintingStyle::Stroke {
             let scale = xform.average_scale();
-            let mut stroke_width = clamp_f32(paint.stroke_width * scale, 0.0, 200.0);
+            let mut stroke_width = (paint.stroke_width * scale).clamp(0.0, 200.0);
             let fringe = cache.fringe_width;
 
             if stroke_width < cache.fringe_width {
                 // If the stroke width is less than pixel size, use alpha to emulate coverage.
                 // Since coverage is area, scale by alpha*alpha.
-                let alpha = clamp_f32(stroke_width / fringe, 0.0, 1.0);
+                let alpha = (stroke_width / fringe).clamp(0.0, 1.0);
                 raw_paint.inner_color.a *= alpha * alpha;
                 raw_paint.outer_color.a *= alpha * alpha;
                 stroke_width = cache.fringe_width;

@@ -12,54 +12,25 @@ impl self::transform::Transform {
     }
 }
 
-#[inline]
-pub fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
-    Rect::from_ltwh(x, y, w, h)
+pub trait PartialClamp {
+    fn clamp(self, min: Self, max: Self) -> Self;
 }
 
-#[inline]
-pub fn vec2(x: f32, y: f32) -> Offset {
-    Offset { x, y }
+impl<T: std::cmp::PartialOrd> PartialClamp for T {
+    fn clamp(self, min: Self, max: Self) -> Self {
+        assert!(min <= max);
+        let mut x = self;
+        if x < min {
+            x = min;
+        }
+        if x > max {
+            x = max;
+        }
+        x
+    }
 }
-
-#[inline]
-pub fn point2(x: f32, y: f32) -> Offset {
-    Offset { x, y }
-}
-
-/*
-fn convert_radius_to_sigma(radius: f32) -> f32 {
-    radius * 0.57735 + 0.5
-}
-*/
 
 // reduce #![feature(clamp)]
-
-#[doc(hidden)]
-#[inline]
-pub fn clamp_f32(mut x: f32, min: f32, max: f32) -> f32 {
-    assert!(min <= max);
-    if x < min {
-        x = min;
-    }
-    if x > max {
-        x = max;
-    }
-    x
-}
-
-#[doc(hidden)]
-#[inline]
-pub fn clamp_i32(mut x: i32, min: i32, max: i32) -> i32 {
-    assert!(min <= max);
-    if x < min {
-        x = min;
-    }
-    if x > max {
-        x = max;
-    }
-    x
-}
 
 #[derive(Clone, Copy, Default)]
 pub struct Corners {
