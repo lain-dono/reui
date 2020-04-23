@@ -16,9 +16,6 @@ members = [
     "examples/nvg_demo",
 ]
 
-[build-dependencies]
-gl_generator = "0.11"
-
 [dependencies]
 bitflags = "1.2"
 smallvec = "1.3"
