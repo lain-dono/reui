@@ -1,5 +1,8 @@
+use reui::{
+    rect, Canvas, Color, Gradient, Offset, Paint, PaintingStyle, Path, RRect, Rect, StrokeCap,
+    StrokeJoin, Winding,
+};
 use std::f32::consts::PI;
-use reui::canvas::*;
 
 pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, blowup: bool) {
     let (width, height) = wsize.into();
@@ -51,6 +54,12 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
         draw_button(ctx, rect(x + 170.0, y, 110.0, 28.0), 0x00_000000);
     }
 
+    if true {
+        ctx.save();
+        super::blendish::run(ctx, time, rect(380.0, 50.0, 200.0, 200.0));
+        ctx.restore();
+    }
+
     if false {
         // Canvas test
 
@@ -66,6 +75,140 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
             Paint::stroke(0xFF_00CCCC),
         );
     }
+
+    {
+        use palette::{GammaSrgba, LinSrgba, Pixel, Srgba};
+
+        let colors: &[u32] = &[
+            0xFF_001F3F,
+            0xFF_0074D9,
+            0xFF_7FDBFF,
+            0xFF_39CCCC,
+            0xFF_3D9970,
+            0xFF_2ECC40,
+            0xFF_01FF70,
+            0xFF_FFDC00,
+            0xFF_FF851B,
+            0xFF_FF4136,
+            0xFF_85144B,
+            0xFF_F012BE,
+            0xFF_B10DC9,
+            0xFF_111111,
+            0xFF_AAAAAA,
+            0xFF_DDDDDD,
+            0xFF_FFFFFF,
+        ];
+
+        for (i, &c) in colors.iter().enumerate() {
+            let [b, g, r, a] = c.to_le_bytes();
+            let buffer = &[r, g, b, a];
+            let raw = Srgba::from_raw(buffer);
+            let raw_float: Srgba<f32> = raw.into_format();
+            let lin: LinSrgba<f32> = raw_float.into_linear();
+
+            let x = 80.0 + (i * 32) as f32;
+            ctx.draw_rect(
+                rect(x, 10.0, 20.0, 20.0),
+                Paint {
+                    style: PaintingStyle::Fill,
+                    color: Color {
+                        r: lin.color.red,
+                        g: lin.color.green,
+                        b: lin.color.blue,
+                        a: lin.alpha,
+                    },
+                    ..Paint::default()
+                },
+            )
+        }
+
+        let grad: &[[u32; 2]] = &[
+            [0xFF_000000, 0xFF_FFFFFF], // 000 111
+            [0xFF_FF0000, 0xFF_00FF00], // 100 010
+            [0xFF_00FF00, 0xFF_0000FF], // 010 001
+            [0xFF_0000FF, 0xFF_FF0000], // 001 100
+            [0xFF_FF00FF, 0xFF_FFFF00], // 101 110
+            [0xFF_FFFF00, 0xFF_00FFFF], // 110 011
+        ];
+
+        for (i, &[inner_color, outer_color]) in grad.iter().enumerate() {
+            let x = 80.0;
+            let y = 35.0 + 20.0 * i as f32;
+            let w = 512.0;
+            let h = 20.0;
+
+            let paint = Paint::gradient(Gradient::Linear {
+                from: [x, y],
+                to: [x + w, y],
+                inner_color,
+                outer_color,
+            });
+            ctx.draw_rect(rect(x, y, w, h), paint);
+        }
+    }
+
+    {
+        use palette::{LinSrgba, Pixel, Srgba};
+        // blending test
+
+        fn bgra_to_srgba8(c: u32) -> Srgba<u8> {
+            let [b, g, r, a] = c.to_le_bytes();
+            let raw = [r, g, b, a];
+            *Srgba::from_raw(&raw)
+        }
+
+        fn bgra_to_linear(c: u32) -> LinSrgba<f32> {
+            let raw = bgra_to_srgba8(c);
+            let raw: Srgba<f32> = raw.into_format();
+            raw.into_linear()
+        }
+
+        fn srgba_paint(c: u32) -> Paint {
+            let lin = bgra_to_linear(c);
+
+            Paint {
+                style: PaintingStyle::Fill,
+                color: Color {
+                    r: lin.color.red,
+                    g: lin.color.green,
+                    b: lin.color.blue,
+                    a: lin.alpha,
+                },
+                ..Paint::default()
+            }
+        }
+
+        let x = 600.0;
+        let y = 35.0;
+        let w = 85.0;
+        let h = 70.0;
+
+        let bg_paint = Paint::fill(0xFF_FFFFFF);
+        ctx.draw_rect(rect(x, y, w, h), bg_paint);
+
+        let vg = srgba_paint(0xFF_18EA22);
+        let vy = srgba_paint(0xFF_EAE818);
+        let vc = srgba_paint(0xFF_18EAC8);
+        let vm = srgba_paint(0xFF_EE46A6);
+
+        ctx.draw_rect(rect(x + 15.0 * 1.0, y, 10.0, h), vc);
+        ctx.draw_rect(rect(x + 15.0 * 2.0, y, 10.0, h), vm);
+        ctx.draw_rect(rect(x + 15.0 * 3.0, y, 10.0, h), vy);
+        ctx.draw_rect(rect(x + 15.0 * 4.0, y, 10.0, h), vg);
+
+        let hr: [_; 2] = [srgba_paint(0xFF_FF0000), srgba_paint(0x7F_FF0000)];
+        let hg: [_; 2] = [srgba_paint(0xFF_93FF00), srgba_paint(0x7F_93FF00)];
+        let hb: [_; 2] = [srgba_paint(0xFF_007FFF), srgba_paint(0x7F_007FFF)];
+
+        ctx.draw_rect(rect(x, y + 15.0 * 1.0, w, 5.0), hr[0]);
+        ctx.draw_rect(rect(x, y + 15.0 * 1.0 + 5.0, w, 5.0), hr[1]);
+
+        ctx.draw_rect(rect(x, y + 15.0 * 2.0, w, 5.0), hg[0]);
+        ctx.draw_rect(rect(x, y + 15.0 * 2.0 + 5.0, w, 5.0), hg[1]);
+
+        ctx.draw_rect(rect(x, y + 15.0 * 3.0, w, 5.0), hb[0]);
+        ctx.draw_rect(rect(x, y + 15.0 * 3.0 + 5.0, w, 5.0), hb[1]);
+    }
 }
 
 pub fn draw_window(ctx: &mut Canvas, rr: Rect) {
@@ -76,7 +219,6 @@ pub fn draw_window(ctx: &mut Canvas, rr: Rect) {
     // Window
     let rrect = RRect::from_rect_and_radius(rr, corner_radius);
     ctx.draw_rrect(rrect, Paint::fill(0xC0_1C1E22));
-    //vg.fill_color(0x80_000000);
 
     // Drop shadow
     let mut path: Path<[_; 128]> = Path::new();

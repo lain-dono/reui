@@ -1,8 +1,72 @@
+use crate::canvas::Gradient;
 use crate::math::{Color, Rect, Transform};
 use crate::state::Scissor;
 
 pub const SHADER_SIMPLE: f32 = 0.0;
 pub const SHADER_FILLGRAD: f32 = 1.0;
+
+pub fn convert(paint: &crate::canvas::Paint, xform: Transform) -> Paint {
+    match paint.gradient {
+        Some(gradient) => {
+            let mut paint = gradient_to_paint(gradient);
+            paint.xform.prepend_mut(xform);
+            paint
+        }
+        None => Paint {
+            xform: Transform::identity(),
+            extent: [0.0, 0.0],
+            radius: 0.0,
+            feather: 1.0,
+            inner_color: paint.color,
+            outer_color: paint.color,
+        },
+    }
+}
+
+fn gradient_to_paint(gradient: Gradient) -> Paint {
+    match gradient {
+        Gradient::Linear {
+            from,
+            to,
+            inner_color,
+            outer_color,
+        } => Paint::linear_gradient(
+            from[0],
+            from[1],
+            to[0],
+            to[1],
+            Color::new(inner_color),
+            Color::new(outer_color),
+        ),
+        Gradient::Box {
+            rect,
+            radius,
+            feather,
+            inner_color,
+            outer_color,
+        } => Paint::box_gradient(
+            rect,
+            radius,
+            feather,
+            Color::new(inner_color),
+            Color::new(outer_color),
+        ),
+        Gradient::Radial {
+            center,
+            inr,
+            outr,
+            inner_color,
+            outer_color,
+        } => Paint::radial_gradient(
+            center[0],
+            center[1],
+            inr,
+            outr,
+            Color::new(inner_color),
+            Color::new(outer_color),
+        ),
+    }
+}
 
 #[repr(C, align(4))]
 pub struct FragUniforms {
@@ -41,13 +105,30 @@ impl FragUniforms {
             scissor_scale = [scale, scale];
         }
 
+        fn srgb_to_linear(c: Color) -> [f32; 4] {
+            use palette::{LinSrgba, Pixel, Srgba};
+
+            let srgb = Srgba::new(c.r, c.g, c.b, c.a);
+            let lin: LinSrgba = srgb.into_encoding();
+
+            let [r, g, b, a]: [f32; 4] = lin.into_raw();
+
+            [r * a, g * a, b * a, a]
+        }
+
+        //let inner_color = paint.inner_color.premul();
+        //let outer_color = paint.outer_color.premul();
+
+        let inner_color = srgb_to_linear(paint.inner_color);
+        let outer_color = srgb_to_linear(paint.outer_color);
+
         Self {
             scissor_mat,
             scissor_ext,
             scissor_scale,
 
-            inner_color: paint.inner_color.premul(),
-            outer_color: paint.outer_color.premul(),
+            inner_color,
+            outer_color,
 
             extent: paint.extent,
 
@@ -189,17 +270,6 @@ impl Paint {
             feather: feather.max(1.0),
             inner_color,
             outer_color,
-        }
-    }
-
-    pub fn color(color: Color) -> Self {
-        Self {
-            xform: Transform::identity(),
-            extent: [0.0, 0.0],
-            radius: 0.0,
-            feather: 1.0,
-            inner_color: color,
-            outer_color: color,
         }
     }
 }

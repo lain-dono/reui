@@ -19,6 +19,13 @@ fn hue(mut h: f32, m1: f32, m2: f32) -> f32 {
     }
 }
 
+impl Into<[f32; 4]> for Color {
+    fn into(self) -> [f32; 4] {
+        let Self { r, g, b, a } = self;
+        [r, g, b, a]
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Color {
     pub r: f32,

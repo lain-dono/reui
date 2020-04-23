@@ -1,9 +1,10 @@
 mod color;
 mod offset;
 mod rect;
+mod rrect;
 mod transform;
 
-pub use self::{color::Color, offset::Offset, rect::Rect, transform::Transform};
+pub use self::{color::Color, offset::Offset, rect::Rect, rrect::RRect, transform::Transform};
 
 impl self::transform::Transform {
     pub fn transform_point(&self, p: Offset) -> Offset {

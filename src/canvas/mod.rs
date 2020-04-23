@@ -7,118 +7,15 @@ pub use crate::canvas::{
     path::Path,
     picture::PictureRecorder,
 };
-pub use crate::{
-    backend::Paint as BackendPaint,
+use crate::{
     context::Context,
-    math::{clamp_f32, rect, Corners, Offset, Rect, Transform},
+    math::{clamp_f32, Offset, RRect, Rect, Transform},
 };
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Winding {
     CCW = 1, // Winding for solid shapes
     CW = 2,  // Winding for holes
-}
-
-pub type Radius = f32; // TODO: [f32; 2]
-
-#[derive(Clone, Copy)]
-pub struct RRect {
-    pub rect: Rect,
-    pub radius: Corners,
-}
-
-impl RRect {
-    pub fn from_rect_and_radius(rect: Rect, radius: f32) -> Self {
-        Self {
-            rect,
-            radius: Corners::all_same(radius),
-        }
-    }
-
-    pub fn new(o: Offset, s: Offset, radius: f32) -> Self {
-        Self::from_rect_and_radius(Rect::from_points(o, o + s), radius)
-    }
-
-    pub fn rect(&self) -> Rect {
-        self.rect
-    }
-
-    pub fn width(&self) -> f32 {
-        self.rect.dx()
-    }
-    pub fn height(&self) -> f32 {
-        self.rect.dy()
-    }
-
-    pub fn inflate(self, v: f32) -> Self {
-        Self {
-            rect: self.rect.inflate(v),
-            radius: self.radius,
-        }
-    }
-
-    pub fn deflate(self, v: f32) -> Self {
-        Self {
-            rect: self.rect.deflate(v),
-            radius: self.radius,
-        }
-    }
-}
-
-fn gradient_to_paint(gradient: Gradient) -> BackendPaint {
-    match gradient {
-        Gradient::Linear {
-            from,
-            to,
-            inner_color,
-            outer_color,
-        } => BackendPaint::linear_gradient(
-            from[0],
-            from[1],
-            to[0],
-            to[1],
-            Color::new(inner_color),
-            Color::new(outer_color),
-        ),
-        Gradient::Box {
-            rect,
-            radius,
-            feather,
-            inner_color,
-            outer_color,
-        } => BackendPaint::box_gradient(
-            rect,
-            radius,
-            feather,
-            Color::new(inner_color),
-            Color::new(outer_color),
-        ),
-        Gradient::Radial {
-            center,
-            inr,
-            outr,
-            inner_color,
-            outer_color,
-        } => BackendPaint::radial_gradient(
-            center[0],
-            center[1],
-            inr,
-            outr,
-            Color::new(inner_color),
-            Color::new(outer_color),
-        ),
-    }
-}
-
-fn convert_paint(paint: &Paint, xform: Transform) -> BackendPaint {
-    match paint.gradient {
-        Some(gradient) => {
-            let mut paint = gradient_to_paint(gradient);
-            paint.xform.prepend_mut(xform);
-            paint
-        }
-        None => BackendPaint::color(Color::new(paint.color)),
-    }
 }
 
 pub struct Canvas<'a> {
@@ -134,18 +31,19 @@ impl<'a> Canvas<'a> {
         let cache = &mut self.ctx.cache;
         let (xform, scissor) = self.ctx.states.decompose();
 
+        let mut raw_paint = crate::backend::convert(paint, xform);
+
         if force_stroke || paint.style == PaintingStyle::Stroke {
             let scale = xform.average_scale();
             let mut stroke_width = clamp_f32(paint.stroke_width * scale, 0.0, 200.0);
             let fringe = cache.fringe_width;
 
-            let mut paint_stroke = convert_paint(paint, xform);
             if stroke_width < cache.fringe_width {
                 // If the stroke width is less than pixel size, use alpha to emulate coverage.
                 // Since coverage is area, scale by alpha*alpha.
                 let alpha = clamp_f32(stroke_width / fringe, 0.0, 1.0);
-                paint_stroke.inner_color.a *= alpha * alpha;
-                paint_stroke.outer_color.a *= alpha * alpha;
+                raw_paint.inner_color.a *= alpha * alpha;
+                raw_paint.outer_color.a *= alpha * alpha;
                 stroke_width = cache.fringe_width;
             }
 
@@ -165,7 +63,7 @@ impl<'a> Canvas<'a> {
 
             self.ctx
                 .cmd
-                .draw_stroke(paint_stroke, scissor, fringe, stroke_width, &cache.paths);
+                .draw_stroke(raw_paint, scissor, fringe, stroke_width, &cache.paths);
         } else {
             let w = if paint.is_antialias {
                 cache.fringe_width
@@ -176,9 +74,8 @@ impl<'a> Canvas<'a> {
             cache.flatten_paths(&self.ctx.picture.commands);
             cache.expand_fill(w, StrokeJoin::Miter, 2.4);
 
-            let paint_fill = convert_paint(paint, xform);
             self.ctx.cmd.draw_fill(
-                paint_fill,
+                raw_paint,
                 scissor,
                 cache.fringe_width,
                 cache.bounds,

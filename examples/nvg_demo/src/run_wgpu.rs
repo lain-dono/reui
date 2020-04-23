@@ -33,7 +33,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
         })
         .await;
 
-    let mut pipeline = Pipeline::new(&device);
+    let mut pipeline = Pipeline::new(&device, swapchain_format);
 
     let mut vg = Context::default();
 
@@ -114,14 +114,6 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                             false,
                         );
 
-                        if true {
-                            super::blendish::run(
-                                &mut ctx,
-                                time as f32,
-                                rect(380.0, 50.0, 200.0, 200.0),
-                            );
-                        }
-
                         drop(ctx);
                     }
 
@@ -157,10 +149,10 @@ pub fn main() {
 
     env_logger::init();
     // Temporarily avoid srgb formats for the swapchain on the web
-    futures::executor::block_on(run(event_loop, window, FORMAT));
+    let format = wgpu::TextureFormat::Bgra8UnormSrgb;
+    futures::executor::block_on(run(event_loop, window, format));
 }
 
-const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
 
 fn create_depth(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {

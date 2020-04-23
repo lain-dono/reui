@@ -48,7 +48,7 @@ pub enum Gradient {
 #[derive(Clone, Copy)]
 pub struct Paint {
     pub style: PaintingStyle,
-    pub color: u32,
+    pub color: Color,
 
     pub is_antialias: bool,
 
@@ -64,7 +64,7 @@ impl Default for Paint {
     fn default() -> Self {
         Self {
             style: PaintingStyle::Fill,
-            color: 0xFF_000000,
+            color: Color::new(0xFF_000000),
             is_antialias: true,
             stroke_cap: StrokeCap::Butt,
             stroke_join: StrokeJoin::Miter,
@@ -79,7 +79,7 @@ impl Paint {
     pub fn fill(color: u32) -> Self {
         Self {
             style: PaintingStyle::Fill,
-            color,
+            color: Color::new(color),
             ..Self::default()
         }
     }
@@ -87,7 +87,7 @@ impl Paint {
     pub fn stroke(color: u32) -> Self {
         Self {
             style: PaintingStyle::Stroke,
-            color,
+            color: Color::new(color),
             ..Self::default()
         }
     }
@@ -95,6 +95,7 @@ impl Paint {
     pub fn stroke_cap(self, stroke_cap: StrokeCap) -> Self {
         Self { stroke_cap, ..self }
     }
+
     pub fn stroke_join(self, stroke_join: StrokeJoin) -> Self {
         Self {
             stroke_join,

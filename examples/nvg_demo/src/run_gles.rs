@@ -79,10 +79,6 @@ pub fn main() {
                 BLOWUP != 0,
             );
 
-            if true {
-                super::blendish::run(&mut ctx, time as f32, rect(380.0, 50.0, 200.0, 200.0));
-            }
-
             drop(ctx);
 
             backend.draw_commands(&vg.cmd, win_w as f32, win_h as f32, scale);

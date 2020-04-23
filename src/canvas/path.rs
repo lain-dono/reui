@@ -1,8 +1,8 @@
-use super::{
-    picture::{BEZIERTO, CLOSE, LINETO, MOVETO, WINDING},
-    Offset, RRect, Rect, Winding,
+use crate::{
+    canvas::picture::{BEZIERTO, CLOSE, LINETO, MOVETO, WINDING},
+    canvas::Winding,
+    math::{clamp_i32, Offset, RRect, Rect},
 };
-use crate::math::clamp_i32;
 use smallvec::{Array, SmallVec};
 use std::f32::consts::PI;
 

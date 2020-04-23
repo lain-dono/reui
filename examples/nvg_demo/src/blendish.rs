@@ -1,4 +1,7 @@
-use reui::{canvas::*, math::*};
+use reui::{
+    math::clamp_f32, Canvas, Color, Offset, Paint, Path, RRect,
+    Rect, StrokeCap, StrokeJoin, Winding, Transform,
+};
 
 const HOVER_SHADE: i32 = 15;
 
@@ -145,9 +148,9 @@ pub fn draw_option(ctx: &mut Canvas, bounds: Rect, theme: &WidgetTheme, state: S
         State::Active => theme.active,
     };
     let rrect = RRect::from_rect_and_radius(bounds, theme.radius);
-    let a = vec2(2.5, 6.0);
-    let b = vec2(5.5, 9.0);
-    let c = vec2(10.5, 3.5);
+    let a = Offset::new(2.5, 6.0);
+    let b = Offset::new(5.5, 9.0);
+    let c = Offset::new(10.5, 3.5);
 
     ctx.draw_rrect(rrect, Paint::fill(bg));
     ctx.draw_rrect(
@@ -230,9 +233,9 @@ pub fn draw_num(
 
     let paint = Paint::fill(0xFF_E6E6E6).stroke_width(0.5);
 
-    let cc = vec2(1.5, 0.0);
-    let aa = vec2(1.5, -3.0);
-    let bb = vec2(1.5, 3.0);
+    let cc = Offset::new(1.5, 0.0);
+    let aa = Offset::new(1.5, -3.0);
+    let bb = Offset::new(1.5, 3.0);
 
     ctx.draw_lines(&[left + aa, left - cc, left + bb], paint);
     ctx.draw_lines(&[right - aa, right + cc, right - bb], paint);

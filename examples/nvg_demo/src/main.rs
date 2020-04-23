@@ -8,9 +8,6 @@ mod run_wgpu;
 mod time;
 
 fn main() {
-    if false {
-        run_gles::main();
-    } else {
-        run_wgpu::main();
-    }
+    //run_gles::main();
+    run_wgpu::main();
 }
