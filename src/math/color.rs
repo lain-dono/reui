@@ -35,38 +35,41 @@ pub struct Color {
 }
 
 impl Color {
+    const fn raw(r: f32, g: f32, b: f32, a: f32) -> Self {
+        Self { r, g, b, a }
+    }
+
+    pub const TRANSPARENT: Self = Self::raw(0.0, 0.0, 0.0, 0.0);
+    pub const BLACK: Self = Self::raw(0.0, 0.0, 0.0, 1.0);
+    pub const WHITE: Self = Self::raw(1.0, 1.0, 1.0, 1.0);
+    pub const RED: Self = Self::raw(1.0, 0.0, 0.0, 1.0);
+    pub const GREEN: Self = Self::raw(0.0, 1.0, 0.0, 1.0);
+    pub const BLUE: Self = Self::raw(0.0, 0.0, 1.0, 1.0);
+}
+
+impl Color {
+    pub fn hex(color: u32) -> Self {
+        let [b, g, r, a] = color.to_le_bytes();
+        Self::new_srgba8(r, g, b, a)
+    }
+
+    pub fn new_srgba8(r: u8, g: u8, b: u8, a: u8) -> Self {
+        use palette::{LinSrgba, Pixel, Srgba};
+        let buffer = &[r, g, b, a];
+        let raw = Srgba::from_raw(buffer);
+        let raw_float: Srgba<f32> = raw.into_format();
+        let lin: LinSrgba<f32> = raw_float.into_linear();
+
+        Self {
+            r: lin.color.red,
+            g: lin.color.green,
+            b: lin.color.blue,
+            a: lin.alpha,
+        }
+    }
+
     pub fn is_transparent_black(&self) -> bool {
         self.r == 0.0 && self.g == 0.0 && self.b == 0.0 && self.a == 0.0
-    }
-
-    pub fn new(color: u32) -> Self {
-        let [b, g, r, a] = color.to_le_bytes();
-        Self::rgba(r, g, b, a)
-    }
-
-    pub fn to_bgra(self) -> u32 {
-        let Color { b, g, r, a } = self;
-        let r = (r * 255.0) as u8;
-        let g = (g * 255.0) as u8;
-        let b = (b * 255.0) as u8;
-        let a = (a * 255.0) as u8;
-        u32::from_le_bytes([b, g, r, a])
-    }
-
-    /// Returns a color value from red, green, blue values. Alpha will be set to 255 (1.0f).
-    pub fn rgb(r: u8, g: u8, b: u8) -> Self {
-        Self::rgba(r, g, b, 255)
-    }
-
-    /// Returns a color value from red, green, blue and alpha values.
-    pub fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
-        #![allow(clippy::cast_lossless)]
-        Self {
-            r: (r as f32) / 255.0,
-            g: (g as f32) / 255.0,
-            b: (b as f32) / 255.0,
-            a: (a as f32) / 255.0,
-        }
     }
 
     /// Returns color value specified by hue, saturation and lightness.

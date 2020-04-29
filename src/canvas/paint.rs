@@ -26,22 +26,22 @@ pub enum Gradient {
     Linear {
         from: [f32; 2],
         to: [f32; 2],
-        inner_color: u32,
-        outer_color: u32,
+        inner_color: Color,
+        outer_color: Color,
     },
     Box {
         rect: Rect,
         radius: f32,
         feather: f32,
-        inner_color: u32,
-        outer_color: u32,
+        inner_color: Color,
+        outer_color: Color,
     },
     Radial {
         center: [f32; 2],
         inr: f32,
         outr: f32,
-        inner_color: u32,
-        outer_color: u32,
+        inner_color: Color,
+        outer_color: Color,
     },
 }
 
@@ -64,7 +64,7 @@ impl Default for Paint {
     fn default() -> Self {
         Self {
             style: PaintingStyle::Fill,
-            color: Color::new(0xFF_000000),
+            color: Color::hex(0xFF_000000),
             is_antialias: true,
             stroke_cap: StrokeCap::Butt,
             stroke_join: StrokeJoin::Miter,
@@ -76,18 +76,18 @@ impl Default for Paint {
 }
 
 impl Paint {
-    pub fn fill(color: u32) -> Self {
+    pub fn fill(color: Color) -> Self {
         Self {
             style: PaintingStyle::Fill,
-            color: Color::new(color),
+            color,
             ..Self::default()
         }
     }
 
-    pub fn stroke(color: u32) -> Self {
+    pub fn stroke(color: Color) -> Self {
         Self {
             style: PaintingStyle::Stroke,
-            color: Color::new(color),
+            color,
             ..Self::default()
         }
     }
@@ -132,8 +132,8 @@ impl Paint {
     pub fn linear_gradient(
         from: [f32; 2],
         to: [f32; 2],
-        inner_color: u32,
-        outer_color: u32,
+        inner_color: Color,
+        outer_color: Color,
     ) -> Self {
         Self::gradient(Gradient::Linear {
             from,
@@ -146,8 +146,8 @@ impl Paint {
         rect: Rect,
         radius: f32,
         feather: f32,
-        inner_color: u32,
-        outer_color: u32,
+        inner_color: Color,
+        outer_color: Color,
     ) -> Self {
         Self::gradient(Gradient::Box {
             rect,
@@ -161,8 +161,8 @@ impl Paint {
         center: [f32; 2],
         inr: f32,
         outr: f32,
-        inner_color: u32,
-        outer_color: u32,
+        inner_color: Color,
+        outer_color: Color,
     ) -> Self {
         Self::gradient(Gradient::Radial {
             center,

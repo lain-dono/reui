@@ -178,11 +178,18 @@ fn clear_pass(
     view: &wgpu::TextureView,
     depth: &wgpu::TextureView,
 ) {
+    use palette::{Srgba, LinSrgba};
+
+    let [r, g, b, a] = [0.3, 0.3, 0.32, 1.0];
+
+    let srgb = Srgba::new(r, g, b, a);
+    let lin: LinSrgba = srgb.into_encoding();
+
     let clear_color = wgpu::Color {
-        r: 0.3,
-        g: 0.3,
-        b: 0.32,
-        a: 1.0,
+        r: lin.color.red as f64,
+        g: lin.color.green as f64,
+        b: lin.color.blue as f64,
+        a: lin.alpha as f64,
     };
     let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {

@@ -16,8 +16,8 @@ fn offset_color(Color { r, g, b, a }: Color, delta: i32) -> Color {
     }
 }
 
-fn shade(c: u32, shade: i32) -> u32 {
-    offset_color(Color::new(c), shade).to_bgra()
+fn shade(color: Color, shade: i32) -> Color {
+    offset_color(color, shade)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -114,17 +114,17 @@ pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
         let pos = bounds.center();
         let rect = Rect::from_size(4.0, 4.0).translate(pos);
 
-        ctx.draw_rect(rect, Paint::fill(0xFF_CC0000));
+        ctx.draw_rect(rect, Paint::fill(Color::hex(0xFF_CC0000)));
 
         let tr = Transform::rotation(time);
         let pos = tr.apply([20.0, 0.0]);
 
-        ctx.draw_rect(rect.translate(pos.into()), Paint::fill(0x99_CC0000));
+        ctx.draw_rect(rect.translate(pos.into()), Paint::fill(Color::hex(0x99_CC0000)));
     }
 }
 
 pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {
-    ctx.draw_rect(bounds, Paint::fill(theme.background));
+    ctx.draw_rect(bounds, Paint::fill(Color::hex(theme.background)));
 
     let rect = bounds.deflate(3.0);
     let rrect = RRect::from_rect_and_radius(rect, 2.5);
@@ -133,17 +133,18 @@ pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {
     left_scroll.rect.min.x = rrect.rect.max.x - 5.0;
     left_scroll.rect.max.y = rrect.rect.max.y - 50.0;
 
-    ctx.draw_rrect(left_scroll, Paint::fill(0xFF_676767));
+    ctx.draw_rrect(left_scroll, Paint::fill(Color::hex(0xFF_676767)));
     //ctx.draw_rrect(left_scroll.add(1.0), Paint::stroke(0xFF_424242));
     //ctx.draw_rrect(left_scroll, Paint::stroke(0xFF_373737).stroke_width(0.5));
 }
 
 pub fn draw_option(ctx: &mut Canvas, bounds: Rect, theme: &WidgetTheme, state: State) {
     let bg = match state {
-        State::Normal => theme.background,
-        State::Hovered => shade(theme.background, HOVER_SHADE),
-        State::Active => theme.active,
+        State::Normal => Color::hex(theme.background),
+        State::Hovered => shade(Color::hex(theme.background), HOVER_SHADE),
+        State::Active => Color::hex(theme.active),
     };
+
     let rrect = RRect::from_rect_and_radius(bounds, theme.radius);
     let a = Offset::new(2.5, 6.0);
     let b = Offset::new(5.5, 9.0);
@@ -152,13 +153,13 @@ pub fn draw_option(ctx: &mut Canvas, bounds: Rect, theme: &WidgetTheme, state: S
     ctx.draw_rrect(rrect, Paint::fill(bg));
     ctx.draw_rrect(
         rrect.inflate(0.5),
-        Paint::stroke(theme.outline).stroke_width(0.5),
+        Paint::stroke(Color::hex(theme.outline)).stroke_width(0.5),
     );
 
     if state == State::Active {
         ctx.draw_lines(
             &[bounds.min + a, bounds.min + b, bounds.min + c],
-            Paint::fill(0xFF_E6E6E6).stroke_width(2.0),
+            Paint::fill(Color::hex(0xFF_E6E6E6)).stroke_width(2.0),
         )
     }
 }
@@ -171,9 +172,9 @@ pub fn draw_num(
     gropped: Gropped,
 ) {
     let bg = match state {
-        State::Normal => theme.background,
-        State::Hovered => shade(theme.background, HOVER_SHADE * 2),
-        State::Active => theme.active,
+        State::Normal => Color::hex(theme.background),
+        State::Hovered => shade(Color::hex(theme.background), HOVER_SHADE * 2),
+        State::Active => Color::hex(theme.active),
     };
 
     let mut rrect = RRect::from_rect_and_radius(bounds, theme.radius);
@@ -205,7 +206,7 @@ pub fn draw_num(
 
     ctx.draw_rrect(
         rrect.inflate(0.5),
-        Paint::stroke(theme.outline).stroke_width(0.5),
+        Paint::stroke(Color::hex(theme.outline)).stroke_width(0.5),
     );
     ctx.draw_rrect(rrect, Paint::fill(bg));
 
@@ -220,7 +221,7 @@ pub fn draw_num(
     right.radius.bl = 0.0;
 
     if state == State::Hovered {
-        let paint = Paint::fill(shade(theme.background, HOVER_SHADE));
+        let paint = Paint::fill(shade(Color::hex(theme.background), HOVER_SHADE));
         ctx.draw_rrect(left, paint);
         ctx.draw_rrect(right, paint);
     }
@@ -228,7 +229,7 @@ pub fn draw_num(
     let left = left.rect().center();
     let right = right.rect().center();
 
-    let paint = Paint::fill(0xFF_E6E6E6).stroke_width(0.5);
+    let paint = Paint::fill(Color::hex(0xFF_E6E6E6)).stroke_width(0.5);
 
     let cc = Offset::new(1.5, 0.0);
     let aa = Offset::new(1.5, -3.0);

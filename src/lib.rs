@@ -1,4 +1,5 @@
 #![warn(clippy::all)]
+#![allow(unstable_name_collisions)] // TODO: clamp
 
 pub mod backend;
 pub mod cache;

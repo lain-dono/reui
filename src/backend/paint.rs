@@ -35,8 +35,8 @@ fn gradient_to_paint(gradient: Gradient) -> Paint {
             from[1],
             to[0],
             to[1],
-            Color::new(inner_color),
-            Color::new(outer_color),
+            inner_color,
+            outer_color,
         ),
         Gradient::Box {
             rect,
@@ -48,8 +48,8 @@ fn gradient_to_paint(gradient: Gradient) -> Paint {
             rect,
             radius,
             feather,
-            Color::new(inner_color),
-            Color::new(outer_color),
+            inner_color,
+            outer_color,
         ),
         Gradient::Radial {
             center,
@@ -62,8 +62,8 @@ fn gradient_to_paint(gradient: Gradient) -> Paint {
             center[1],
             inr,
             outr,
-            Color::new(inner_color),
-            Color::new(outer_color),
+            inner_color,
+            outer_color,
         ),
     }
 }
@@ -105,22 +105,14 @@ impl FragUniforms {
             scissor_scale = [scale, scale];
         }
 
-        fn srgb_to_linear(c: Color) -> [f32; 4] {
-            use palette::{LinSrgba, Pixel, Srgba};
-
-            let srgb = Srgba::new(c.r, c.g, c.b, c.a);
-            let lin: LinSrgba = srgb.into_encoding();
-
-            let [r, g, b, a]: [f32; 4] = lin.into_raw();
-
-            [r * a, g * a, b * a, a]
-        }
-
         //let inner_color = paint.inner_color.premul();
         //let outer_color = paint.outer_color.premul();
 
-        let inner_color = srgb_to_linear(paint.inner_color);
-        let outer_color = srgb_to_linear(paint.outer_color);
+        let inner_color = paint.inner_color.into();
+        let outer_color = paint.outer_color.into();
+
+        //let inner_color = srgb_to_linear(paint.inner_color);
+        //let outer_color = srgb_to_linear(paint.outer_color);
 
         Self {
             scissor_mat,
