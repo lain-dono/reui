@@ -302,7 +302,6 @@ impl PipelineBuilder {
             write_mask,
             cull_mode,
         } = self;
-
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             layout,
             vertex_stage: wgpu::ProgrammableStageDescriptor {
@@ -330,7 +329,7 @@ impl PipelineBuilder {
                     operation: wgpu::BlendOperation::Add,
                 },
                 alpha_blend: wgpu::BlendDescriptor {
-                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                    src_factor: wgpu::BlendFactor::One,
                     dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
                     operation: wgpu::BlendOperation::Add,
                 },
