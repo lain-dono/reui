@@ -1,72 +1,9 @@
 use crate::canvas::Gradient;
-use crate::math::{Color, Rect, Transform};
+use crate::math::{Color, Transform};
 use crate::state::Scissor;
 
 pub const SHADER_SIMPLE: f32 = 0.0;
 pub const SHADER_FILLGRAD: f32 = 1.0;
-
-pub fn convert(paint: &crate::canvas::Paint, xform: Transform) -> Paint {
-    match paint.gradient {
-        Some(gradient) => {
-            let mut paint = gradient_to_paint(gradient);
-            paint.xform.prepend_mut(xform);
-            paint
-        }
-        None => Paint {
-            xform: Transform::identity(),
-            extent: [0.0, 0.0],
-            radius: 0.0,
-            feather: 1.0,
-            inner_color: paint.color,
-            outer_color: paint.color,
-        },
-    }
-}
-
-fn gradient_to_paint(gradient: Gradient) -> Paint {
-    match gradient {
-        Gradient::Linear {
-            from,
-            to,
-            inner_color,
-            outer_color,
-        } => Paint::linear_gradient(
-            from[0],
-            from[1],
-            to[0],
-            to[1],
-            inner_color,
-            outer_color,
-        ),
-        Gradient::Box {
-            rect,
-            radius,
-            feather,
-            inner_color,
-            outer_color,
-        } => Paint::box_gradient(
-            rect,
-            radius,
-            feather,
-            inner_color,
-            outer_color,
-        ),
-        Gradient::Radial {
-            center,
-            inr,
-            outr,
-            inner_color,
-            outer_color,
-        } => Paint::radial_gradient(
-            center[0],
-            center[1],
-            inr,
-            outr,
-            inner_color,
-            outer_color,
-        ),
-    }
-}
 
 #[repr(C, align(4))]
 pub struct FragUniforms {
@@ -105,22 +42,13 @@ impl FragUniforms {
             scissor_scale = [scale, scale];
         }
 
-        //let inner_color = paint.inner_color.premul();
-        //let outer_color = paint.outer_color.premul();
-
-        let inner_color = paint.inner_color.into();
-        let outer_color = paint.outer_color.into();
-
-        //let inner_color = srgb_to_linear(paint.inner_color);
-        //let outer_color = srgb_to_linear(paint.outer_color);
-
         Self {
             scissor_mat,
             scissor_ext,
             scissor_scale,
 
-            inner_color,
-            outer_color,
+            inner_color: paint.inner_color.into(),
+            outer_color: paint.outer_color.into(),
 
             extent: paint.extent,
 
@@ -171,97 +99,90 @@ pub struct Paint {
 }
 
 impl Paint {
-    //
-    // Paints
-    //
-    // NanoVG supports four types of paints: linear gradient, box gradient, radial gradient and image pattern.
-    // These can be used as paints for strokes and fills.
+    pub fn convert(paint: &crate::canvas::Paint, xform: Transform) -> Self {
+        if let Some(gradient) = paint.gradient {
+            match gradient {
+                Gradient::Linear {
+                    from,
+                    to,
+                    inner_color,
+                    outer_color,
+                } => {
+                    let [sx, sy] = from;
+                    let [ex, ey] = to;
 
-    /// Creates and returns a linear gradient. Parameters (sx,sy)-(ex,ey) specify the start and end coordinates
-    /// of the linear gradient, icol specifies the start color and ocol the end color.
-    /// The gradient is transformed by the current transform when it is passed to FillPaint() or StrokePaint().
-    pub fn linear_gradient(
-        sx: f32,
-        sy: f32,
-        ex: f32,
-        ey: f32,
-        inner_color: Color,
-        outer_color: Color,
-    ) -> Self {
-        let large = 1e5;
+                    let large = 1e5;
 
-        // Calculate transform aligned to the line
-        let dx = ex - sx;
-        let dy = ey - sy;
-        let d = (dx * dx + dy * dy).sqrt();
-        let (dx, dy) = if d > 0.0001 {
-            (dx / d, dy / d)
+                    // Calculate transform aligned to the line
+                    let dx = ex - sx;
+                    let dy = ey - sy;
+                    let d = (dx * dx + dy * dy).sqrt();
+                    let (dx, dy) = if d > 0.0001 {
+                        (dx / d, dy / d)
+                    } else {
+                        (0.0, 1.0)
+                    };
+
+                    Self {
+                        xform: Transform {
+                            re: dy,
+                            im: -dx,
+                            tx: sx - dx * large,
+                            ty: sy - dy * large,
+                        }
+                        .prepend(xform),
+                        extent: [large, large + d * 0.5],
+                        radius: 0.0,
+                        feather: d.max(1.0),
+                        inner_color,
+                        outer_color,
+                    }
+                }
+                Gradient::Box {
+                    rect,
+                    radius,
+                    feather,
+                    inner_color,
+                    outer_color,
+                } => {
+                    let center = rect.center();
+                    Self {
+                        xform: Transform::translation(center.x, center.y).prepend(xform),
+                        extent: [rect.dx() * 0.5, rect.dy() * 0.5],
+                        radius,
+                        feather: feather.max(1.0),
+                        inner_color,
+                        outer_color,
+                    }
+                }
+                Gradient::Radial {
+                    center,
+                    inr,
+                    outr,
+                    inner_color,
+                    outer_color,
+                } => {
+                    let radius = (inr + outr) * 0.5;
+                    let feather = outr - inr;
+                    Self {
+                        xform: Transform::translation(center[0], center[1]).prepend(xform),
+                        extent: [radius, radius],
+                        radius: radius,
+                        feather: feather.max(1.0),
+                        inner_color,
+                        outer_color,
+                    }
+                }
+            }
         } else {
-            (0.0, 1.0)
-        };
-
-        Self {
-            xform: Transform {
-                re: dy,
-                im: -dx,
-                tx: sx - dx * large,
-                ty: sy - dy * large,
-            },
-            extent: [large, large + d * 0.5],
-            radius: 0.0,
-            feather: d.max(1.0),
-            inner_color,
-            outer_color,
-        }
-    }
-
-    /// Creates and returns a radial gradient. Parameters (cx,cy) specify the center, inr and outr specify
-    /// the inner and outer radius of the gradient, icol specifies the start color and ocol the end color.
-    /// The gradient is transformed by the current transform when it is passed to FillPaint() or StrokePaint().
-    pub fn radial_gradient(
-        cx: f32,
-        cy: f32,
-        inr: f32,
-        outr: f32,
-        inner_color: Color,
-        outer_color: Color,
-    ) -> Self {
-        let r = (inr + outr) * 0.5;
-        let f = outr - inr;
-
-        Self {
-            xform: Transform::translation(cx, cy),
-            extent: [r, r],
-            radius: r,
-            feather: f.max(1.0),
-            inner_color,
-            outer_color,
-        }
-    }
-
-    /// Creates and returns a box gradient.
-    /// Box gradient is a feathered rounded rectangle, it is useful for rendering
-    /// drop shadows or highlights for boxes.
-    /// Parameters (x,y) define the top-left corner of the rectangle,
-    /// (w,h) define the size of the rectangle, r defines the corner radius, and f feather.
-    /// Feather defines how blurry the border of the rectangle is.
-    /// Parameter icol specifies the inner color and ocol the outer color of the gradient.
-    /// The gradient is transformed by the current transform when it is passed to FillPaint() or StrokePaint().
-    pub fn box_gradient(
-        rect: Rect,
-        radius: f32,
-        feather: f32,
-        inner_color: Color,
-        outer_color: Color,
-    ) -> Self {
-        let center = rect.center();
-        Self {
-            xform: Transform::translation(center.x, center.y),
-            extent: [rect.dx() * 0.5, rect.dy() * 0.5],
-            radius,
-            feather: feather.max(1.0),
-            inner_color,
-            outer_color,
+            Self {
+                xform: Transform::identity(),
+                extent: [0.0, 0.0],
+                radius: 0.0,
+                feather: 1.0,
+                inner_color: paint.color,
+                outer_color: paint.color,
+            }
         }
     }
 }

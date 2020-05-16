@@ -31,7 +31,7 @@ impl<'a> Canvas<'a> {
         let cache = &mut self.ctx.cache;
         let (xform, scissor) = self.ctx.states.decompose();
 
-        let mut raw_paint = crate::backend::convert(paint, xform);
+        let mut raw_paint = crate::backend::Paint::convert(paint, xform);
 
         if force_stroke || paint.style == PaintingStyle::Stroke {
             let scale = xform.average_scale();

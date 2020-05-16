@@ -36,13 +36,13 @@ fn normalize(x: &mut f32, y: &mut f32) -> f32 {
     d
 }
 
-#[inline(always)]
-fn triarea2(a: Offset, b: Offset, c: Offset) -> f32 {
-    (c - a).cross(b - a)
-}
-
 #[inline]
 fn poly_area(pts: &[PathPoint]) -> f32 {
+    #[inline(always)]
+    fn triarea2(a: Offset, b: Offset, c: Offset) -> f32 {
+        (c - a).cross(b - a)
+    }
+
     let mut area = 0.0;
     let a = &pts[0];
     for i in 2..pts.len() {

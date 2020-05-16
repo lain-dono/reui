@@ -749,8 +749,8 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
         path.arc(cx, cy, r1, a1, a0, Winding::CCW);
         path.close();
 
-        let inner_color = Color::hsla(a0 / (PI * 2.0), 1.0, 0.55, 255);
-        let outer_color = Color::hsla(a1 / (PI * 2.0), 1.0, 0.55, 255);
+        let inner_color = Color::hsla(a0 / (PI * 2.0), 1.0, 0.55, 1.0);
+        let outer_color = Color::hsla(a1 / (PI * 2.0), 1.0, 0.55, 1.0);
 
         let paint = Paint::linear_gradient([ax, ay], [bx, by], inner_color, outer_color);
         ctx.draw_path(&mut path, paint);
@@ -801,7 +801,7 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     path.line_to(bx, by);
     path.close();
 
-    let inner_color = Color::hsla(hue, 1.0, 0.5, 255);
+    let inner_color = Color::hsla(hue, 1.0, 0.5, 1.0);
     let paint = Paint::linear_gradient([radius, 0.0], [ax, ay], inner_color, Color::WHITE);
 
     ctx.draw_path_cloned(&path, paint);

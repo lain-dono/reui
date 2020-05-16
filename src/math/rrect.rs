@@ -25,6 +25,7 @@ impl RRect {
     pub fn width(&self) -> f32 {
         self.rect.dx()
     }
+
     pub fn height(&self) -> f32 {
         self.rect.dy()
     }

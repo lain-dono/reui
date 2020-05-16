@@ -6,12 +6,6 @@ mod transform;
 
 pub use self::{color::Color, offset::Offset, rect::Rect, rrect::RRect, transform::Transform};
 
-impl self::transform::Transform {
-    pub fn transform_point(&self, p: Offset) -> Offset {
-        self.apply(p.into()).into()
-    }
-}
-
 pub trait PartialClamp {
     fn clamp(self, min: Self, max: Self) -> Self;
 }

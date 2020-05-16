@@ -3,13 +3,17 @@
 
 pub mod backend;
 pub mod cache;
-pub mod context;
-pub mod math;
 
 mod canvas;
+mod context;
+mod math;
 mod state;
 
 pub use self::{
     canvas::{Canvas, Gradient, Paint, PaintingStyle, Path, StrokeCap, StrokeJoin, Winding},
+    context::Context,
     math::{Color, Offset, RRect, Rect, Transform},
 };
+
+#[doc(hidden)]
+pub use self::math::PartialClamp;

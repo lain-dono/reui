@@ -3,9 +3,9 @@ use crate::math::{Offset, PartialClamp, Rect, Transform};
 
 #[inline(always)]
 fn transform_pt(pt: &mut [f32], t: &Transform) {
-    let p = t.transform_point(Offset::new(pt[0], pt[1]));
-    pt[0] = p.x;
-    pt[1] = p.y;
+    let [x, y] = t.apply([pt[0], pt[1]]);
+    pt[0] = x;
+    pt[1] = y;
 }
 
 fn dist_pt_seg(point: Offset, p: Offset, q: Offset) -> f32 {
@@ -81,19 +81,19 @@ impl PictureRecorder {
     }
 
     pub fn move_to(&mut self, p: Offset) {
-        let Offset { x, y, .. } = self.xform.transform_point(p);
+        let [x, y] = self.xform.apply(p.into());
         self.commands.extend_from_slice(&[MOVETO as f32, x, y]);
     }
 
     pub fn line_to(&mut self, p: Offset) {
-        let Offset { x, y, .. } = self.xform.transform_point(p);
+        let [x, y] = self.xform.apply(p.into());
         self.commands.extend_from_slice(&[LINETO as f32, x, y]);
     }
 
     pub fn bezier_to(&mut self, p1: Offset, p2: Offset, p3: Offset) {
-        let Offset { x: x1, y: y1, .. } = self.xform.transform_point(p1);
-        let Offset { x: x2, y: y2, .. } = self.xform.transform_point(p2);
-        let Offset { x: x3, y: y3, .. } = self.xform.transform_point(p3);
+        let [x1, y1] = self.xform.apply(p1.into());
+        let [x2, y2] = self.xform.apply(p2.into());
+        let [x3, y3] = self.xform.apply(p3.into());
         self.commands
             .extend_from_slice(&[BEZIERTO as f32, x1, y1, x2, y2, x3, y3]);
     }

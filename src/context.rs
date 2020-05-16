@@ -1,11 +1,10 @@
 use crate::{
+    backend::{Pipeline, Target},
     cache::PathCache,
     canvas::{Canvas, PictureRecorder},
     math::{Offset, Transform},
     state::States,
 };
-
-const INIT_COMMANDS_SIZE: usize = 256;
 
 pub struct Context {
     pub picture: PictureRecorder,
@@ -13,32 +12,34 @@ pub struct Context {
     pub cache: PathCache,
     pub cmd: crate::backend::CmdBuffer,
 
+    pipeline: Pipeline,
+
     width: f32,
     height: f32,
     dpi: f32,
 }
 
-impl Default for Context {
-    fn default() -> Self {
+impl Context {
+    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         Self {
             states: States::with_capacity(256),
             cache: PathCache::new(),
             picture: PictureRecorder {
-                commands: Vec::with_capacity(INIT_COMMANDS_SIZE),
+                commands: Vec::with_capacity(256),
                 cmd: Offset::zero(),
                 xform: Transform::identity(),
             },
 
             cmd: crate::backend::CmdBuffer::new(),
 
+            pipeline: Pipeline::new(device, format),
+
             width: 1.0,
             height: 1.0,
             dpi: 1.0,
         }
     }
-}
 
-impl Context {
     pub fn begin_frame(&mut self, width: f32, height: f32, dpi: f32) -> Canvas {
         self.cmd.clear();
         self.states.clear();
@@ -47,6 +48,16 @@ impl Context {
         self.height = height;
         self.dpi = dpi;
         Canvas::new(self)
+    }
+
+    pub fn draw(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        device: &wgpu::Device,
+        target: Target,
+    ) {
+        self.pipeline
+            .draw_commands(&self.cmd, encoder, device, target);
     }
 
     /*
