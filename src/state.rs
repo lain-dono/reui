@@ -11,11 +11,6 @@ pub struct States(State, Vec<State>);
 
 impl States {
     #[inline]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self(Default::default(), Vec::with_capacity(capacity))
     }

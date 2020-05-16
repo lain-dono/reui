@@ -1,6 +1,5 @@
-use crate::canvas::Gradient;
 use crate::math::{Color, Transform};
-use crate::state::Scissor;
+use crate::{canvas::Gradient, state::Scissor};
 
 pub const SHADER_SIMPLE: f32 = 0.0;
 pub const SHADER_FILLGRAD: f32 = 1.0;
@@ -163,12 +162,12 @@ impl Paint {
                     outer_color,
                 } => {
                     let radius = (inr + outr) * 0.5;
-                    let feather = outr - inr;
+                    let feather = (outr - inr).max(1.0);
                     Self {
                         xform: Transform::translation(center[0], center[1]).prepend(xform),
                         extent: [radius, radius],
-                        radius: radius,
-                        feather: feather.max(1.0),
+                        radius,
+                        feather,
                         inner_color,
                         outer_color,
                     }

@@ -1,5 +1,5 @@
 use crate::{
-    canvas::picture::{BEZIERTO, CLOSE, LINETO, MOVETO, WINDING},
+    canvas::recorder::{BEZIERTO, CLOSE, LINETO, MOVETO, WINDING},
     canvas::Winding,
     math::{Offset, PartialClamp, RRect, Rect},
 };
@@ -16,8 +16,8 @@ pub enum PathFillType {
 
 #[derive(Default)]
 pub struct Path<A: Array<Item = f32>> {
-    pub current: [f32; 2],
-    pub commands: SmallVec<A>,
+    current: [f32; 2],
+    commands: SmallVec<A>,
 }
 
 impl<A: Array<Item = f32>> std::ops::Deref for Path<A> {

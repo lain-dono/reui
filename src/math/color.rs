@@ -3,22 +3,32 @@ use palette::{LinSrgba, Pixel, Srgb, Srgba};
 
 impl Into<[f32; 4]> for Color {
     fn into(self) -> [f32; 4] {
-        let Self { r, g, b, a } = self;
-        [r, g, b, a]
+        let Self {
+            red,
+            green,
+            blue,
+            alpha,
+        } = self;
+        [red, green, blue, alpha]
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct Color {
-    pub r: f32,
-    pub g: f32,
-    pub b: f32,
-    pub a: f32,
+    pub red: f32,
+    pub green: f32,
+    pub blue: f32,
+    pub alpha: f32,
 }
 
 impl Color {
-    const fn raw(r: f32, g: f32, b: f32, a: f32) -> Self {
-        Self { r, g, b, a }
+    const fn raw(red: f32, green: f32, blue: f32, alpha: f32) -> Self {
+        Self {
+            red,
+            green,
+            blue,
+            alpha,
+        }
     }
 
     pub const TRANSPARENT: Self = Self::raw(0.0, 0.0, 0.0, 0.0);
@@ -55,15 +65,15 @@ impl Color {
     #[inline]
     pub fn from_linear(lin: LinSrgba<f32>) -> Self {
         Self {
-            r: lin.color.red,
-            g: lin.color.green,
-            b: lin.color.blue,
-            a: lin.alpha,
+            red: lin.color.red,
+            green: lin.color.green,
+            blue: lin.color.blue,
+            alpha: lin.alpha,
         }
     }
 
     pub fn is_transparent_black(&self) -> bool {
-        self.r == 0.0 && self.g == 0.0 && self.b == 0.0 && self.a == 0.0
+        self.red == 0.0 && self.green == 0.0 && self.blue == 0.0 && self.alpha == 0.0
     }
 
     /// Returns color value specified by hue, saturation and lightness and alpha.

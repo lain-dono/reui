@@ -20,7 +20,7 @@ fn max_vert_count(paths: &[Path]) -> usize {
 }
 
 #[derive(Clone, Copy, Default)]
-pub struct PathGL {
+pub struct RawPath {
     pub fill: RawSlice,
     pub stroke: RawSlice,
 }
@@ -28,9 +28,9 @@ pub struct PathGL {
 #[repr(u8)]
 #[derive(PartialEq, Eq)]
 pub enum CallKind {
-    CONVEXFILL,
-    FILL,
-    STROKE,
+    Convex,
+    Fill,
+    Stroke,
 }
 
 pub struct Call {
@@ -104,14 +104,14 @@ impl<T: Default> VecAlloc<T> {
     }
 }
 
-pub struct CmdBuffer {
+pub struct Picture {
     pub calls: Vec<Call>,
-    pub paths: Vec<PathGL>,
+    pub paths: Vec<RawPath>,
     pub verts: Vec<Vertex>,
     pub uniforms: VecAlloc<FragUniforms>,
 }
 
-impl Default for CmdBuffer {
+impl Default for Picture {
     fn default() -> Self {
         Self {
             calls: Vec::new(),
@@ -122,7 +122,7 @@ impl Default for CmdBuffer {
     }
 }
 
-impl CmdBuffer {
+impl Picture {
     pub fn new() -> Self {
         Self::default()
     }
@@ -145,9 +145,9 @@ impl CmdBuffer {
         let path = self.alloc_paths(paths);
 
         let (kind, triangle_count) = if paths.len() == 1 && paths[0].convex {
-            (CallKind::CONVEXFILL, 0u32) // Bounding box fill quad not needed for convex fill
+            (CallKind::Convex, 0u32) // Bounding box fill quad not needed for convex fill
         } else {
-            (CallKind::FILL, 4u32)
+            (CallKind::Fill, 4u32)
         };
 
         // Allocate vertices for all the paths.
@@ -167,7 +167,7 @@ impl CmdBuffer {
         }
 
         // Setup uniforms for draw calls
-        let uniform_offset = if kind == CallKind::FILL {
+        let uniform_offset = if kind == CallKind::Fill {
             // Quad
             let quad = &mut self.verts[offset as usize..offset as usize + 4];
             quad[0].set([bounds[2], bounds[3]], [0.5, 1.0]);
@@ -227,7 +227,7 @@ impl CmdBuffer {
         ab[1] = FragUniforms::fill(&paint, scissor, stroke_width, fringe, thr);
 
         self.calls.push(Call {
-            kind: CallKind::STROKE,
+            kind: CallKind::Stroke,
             uniform_offset,
             triangle: RawSlice::new(0, 0),
             path,

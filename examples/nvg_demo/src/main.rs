@@ -6,7 +6,7 @@ mod canvas;
 
 mod time;
 
-use reui::{backend::Target, Context, Offset};
+use reui::{backend::Target, Offset, Renderer};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -48,7 +48,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
         })
         .await;
 
-    let mut vg = Context::new(&device, swapchain_format);
+    let mut vg = Renderer::new(&device, swapchain_format);
 
     let mut sc_desc = wgpu::SwapChainDescriptor {
         usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
@@ -106,15 +106,15 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                 clear_pass(&mut encoder, &frame.view, &depth);
 
                 {
-                    let win_w = sc_desc.width as f32;
-                    let win_h = sc_desc.height as f32;
+                    let width = sc_desc.width as f32;
+                    let height = sc_desc.height as f32;
                     {
-                        let mut ctx = vg.begin_frame(win_w, win_h, scale);
+                        let mut ctx = vg.begin_frame(width, height, scale);
 
                         canvas::render_demo(
                             &mut ctx,
                             Offset::new(mx, my) / scale,
-                            Offset::new(win_w, win_h) / scale,
+                            Offset::new(width, height) / scale,
                             time as f32,
                             false,
                         );
@@ -125,9 +125,9 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                     //vg.end_frame();
 
                     let target = Target {
-                        width: win_w,
-                        height: win_h,
-                        scale: scale,
+                        width,
+                        height,
+                        scale,
                         color: &frame.view,
                         depth: &depth,
                     };

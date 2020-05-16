@@ -30,13 +30,7 @@ impl std::ops::Mul<Self> for Transform {
 impl std::ops::MulAssign<Self> for Transform {
     #[inline]
     fn mul_assign(&mut self, other: Self) {
-        *self = Self {
-            re: other.re * self.re - other.im * self.im,
-            im: other.re * self.im + other.im * self.re,
-
-            tx: other.tx * self.re - other.ty * self.im + self.tx,
-            ty: other.tx * self.im + other.ty * self.re + self.ty,
-        };
+        *self = *self * other;
     }
 }
 
@@ -54,44 +48,30 @@ impl Transform {
     }
 
     #[inline]
-    pub fn new(x: f32, y: f32, rotation: f32, scale: f32) -> Self {
-        Self {
-            re: rotation.cos() * scale,
-            im: -rotation.sin() * scale,
-            tx: x,
-            ty: y,
-        }
+    pub fn new(tx: f32, ty: f32, rotation: f32, scale: f32) -> Self {
+        let re = rotation.cos() * scale;
+        let im = -rotation.sin() * scale;
+        Self { re, im, tx, ty }
     }
 
     #[inline]
     pub fn translation(tx: f32, ty: f32) -> Self {
-        Self {
-            re: 1.0,
-            im: 0.0,
-            tx,
-            ty,
-        }
+        let (re, im) = (1.0, 0.0);
+        Self { re, im, tx, ty }
     }
 
     #[inline]
     pub fn rotation(theta: f32) -> Self {
         let (sin, cos) = theta.sin_cos();
-        Self {
-            re: cos,
-            im: -sin,
-            tx: 0.0,
-            ty: 0.0,
-        }
+        let (re, im) = (cos, -sin);
+        let (tx, ty) = (0.0, 0.0);
+        Self { re, im, tx, ty }
     }
 
     #[inline]
     pub fn scale(factor: f32) -> Self {
-        Self {
-            re: factor,
-            im: 0.0,
-            tx: 0.0,
-            ty: 0.0,
-        }
+        let (re, im, tx, ty) = (factor, 0.0, 0.0, 0.0);
+        Self { re, im, tx, ty }
     }
 
     #[inline]
@@ -151,9 +131,5 @@ impl Transform {
     #[inline]
     pub fn append_mut(&mut self, rhs: Self) {
         *self *= rhs;
-    }
-
-    pub(crate) fn average_scale(&self) -> f32 {
-        self.re * self.re + self.im * self.im
     }
 }

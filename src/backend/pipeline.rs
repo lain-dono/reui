@@ -1,4 +1,4 @@
-use crate::backend::{CallKind, CmdBuffer};
+use crate::backend::{CallKind, Picture};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
 
@@ -156,7 +156,7 @@ impl Pipeline {
 
     pub fn draw_commands(
         &mut self,
-        cmd: &CmdBuffer,
+        cmd: &Picture,
         encoder: &mut wgpu::CommandEncoder,
         device: &wgpu::Device,
         target: Target,
@@ -223,7 +223,7 @@ impl Pipeline {
 
         for call in &cmd.calls {
             match call.kind {
-                CallKind::CONVEXFILL => {
+                CallKind::Convex => {
                     let idx = call.uniform_offset as u32;
                     let instance0 = idx..idx + 1;
 
@@ -233,7 +233,7 @@ impl Pipeline {
                         rpass.draw(path.stroke.range32(), instance0.clone()); // fringes
                     }
                 }
-                CallKind::FILL => {
+                CallKind::Fill => {
                     let range = call.path.range();
                     let idx = call.uniform_offset as u32;
                     let instance0 = idx..idx + 1;
@@ -254,7 +254,7 @@ impl Pipeline {
                     rpass.set_pipeline(&self.fill_end);
                     rpass.draw(call.triangle.range32(), instance1.clone());
                 }
-                CallKind::STROKE => {
+                CallKind::Stroke => {
                     let range = call.path.range();
                     let idx = call.uniform_offset as u32;
                     let instance0 = idx..idx + 1;

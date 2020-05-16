@@ -11,7 +11,7 @@ mod state;
 
 pub use self::{
     canvas::{Canvas, Gradient, Paint, PaintingStyle, Path, StrokeCap, StrokeJoin, Winding},
-    context::Context,
+    context::Renderer,
     math::{Color, Offset, RRect, Rect, Transform},
 };
 

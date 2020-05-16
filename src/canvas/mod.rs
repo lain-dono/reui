@@ -1,14 +1,14 @@
 mod paint;
 mod path;
-mod picture;
+mod recorder;
 
 pub use crate::canvas::{
     paint::{Color, Gradient, Paint, PaintingStyle, StrokeCap, StrokeJoin},
     path::Path,
-    picture::PictureRecorder,
+    recorder::PictureRecorder,
 };
 use crate::{
-    context::Context,
+    context::Renderer,
     math::{Offset, PartialClamp, RRect, Rect, Transform},
 };
 
@@ -19,15 +19,22 @@ pub enum Winding {
 }
 
 pub struct Canvas<'a> {
-    ctx: &'a mut Context,
+    ctx: &'a mut Renderer,
 }
 
 impl<'a> Canvas<'a> {
-    pub fn new(ctx: &'a mut Context) -> Self {
+    pub fn new(ctx: &'a mut Renderer) -> Self {
         Self { ctx }
     }
 
     fn fill_or_stroke(&mut self, paint: &Paint, force_stroke: bool) {
+        impl Transform {
+            #[inline(always)]
+            fn average_scale(&self) -> f32 {
+                self.re * self.re + self.im * self.im
+            }
+        }
+
         let cache = &mut self.ctx.cache;
         let (xform, scissor) = self.ctx.states.decompose();
 
@@ -42,17 +49,12 @@ impl<'a> Canvas<'a> {
                 // If the stroke width is less than pixel size, use alpha to emulate coverage.
                 // Since coverage is area, scale by alpha*alpha.
                 let alpha = (stroke_width / fringe).clamp(0.0, 1.0);
-                raw_paint.inner_color.a *= alpha * alpha;
-                raw_paint.outer_color.a *= alpha * alpha;
+                raw_paint.inner_color.alpha *= alpha * alpha;
+                raw_paint.outer_color.alpha *= alpha * alpha;
                 stroke_width = cache.fringe_width;
             }
 
-            // Apply global alpha
-            //let alpha = 1.0;
-            //paint.inner_color.a *= alpha;
-            //paint.outer_color.a *= alpha;
-
-            cache.flatten_paths(&self.ctx.picture.commands);
+            cache.flatten_paths(self.ctx.recorder.commands());
             cache.expand_stroke(
                 stroke_width * 0.5,
                 fringe,
@@ -62,7 +64,7 @@ impl<'a> Canvas<'a> {
             );
 
             self.ctx
-                .cmd
+                .picture
                 .draw_stroke(raw_paint, scissor, fringe, stroke_width, &cache.paths);
         } else {
             let w = if paint.is_antialias {
@@ -71,10 +73,10 @@ impl<'a> Canvas<'a> {
                 0.0
             };
 
-            cache.flatten_paths(&self.ctx.picture.commands);
+            cache.flatten_paths(self.ctx.recorder.commands());
             cache.expand_fill(w, StrokeJoin::Miter, 2.4);
 
-            self.ctx.cmd.draw_fill(
+            self.ctx.picture.draw_fill(
                 raw_paint,
                 scissor,
                 cache.fringe_width,
@@ -182,9 +184,9 @@ impl<'a> Canvas<'a> {
     /// Whether the circle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_circle(&mut self, c: Offset, radius: f32, paint: Paint) {
         self.ctx.cache.clear();
-        self.ctx.picture.commands.clear();
-        self.ctx.picture.xform = self.ctx.states.transform();
-        self.ctx.picture.circle(c.x, c.y, radius);
+        self.ctx.recorder.clear_commands();
+        let xform = self.ctx.states.transform();
+        self.ctx.recorder.circle(c.x, c.y, radius, xform);
         self.fill_or_stroke(&paint, false);
     }
 
@@ -212,10 +214,10 @@ impl<'a> Canvas<'a> {
     /// The line is stroked, the value of the Paint.style is ignored for this call. [...]
     pub fn draw_line(&mut self, p1: Offset, p2: Offset, paint: Paint) {
         self.ctx.cache.clear();
-        self.ctx.picture.commands.clear();
-        self.ctx.picture.xform = self.ctx.states.transform();
-        self.ctx.picture.move_to(p1);
-        self.ctx.picture.line_to(p2);
+        self.ctx.recorder.clear_commands();
+        let xform = self.ctx.states.transform();
+        self.ctx.recorder.move_to(p1, xform);
+        self.ctx.recorder.line_to(p2, xform);
         self.fill_or_stroke(&paint, true);
     }
 
@@ -224,11 +226,11 @@ impl<'a> Canvas<'a> {
             return;
         }
         self.ctx.cache.clear();
-        self.ctx.picture.commands.clear();
-        self.ctx.picture.xform = self.ctx.states.transform();
-        self.ctx.picture.move_to(points[0]);
+        self.ctx.recorder.clear_commands();
+        let xform = self.ctx.states.transform();
+        self.ctx.recorder.move_to(points[0], xform);
         for p in points.iter().skip(1) {
-            self.ctx.picture.line_to(*p);
+            self.ctx.recorder.line_to(*p, xform);
         }
         self.fill_or_stroke(&paint, true);
     }
@@ -239,9 +241,9 @@ impl<'a> Canvas<'a> {
         let (cx, cy) = (rect.min.x, rect.min.y);
         let (rx, ry) = (rect.dx(), rect.dy());
         self.ctx.cache.clear();
-        self.ctx.picture.commands.clear();
-        self.ctx.picture.xform = self.ctx.states.transform();
-        self.ctx.picture.ellipse(cx, cy, rx, ry);
+        self.ctx.recorder.clear_commands();
+        let xform = self.ctx.states.transform();
+        self.ctx.recorder.ellipse(cx, cy, rx, ry, xform);
         self.fill_or_stroke(&paint, false);
     }
 
@@ -257,19 +259,19 @@ impl<'a> Canvas<'a> {
     /// Whether this shape is filled or stroked (or both) is controlled by Paint.style.
     /// If the path is filled, then sub-paths within it are implicitly closed (see Path.close).
     pub fn draw_path(&mut self, path: &mut [f32], paint: Paint) {
-        self.ctx.picture.xform = self.ctx.states.transform();
+        let xform = self.ctx.states.transform();
         self.ctx.cache.clear();
-        self.ctx.picture.commands.clear();
-        self.ctx.picture.append_commands(path);
+        self.ctx.recorder.clear_commands();
+        self.ctx.recorder.extend(path, xform);
         self.fill_or_stroke(&paint, false);
     }
 
     pub fn draw_path_cloned(&mut self, path: &[f32], paint: Paint) {
         let mut path = path.to_owned();
-        self.ctx.picture.xform = self.ctx.states.transform();
+        let xform = self.ctx.states.transform();
         self.ctx.cache.clear();
-        self.ctx.picture.commands.clear();
-        self.ctx.picture.append_commands(&mut path);
+        self.ctx.recorder.clear_commands();
+        self.ctx.recorder.extend(&mut path, xform);
         self.fill_or_stroke(&paint, false);
     }
 
@@ -289,9 +291,9 @@ impl<'a> Canvas<'a> {
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
         self.ctx.cache.clear();
-        self.ctx.picture.commands.clear();
-        self.ctx.picture.xform = self.ctx.states.transform();
-        self.ctx.picture.rect(rect);
+        self.ctx.recorder.clear_commands();
+        let xform = self.ctx.states.transform();
+        self.ctx.recorder.rect(rect, xform);
         self.fill_or_stroke(&paint, false);
     }
 
@@ -299,14 +301,15 @@ impl<'a> Canvas<'a> {
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rrect(&mut self, rrect: RRect, paint: Paint) {
         self.ctx.cache.clear();
-        self.ctx.picture.commands.clear();
-        self.ctx.picture.xform = self.ctx.states.transform();
-        self.ctx.picture.rrect_varying(
+        self.ctx.recorder.clear_commands();
+        let xform = self.ctx.states.transform();
+        self.ctx.recorder.rrect_varying(
             rrect.rect(),
             rrect.radius.tl,
             rrect.radius.tr,
             rrect.radius.br,
             rrect.radius.bl,
+            xform,
         );
         self.fill_or_stroke(&paint, false);
     }
