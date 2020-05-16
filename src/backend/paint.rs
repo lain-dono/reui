@@ -7,12 +7,12 @@ pub const SHADER_FILLGRAD: f32 = 1.0;
 #[repr(C, align(4))]
 pub struct FragUniforms {
     pub scissor_mat: [f32; 4],
+    pub scissor_ext: [f32; 2],
+    pub scissor_scale: [f32; 2],
+
     pub paint_mat: [f32; 4],
     pub inner_color: [f32; 4],
     pub outer_color: [f32; 4],
-
-    pub scissor_ext: [f32; 2],
-    pub scissor_scale: [f32; 2],
 
     pub extent: [f32; 2],
     pub radius: f32,

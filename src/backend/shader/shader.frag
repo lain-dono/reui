@@ -5,11 +5,12 @@
 // TODO: can be passed via per-instance vertex buffer
 struct FragState {
   vec4 scissor_transform;
+  vec2 scissor_extent;
+  vec2 scissor_scale;
+
   vec4 paint_transform;
   vec4 inner_color;
   vec4 outer_color;
-  vec2 scissor_extent;
-  vec2 scissor_scale;
   vec2 extent;
   float radius;
   float feather;
@@ -56,8 +57,6 @@ float strokeMask() {
 }
 
 void main() {
-  float scissor = scissorMask(v_Position);
-
   float strokeAlpha = strokeMask();
   if (strokeAlpha < state.stroke_thr) {
     discard;
@@ -67,6 +66,8 @@ void main() {
     // Stencil fill
     Target0 = vec4(1.0, 1.0, 1.0, 1.0);
   } else if (state.type == 1) {
+    float scissor = scissorMask(v_Position);
+
     // Calculate gradient color using box gradient
     vec2 pt = applyTransform(state.paint_transform, v_Position);
     float d = clamp(

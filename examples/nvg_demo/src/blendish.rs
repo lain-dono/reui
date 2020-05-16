@@ -100,7 +100,6 @@ pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
         radius: 3.0,
     };
 
-    ctx.scissor(bounds);
     draw_window(ctx, bounds, &win_theme);
 
     let num = Rect::from_size(160.0, 18.5).translate(bounds.min + Offset::new(10.0, 10.0));

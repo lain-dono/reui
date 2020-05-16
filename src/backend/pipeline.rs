@@ -1,4 +1,5 @@
-use crate::backend::{CallKind, Picture};
+use crate::backend::{CallKind, FragUniforms, Picture};
+use crate::cache::Vertex;
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
 
@@ -166,6 +167,7 @@ impl Pipeline {
         const VERTEX: wgpu::BufferUsage = wgpu::BufferUsage::VERTEX;
 
         let (_, vertices) = create_buffer(device, &cmd.verts, VERTEX);
+        //let (_, instances) = create_buffer(device, &cmd.uniforms, VERTEX);
 
         let bind_group = {
             let w = target.width / target.scale;
@@ -220,6 +222,7 @@ impl Pipeline {
         rpass.set_stencil_reference(0);
         rpass.set_bind_group(0, &bind_group, &[]);
         rpass.set_vertex_buffer(0, &vertices, 0, 0);
+        //rpass.set_vertex_buffer(1, &instances, 0, 0);
 
         for call in &cmd.calls {
             match call.kind {
@@ -339,13 +342,13 @@ impl PipelineBuilder {
                 index_format: wgpu::IndexFormat::Uint16,
                 vertex_buffers: &[
                     wgpu::VertexBufferDescriptor {
-                        stride: 12 as wgpu::BufferAddress,
+                        stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
                         step_mode: wgpu::InputStepMode::Vertex,
                         attributes: &wgpu::vertex_attr_array![0 => Float2, 1 => Ushort2Norm],
                     },
                     /*
                     wgpu::VertexBufferDescriptor {
-                        stride: 112 as wgpu::BufferAddress,
+                        stride: std::mem::size_of::<FragUniforms>() as wgpu::BufferAddress,
                         step_mode: wgpu::InputStepMode::Instance,
                         attributes: &wgpu::vertex_attr_array![
                             0 => Float4,
@@ -354,7 +357,7 @@ impl PipelineBuilder {
                             3 => Float4,
                             4 => Float4,
                             5 => Float4,
-                            6 => Float4,
+                            6 => Float4
                         ],
                     },
                     */
