@@ -22,7 +22,7 @@ pub struct Vertex {
 impl Vertex {
     #[inline(always)]
     pub fn new(pos: [f32; 2], uv: [f32; 2]) -> Self {
-        let uv = [(uv[0] * 65535.0) as u16, (uv[0] * 65535.0) as u16];
+        let uv = [(uv[0] * 65535.0) as u16, (uv[1] * 65535.0) as u16];
         Self { pos, uv }
     }
 
