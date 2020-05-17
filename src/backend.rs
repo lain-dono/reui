@@ -1,43 +1,64 @@
+mod commands;
+mod paint;
+mod pipeline;
+
+pub use self::{
+    commands::{Call, Picture},
+    paint::{Paint, Uniforms},
+    pipeline::{Pipeline, Target},
+};
 use crate::{
-    backend::{Picture, Pipeline, Target},
     cache::PathCache,
     canvas::{Canvas, PictureRecorder},
-    state::States,
+    state::TransformStack,
 };
+
+#[derive(Clone, Copy, Default)]
+pub struct Vertex {
+    pub pos: [f32; 2],
+    pub uv: [u16; 2],
+}
+
+impl Vertex {
+    #[inline(always)]
+    pub fn new(pos: [f32; 2], uv: [f32; 2]) -> Self {
+        let uv = [(uv[0] * 65535.0) as u16, (uv[0] * 65535.0) as u16];
+        Self { pos, uv }
+    }
+
+    #[inline(always)]
+    pub fn set(&mut self, pos: [f32; 2], uv: [f32; 2]) {
+        *self = Self::new(pos, uv);
+    }
+}
 
 pub struct Renderer {
     pub(crate) recorder: PictureRecorder,
-    pub(crate) states: States,
+    pub(crate) states: TransformStack,
     pub(crate) cache: PathCache,
     pub(crate) picture: Picture,
 
     pipeline: Pipeline,
 
-    width: f32,
-    height: f32,
     dpi: f32,
 }
 
 impl Renderer {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         Self {
-            states: States::with_capacity(256),
+            states: TransformStack::with_capacity(256),
             cache: PathCache::new(),
             recorder: PictureRecorder::new(),
             picture: Picture::new(),
             pipeline: Pipeline::new(device, format),
-            width: 1.0,
-            height: 1.0,
             dpi: 1.0,
         }
     }
 
-    pub fn begin_frame(&mut self, width: f32, height: f32, dpi: f32) -> Canvas {
+    pub fn begin_frame(&mut self, dpi: f32) -> Canvas {
         self.picture.clear();
         self.states.clear();
         self.cache.set_dpi(dpi);
-        self.width = width;
-        self.height = height;
         self.dpi = dpi;
         Canvas::new(self)
     }
@@ -49,7 +70,7 @@ impl Renderer {
         target: Target,
     ) {
         self.pipeline
-            .draw_commands(&self.picture, encoder, device, target);
+            .draw_picture(&self.picture, encoder, device, target);
     }
 
     /*

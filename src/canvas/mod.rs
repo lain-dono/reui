@@ -8,7 +8,7 @@ pub use crate::canvas::{
     recorder::PictureRecorder,
 };
 use crate::{
-    context::Renderer,
+    backend::Renderer,
     math::{Offset, PartialClamp, RRect, Rect, Transform},
 };
 
@@ -36,7 +36,7 @@ impl<'a> Canvas<'a> {
         }
 
         let cache = &mut self.ctx.cache;
-        let (xform, scissor) = self.ctx.states.decompose();
+        let xform = self.ctx.states.transform();
 
         let mut raw_paint = crate::backend::Paint::convert(paint, xform);
 
@@ -65,37 +65,15 @@ impl<'a> Canvas<'a> {
 
             self.ctx
                 .picture
-                .draw_stroke(raw_paint, scissor, fringe, stroke_width, &cache.paths);
+                .draw_stroke(raw_paint, fringe, stroke_width, &cache.paths);
         } else {
-            let w = if paint.is_antialias {
-                cache.fringe_width
-            } else {
-                0.0
-            };
-
             cache.flatten_paths(self.ctx.recorder.commands());
-            cache.expand_fill(w, StrokeJoin::Miter, 2.4);
+            cache.expand_fill(cache.fringe_width, StrokeJoin::Miter, 2.4);
 
-            self.ctx.picture.draw_fill(
-                raw_paint,
-                scissor,
-                cache.fringe_width,
-                cache.bounds,
-                &cache.paths,
-            );
+            self.ctx
+                .picture
+                .draw_fill(raw_paint, cache.fringe_width, cache.bounds, &cache.paths);
         }
-    }
-
-    pub fn scissor(&mut self, rect: Rect) {
-        self.ctx.states.set_scissor(rect);
-    }
-
-    pub fn intersect_scissor(&mut self, rect: Rect) {
-        self.ctx.states.intersect_scissor(rect);
-    }
-
-    pub fn reset_scissor(&mut self) {
-        self.ctx.states.reset_scissor();
     }
 
     /// Returns the number of items on the save stack, including the initial state.
@@ -125,33 +103,24 @@ impl<'a> Canvas<'a> {
 
     /// Add a rotation to the current transform. The argument is in radians clockwise.
     pub fn rotate(&mut self, radians: f32) {
-        self.ctx.states.pre_transform(Transform::rotation(radians));
+        self.transform(Transform::rotation(radians));
     }
 
     /// Add an axis-aligned scale to the current transform,
     /// scaling by the first argument in the horizontal direction and the second in the vertical direction. [...]
     pub fn scale(&mut self, scale: f32) {
-        self.ctx.states.pre_transform(Transform::scale(scale));
-    }
-
-    /// Add an axis-aligned skew to the current transform,
-    /// with the first argument being the horizontal skew in radians clockwise around the origin,
-    /// and the second argument being the vertical skew in radians clockwise around the origin.
-    pub fn _skew(&mut self, _sx: f32, _sy: f32) {
-        unimplemented!()
+        self.transform(Transform::scale(scale));
     }
 
     /// Add a translation to the current transform,
     /// shifting the coordinate space horizontally by the first argument and vertically by the second argument.
     pub fn translate(&mut self, dx: f32, dy: f32) {
-        self.ctx
-            .states
-            .pre_transform(Transform::translation(dx, dy));
+        self.transform(Transform::translation(dx, dy));
     }
 
     /// Multiply the current transform by the specified 4⨉4 transformation matrix specified as a list of values in column-major order.
-    pub fn _transform(&mut self, _t: Transform) {
-        unimplemented!()
+    pub fn transform(&mut self, t: Transform) {
+        self.ctx.states.pre_transform(t);
     }
 }
 

@@ -6,6 +6,12 @@ pub struct Transform {
     pub ty: f32,
 }
 
+impl Default for Transform {
+    fn default() -> Self {
+        Self::IDENTITY
+    }
+}
+
 impl Into<[f32; 4]> for Transform {
     #[inline]
     fn into(self) -> [f32; 4] {

@@ -8,10 +8,8 @@ pub struct RRect {
 
 impl RRect {
     pub fn from_rect_and_radius(rect: Rect, radius: f32) -> Self {
-        Self {
-            rect,
-            radius: Corners::all_same(radius),
-        }
+        let radius = Corners::all_same(radius);
+        Self { rect, radius }
     }
 
     pub fn new(o: Offset, s: Offset, radius: f32) -> Self {

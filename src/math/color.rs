@@ -1,24 +1,18 @@
 use crate::math::PartialClamp;
 use palette::{LinSrgba, Pixel, Srgb, Srgba};
 
-impl Into<[f32; 4]> for Color {
-    fn into(self) -> [f32; 4] {
-        let Self {
-            red,
-            green,
-            blue,
-            alpha,
-        } = self;
-        [red, green, blue, alpha]
-    }
-}
-
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Color {
     pub red: f32,
     pub green: f32,
     pub blue: f32,
     pub alpha: f32,
+}
+
+impl Into<[f32; 4]> for Color {
+    fn into(self) -> [f32; 4] {
+        [self.red, self.green, self.blue, self.alpha]
+    }
 }
 
 impl Color {
@@ -63,17 +57,13 @@ impl Color {
     }
 
     #[inline]
-    pub fn from_linear(lin: LinSrgba<f32>) -> Self {
+    pub fn from_linear(LinSrgba { color, alpha }: LinSrgba<f32>) -> Self {
         Self {
-            red: lin.color.red,
-            green: lin.color.green,
-            blue: lin.color.blue,
-            alpha: lin.alpha,
+            red: color.red,
+            green: color.green,
+            blue: color.blue,
+            alpha,
         }
-    }
-
-    pub fn is_transparent_black(&self) -> bool {
-        self.red == 0.0 && self.green == 0.0 && self.blue == 0.0 && self.alpha == 0.0
     }
 
     /// Returns color value specified by hue, saturation and lightness and alpha.

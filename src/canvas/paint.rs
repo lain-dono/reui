@@ -50,8 +50,6 @@ pub struct Paint {
     pub style: PaintingStyle,
     pub color: Color,
 
-    pub is_antialias: bool,
-
     pub stroke_cap: StrokeCap,
     pub stroke_join: StrokeJoin,
     pub stroke_miter_limit: f32,
@@ -65,7 +63,6 @@ impl Default for Paint {
         Self {
             style: PaintingStyle::Fill,
             color: Color::hex(0xFF_000000),
-            is_antialias: true,
             stroke_cap: StrokeCap::Butt,
             stroke_join: StrokeJoin::Miter,
             stroke_miter_limit: 10.0,
@@ -118,13 +115,6 @@ impl Paint {
     pub fn with_gradient(self, gradient: Gradient) -> Self {
         Self {
             gradient: Some(gradient),
-            ..self
-        }
-    }
-
-    pub fn antialias(self, is_antialias: bool) -> Self {
-        Self {
-            is_antialias,
             ..self
         }
     }

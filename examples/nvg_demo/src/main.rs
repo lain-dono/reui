@@ -55,7 +55,7 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
         format: swapchain_format,
         width: size.width,
         height: size.height,
-        present_mode: wgpu::PresentMode::Immediate,
+        present_mode: wgpu::PresentMode::Mailbox,
     };
 
     let mut swap_chain = device.create_swap_chain(&surface, &sc_desc);
@@ -106,23 +106,21 @@ async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::
                 clear_pass(&mut encoder, &frame.view, &depth);
 
                 {
-                    let width = sc_desc.width as f32;
-                    let height = sc_desc.height as f32;
+                    let width = sc_desc.width;
+                    let height = sc_desc.height;
                     {
-                        let mut ctx = vg.begin_frame(width, height, scale);
+                        let mut ctx = vg.begin_frame(scale);
 
                         canvas::render_demo(
                             &mut ctx,
                             Offset::new(mx, my) / scale,
-                            Offset::new(width, height) / scale,
+                            Offset::new(width as f32, height as f32) / scale,
                             time as f32,
                             false,
                         );
 
                         drop(ctx);
                     }
-
-                    //vg.end_frame();
 
                     let target = Target {
                         width,

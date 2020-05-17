@@ -1,6 +1,7 @@
-//#![allow(clippy::too_many_arguments)]
+#![allow(clippy::too_many_arguments)]
 
 use crate::{
+    backend::Vertex,
     canvas::{StrokeCap, StrokeJoin, Winding},
     math::{Offset, PartialClamp},
 };
@@ -15,13 +16,6 @@ const LINETO: i32 = 1;
 const BEZIERTO: i32 = 2;
 const CLOSE: i32 = 3;
 const WINDING: i32 = 4;
-
-#[inline(always)]
-fn pack_uv(u: f32, v: f32) -> [u16; 2] {
-    let u = (u * 65535.0) as u16;
-    let v = (v * 65535.0) as u16;
-    [u, v]
-}
 
 #[inline(always)]
 fn normalize(x: &mut f32, y: &mut f32) -> f32 {
@@ -68,25 +62,6 @@ fn choose_bevel(bevel: bool, p0: &PathPoint, p1: &PathPoint, w: f32) -> [Offset;
         ]
     } else {
         [p1.pos + p1.ext * w, p1.pos + p1.ext * w]
-    }
-}
-
-#[derive(Clone, Copy, Default)]
-pub struct Vertex {
-    pub pos: [f32; 2],
-    pub uv: [u16; 2],
-}
-
-impl Vertex {
-    #[inline(always)]
-    pub fn new(pos: [f32; 2], uv: [f32; 2]) -> Self {
-        let uv = pack_uv(uv[0], uv[1]);
-        Self { pos, uv }
-    }
-
-    #[inline(always)]
-    pub fn set(&mut self, pos: [f32; 2], uv: [f32; 2]) {
-        *self = Self::new(pos, uv);
     }
 }
 
@@ -796,7 +771,7 @@ struct Verts {
 impl std::ops::Index<usize> for Verts {
     type Output = Vertex;
     fn index(&self, idx: usize) -> &Self::Output {
-        assert!(
+        debug_assert!(
             idx < self.count,
             "verts index: {}, len: {}",
             idx,

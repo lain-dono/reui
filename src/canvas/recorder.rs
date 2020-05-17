@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::Winding;
 use crate::math::{Offset, PartialClamp, Rect, Transform};
 
@@ -25,16 +27,6 @@ pub const LINETO: u32 = 1;
 pub const BEZIERTO: u32 = 2;
 pub const CLOSE: u32 = 3;
 pub const WINDING: u32 = 4;
-
-/*
-enum Command {
-    MoveTo(Offset),
-    LineTo(Offset),
-    BezierTo([Offset; 3]),
-    Winding(Winding),
-    Close,
-}
-*/
 
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.
 const KAPPA90: f32 = 0.552_284_8; // 0.5522847493

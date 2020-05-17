@@ -26,7 +26,6 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
         draw_widths(ctx, 10.0, 50.0, 30.0);
         // Line caps
         draw_caps(ctx, 10.0, 300.0, 30.0);
-        draw_scissor(ctx, 50.0, height - 80.0, time);
 
         if blowup {
             ctx.rotate((time * 0.3).sin() * 5.0 / 180.0 * PI);
@@ -257,14 +256,14 @@ pub fn draw_button(ctx: &mut Canvas, rr: Rect, col: u32) {
     let corner_radius = 4.0;
 
     let col = Color::hex(col);
-    let alpha = if col.is_transparent_black() { 16 } else { 32 };
+    let alpha = if col == Color::TRANSPARENT { 16 } else { 32 };
 
     let rrect = RRect::new(
         [x + 1.0, y + 1.0].into(),
         [w - 2.0, h - 2.0].into(),
         corner_radius - 1.0,
     );
-    if !col.is_transparent_black() {
+    if col != Color::TRANSPARENT {
         ctx.draw_rrect(rrect, Paint::fill(col));
     }
     let rgb = 127;
@@ -691,38 +690,6 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, x: f32, y: f32, w: f32, h: f32) {
     ctx.draw_circle(center, kr - 1.0, Paint::fill(Color::hex(0xFF_282B30)));
     ctx.draw_circle(center, kr - 1.0, knob);
     ctx.draw_circle(center, kr - 0.5, Paint::stroke(Color::hex(0x5C_000000)));
-}
-
-pub fn draw_scissor(ctx: &mut Canvas, x: f32, y: f32, t: f32) {
-    ctx.save();
-
-    // Draw first rect and set scissor to it's area.
-    ctx.translate(x, y);
-    ctx.rotate(f32::to_radians(5.0));
-
-    let area = Rect::from_ltwh(-20.0, -20.0, 60.0, 40.0);
-    ctx.draw_rect(area, Paint::fill(Color::hex(0xFF_FF0000)));
-    ctx.scissor(area);
-
-    // Draw second rectangle with offset and rotation.
-    ctx.translate(40.0, 0.0);
-    ctx.rotate(t);
-
-    // Draw the intended second rectangle without any scissoring.
-    ctx.save();
-    ctx.reset_scissor();
-    ctx.draw_rect(
-        Rect::from_ltwh(-20.0, -10.0, 60.0, 30.0),
-        Paint::fill(Color::hex(0x40_FF8000)),
-    );
-    ctx.restore();
-
-    // Draw second rectangle with combined scissoring.
-    let r = Rect::from_ltwh(-20.0, -10.0, 60.0, 30.0);
-    ctx.intersect_scissor(r);
-    ctx.draw_rect(r, Paint::fill(Color::hex(0xFF_FF8000)));
-
-    ctx.restore();
 }
 
 pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {

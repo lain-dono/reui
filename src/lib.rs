@@ -5,13 +5,12 @@ pub mod backend;
 pub mod cache;
 
 mod canvas;
-mod context;
 mod math;
 mod state;
 
 pub use self::{
+    backend::Renderer,
     canvas::{Canvas, Gradient, Paint, PaintingStyle, Path, StrokeCap, StrokeJoin, Winding},
-    context::Renderer,
     math::{Color, Offset, RRect, Rect, Transform},
 };
 

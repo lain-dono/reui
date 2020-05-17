@@ -24,8 +24,6 @@ impl<T: std::cmp::PartialOrd> PartialClamp for T {
     }
 }
 
-// reduce #![feature(clamp)]
-
 #[derive(Clone, Copy, Default)]
 pub struct Corners {
     pub tl: f32,

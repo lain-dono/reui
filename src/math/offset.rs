@@ -8,10 +8,7 @@ impl std::ops::Neg for Offset {
     type Output = Self;
     #[inline]
     fn neg(self) -> Self {
-        Self {
-            x: -self.x,
-            y: -self.y,
-        }
+        [-self.x, -self.y].into()
     }
 }
 
@@ -59,12 +56,16 @@ macro_rules! impl_op {
 
 impl_op!(0 Add<Self>::add(+) for Offset);
 impl_op!(0 Sub<Self>::sub(-) for Offset);
+impl_op!(0 Mul<Self>::mul(*) for Offset);
+impl_op!(0 Div<Self>::div(/) for Offset);
 
 impl_op!(1 Mul<f32>::mul(*) for Offset);
 impl_op!(1 Div<f32>::div(/) for Offset);
 
 impl_op!(2 AddAssign<Self>::add_assign(+=) for Offset);
 impl_op!(2 SubAssign<Self>::sub_assign(-=) for Offset);
+impl_op!(2 MulAssign<Self>::mul_assign(*=) for Offset);
+impl_op!(2 DivAssign<Self>::div_assign(/=) for Offset);
 
 impl_op!(3 MulAssign<f32>::mul_assign(*=) for Offset);
 impl_op!(3 DivAssign<f32>::div_assign(/=) for Offset);
@@ -101,12 +102,12 @@ impl Offset {
     pub const ZERO: Self = Self { x: 0.0, y: 0.0 };
 
     #[inline]
-    pub fn zero() -> Self {
+    pub const fn zero() -> Self {
         Self { x: 0.0, y: 0.0 }
     }
 
     #[inline]
-    pub fn new(x: f32, y: f32) -> Self {
+    pub const fn new(x: f32, y: f32) -> Self {
         Self { x, y }
     }
 
@@ -143,26 +144,12 @@ impl Offset {
     }
 
     #[inline]
-    pub fn yx(self) -> Self {
-        Self {
-            y: self.x,
-            x: self.y,
-        }
-    }
-
-    #[inline]
     pub fn translate(self, x: f32, y: f32) -> Self {
-        Self {
-            x: self.x + x,
-            y: self.x + y,
-        }
+        self + Self::new(x, y)
     }
 
     #[inline]
     pub fn scale(self, x: f32, y: f32) -> Self {
-        Self {
-            x: self.x * x,
-            y: self.x * y,
-        }
+        self * Self::new(x, y)
     }
 }
