@@ -6,7 +6,7 @@ mod canvas;
 
 mod time;
 
-use reui::{backend::Target, Offset, Renderer};
+use reui::{Target, Offset, Renderer};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},

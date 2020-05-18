@@ -1,7 +1,7 @@
 use crate::{
-    canvas::recorder::{BEZIERTO, CLOSE, LINETO, MOVETO, WINDING},
     canvas::Winding,
     math::{Offset, PartialClamp, RRect, Rect},
+    recorder::{BEZIERTO, CLOSE, LINETO, MOVETO, WINDING},
 };
 use smallvec::{Array, SmallVec};
 use std::f32::consts::PI;

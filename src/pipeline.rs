@@ -1,4 +1,9 @@
-use crate::backend::{Call, Picture, Uniforms, Vertex};
+use crate::{
+    backend::Vertex,
+    paint::Uniforms,
+    picture::{Call, Picture},
+    shader::Shader,
+};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
 
@@ -18,64 +23,19 @@ fn create_buffer<T>(
     (len, device.create_buffer_with_data(&data, usage))
 }
 
-macro_rules! def_pipeline {
-    ($color:expr, $cull:ident, $front:expr, $back:expr) => {
-        PipelineBuilder {
-            stencil_state: wgpu::DepthStencilStateDescriptor {
-                format: DEPTH,
-                depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::Always,
-                stencil_front: $front,
-                stencil_back: $back,
-                stencil_read_mask: 0xFF,
-                stencil_write_mask: 0xFF,
-            },
-            write_mask: $color,
-            cull_mode: wgpu::CullMode::$cull,
-        }
-    };
-}
-
 macro_rules! stencil_face {
     ($name:ident, $comp:ident, $fail:ident, $pass:ident) => {
-        const $name: wgpu::StencilStateFaceDescriptor = wgpu::StencilStateFaceDescriptor {
+        const $name: wgpu::StencilStateFaceDescriptor = stencil_face!($comp, $fail, $pass);
+    };
+
+    ($comp:ident, $fail:ident, $pass:ident) => {
+        wgpu::StencilStateFaceDescriptor {
             compare: wgpu::CompareFunction::$comp,
             fail_op: wgpu::StencilOperation::$fail,
             depth_fail_op: wgpu::StencilOperation::$fail,
             pass_op: wgpu::StencilOperation::$pass,
-        };
+        }
     };
-}
-
-struct Shader {
-    vs: wgpu::ShaderModule,
-    fs: wgpu::ShaderModule,
-}
-
-impl Shader {
-    fn new(device: &wgpu::Device, vs: &[u8], fs: &[u8]) -> std::io::Result<Self> {
-        use std::io::Cursor;
-
-        let vs = wgpu::read_spirv(Cursor::new(&vs[..]))?;
-        let vs = device.create_shader_module(&vs);
-
-        let fs = wgpu::read_spirv(Cursor::new(&fs[..]))?;
-        let fs = device.create_shader_module(&fs);
-
-        Ok(Self { vs, fs })
-    }
-
-    fn base(device: &wgpu::Device) -> std::io::Result<Self> {
-        let vs = include_bytes!("shader/shader.vert.spv");
-        let fs = include_bytes!("shader/shader.frag.spv");
-        Self::new(device, vs, fs)
-    }
-
-    fn stencil(device: &wgpu::Device) -> std::io::Result<Self> {
-        let vs = include_bytes!("shader/stencil.vert.spv");
-        let fs = include_bytes!("shader/stencil.frag.spv");
-        Self::new(device, vs, fs)
-    }
 }
 
 pub struct Target<'a> {
@@ -91,14 +51,13 @@ pub struct Pipeline {
     bind_group_layout: wgpu::BindGroupLayout,
 
     convex: wgpu::RenderPipeline,
+    fringes: wgpu::RenderPipeline,
 
-    fill_base: wgpu::RenderPipeline,
-    fill_fringes: wgpu::RenderPipeline,
-    fill_end: wgpu::RenderPipeline,
+    fill_stencil: wgpu::RenderPipeline,
+    fill_quad: wgpu::RenderPipeline,
 
     stroke_base: wgpu::RenderPipeline,
-    stroke_aa: wgpu::RenderPipeline,
-    stroke_clear: wgpu::RenderPipeline,
+    stroke_stencil: wgpu::RenderPipeline,
 }
 
 impl Pipeline {
@@ -116,42 +75,30 @@ impl Pipeline {
             bind_group_layouts: &[&bind_group_layout],
         });
 
-        let base = Shader::base(device).unwrap();
-        let stencil = Shader::stencil(device).unwrap();
+        let builder = Builder {
+            format,
+            device,
+            layout,
 
-        stencil_face!(UND_KEEP, Always, Keep, Keep);
+            base: Shader::base(device).unwrap(),
+            stencil: Shader::stencil(device).unwrap(),
+        };
+
         stencil_face!(ALWAYS_ZERO, Always, Zero, Zero);
-        stencil_face!(NE_ZERO, NotEqual, Zero, Zero);
-        stencil_face!(EQ_KEEP, Equal, Keep, Keep);
-        stencil_face!(EQ_KEEP_INCR, Equal, Keep, IncrementClamp);
-        stencil_face!(ALWAYS_KEEP_INCR_WRAP, Always, Keep, IncrementWrap);
-        stencil_face!(ALWAYS_KEEP_DECR_WRAP, Always, Keep, DecrementWrap);
-
-        const COLOR: wgpu::ColorWrite = wgpu::ColorWrite::ALL;
-        const STENCIL: wgpu::ColorWrite = wgpu::ColorWrite::empty();
-
-        let convex = def_pipeline!(COLOR, Back, UND_KEEP, UND_KEEP);
-
-        let fill_base = def_pipeline!(STENCIL, None, ALWAYS_KEEP_INCR_WRAP, ALWAYS_KEEP_DECR_WRAP);
-        let fill_fringes = def_pipeline!(COLOR, Back, EQ_KEEP, EQ_KEEP);
-        let fill_end = def_pipeline!(COLOR, Back, NE_ZERO, NE_ZERO);
-
-        let stroke_base = def_pipeline!(COLOR, Back, EQ_KEEP_INCR, EQ_KEEP_INCR);
-        let stroke_aa = def_pipeline!(COLOR, Back, EQ_KEEP, EQ_KEEP);
-        let stroke_clear = def_pipeline!(STENCIL, Back, ALWAYS_ZERO, ALWAYS_ZERO);
+        stencil_face!(INCR_WRAP, Always, Keep, IncrementWrap);
+        stencil_face!(DECR_WRAP, Always, Keep, DecrementWrap);
 
         Self {
             bind_group_layout,
 
-            convex: convex.build(format, device, &layout, &base),
+            convex: builder.base(stencil_face!(Always, Keep, Keep)),
+            fringes: builder.base(stencil_face!(Equal, Keep, Keep)),
 
-            fill_base: fill_base.build(format, device, &layout, &stencil),
-            fill_fringes: fill_fringes.build(format, device, &layout, &base),
-            fill_end: fill_end.build(format, device, &layout, &base),
+            fill_stencil: builder.stencil(wgpu::CullMode::None, INCR_WRAP, DECR_WRAP),
+            fill_quad: builder.base(stencil_face!(NotEqual, Zero, Zero)),
 
-            stroke_base: stroke_base.build(format, device, &layout, &base),
-            stroke_aa: stroke_aa.build(format, device, &layout, &base),
-            stroke_clear: stroke_clear.build(format, device, &layout, &stencil),
+            stroke_base: builder.base(stencil_face!(Equal, Keep, IncrementClamp)),
+            stroke_stencil: builder.stencil(wgpu::CullMode::Back, ALWAYS_ZERO, ALWAYS_ZERO),
         }
     }
 
@@ -212,58 +159,62 @@ impl Pipeline {
         rpass.set_vertex_buffer(0, &vertices, 0, 0);
         rpass.set_vertex_buffer(1, &instances, 0, 0);
 
-        for call in &picture.calls {
-            match *call {
+        for call in picture.calls.iter().cloned() {
+            match call {
                 Call::Convex { idx, path } => {
-                    let instance0 = idx..idx + 1;
+                    let paths = &picture.paths[path];
+                    let start = idx;
+                    let end = idx + 1;
 
                     rpass.set_pipeline(&self.convex);
-                    for path in &picture.paths[path] {
-                        rpass.draw(path.fill.range32(), instance0.clone());
-                        rpass.draw(path.stroke.range32(), instance0.clone()); // fringes
+                    for path in paths {
+                        rpass.draw(path.fill.clone(), start..end);
+                        rpass.draw(path.stroke.clone(), start..end); // fringes
                     }
                 }
                 Call::Fill { idx, path, quad } => {
-                    let range = path;
-                    let instance0 = idx..idx + 1;
-                    let instance1 = idx + 1..idx + 2;
+                    let paths = &picture.paths[path];
+                    let instances = idx..idx + 1;
 
-                    rpass.set_pipeline(&self.fill_base);
-                    for path in &picture.paths[range] {
-                        rpass.draw(path.fill.range32(), instance0.clone());
+                    rpass.set_pipeline(&self.fill_stencil);
+                    for path in paths {
+                        rpass.draw(path.fill.clone(), instances.clone());
                     }
 
+                    let instances = idx + 1..idx + 2;
+
                     // Draw fringes
-                    rpass.set_pipeline(&self.fill_fringes);
-                    for path in &picture.paths[range] {
-                        rpass.draw(path.stroke.range32(), instance1.clone());
+                    rpass.set_pipeline(&self.fringes);
+                    for path in paths {
+                        rpass.draw(path.stroke.clone(), instances.clone());
                     }
 
                     // Draw fill
-                    rpass.set_pipeline(&self.fill_end);
-                    rpass.draw(quad..quad + 4, instance1.clone());
+                    rpass.set_pipeline(&self.fill_quad);
+                    rpass.draw(quad..quad + 4, instances.clone());
                 }
                 Call::Stroke { idx, path } => {
-                    let range = path;
-                    let instance0 = idx..idx + 1;
-                    let instance1 = idx + 1..idx + 2;
+                    let stroke = &picture.strokes[path];
+                    let instances = idx..idx + 1;
 
                     // Fill the stroke base without overlap
                     rpass.set_pipeline(&self.stroke_base);
-                    for path in &picture.paths[range] {
-                        rpass.draw(path.stroke.range32(), instance0.clone());
+                    for path in stroke {
+                        rpass.draw(path.clone(), instances.clone());
                     }
 
+                    let instances = idx + 1..idx + 2;
+
                     // Draw anti-aliased pixels.
-                    rpass.set_pipeline(&self.stroke_aa);
-                    for path in &picture.paths[range] {
-                        rpass.draw(path.stroke.range32(), instance1.clone());
+                    rpass.set_pipeline(&self.fringes);
+                    for path in stroke {
+                        rpass.draw(path.clone(), instances.clone());
                     }
 
                     // Clear stencil buffer
-                    rpass.set_pipeline(&self.stroke_clear);
-                    for path in &picture.paths[range] {
-                        rpass.draw(path.stroke.range32(), instance1.clone());
+                    rpass.set_pipeline(&self.stroke_stencil);
+                    for path in stroke {
+                        rpass.draw(path.clone(), instances.clone());
                     }
                 }
             }
@@ -271,28 +222,56 @@ impl Pipeline {
     }
 }
 
-struct PipelineBuilder {
-    write_mask: wgpu::ColorWrite,
-    stencil_state: wgpu::DepthStencilStateDescriptor,
-    cull_mode: wgpu::CullMode,
+struct Builder<'a> {
+    format: wgpu::TextureFormat,
+    device: &'a wgpu::Device,
+    layout: wgpu::PipelineLayout,
+    base: Shader,
+    stencil: Shader,
 }
 
-impl PipelineBuilder {
-    fn build(
-        self,
-        format: wgpu::TextureFormat,
-        device: &wgpu::Device,
-        layout: &wgpu::PipelineLayout,
-        shader: &Shader,
-    ) -> wgpu::RenderPipeline {
-        let Self {
-            stencil_state,
-            write_mask,
-            cull_mode,
-        } = self;
+impl<'a> Builder<'a> {
+    fn base(&self, stencil: wgpu::StencilStateFaceDescriptor) -> wgpu::RenderPipeline {
+        let (front, back) = (stencil.clone(), stencil);
+        let (write_mask, cull_mode) = (wgpu::ColorWrite::ALL, wgpu::CullMode::Back);
+        self.pipeline(&self.base, write_mask, cull_mode, front, back)
+    }
 
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            layout,
+    fn stencil(
+        &self,
+        cull_mode: wgpu::CullMode,
+        front: wgpu::StencilStateFaceDescriptor,
+        back: wgpu::StencilStateFaceDescriptor,
+    ) -> wgpu::RenderPipeline {
+        let write_mask = wgpu::ColorWrite::empty();
+        self.pipeline(&self.stencil, write_mask, cull_mode, front, back)
+    }
+
+    fn pipeline(
+        &self,
+        shader: &Shader,
+        write_mask: wgpu::ColorWrite,
+        cull_mode: wgpu::CullMode,
+        stencil_front: wgpu::StencilStateFaceDescriptor,
+        stencil_back: wgpu::StencilStateFaceDescriptor,
+    ) -> wgpu::RenderPipeline {
+        let straight_alpha_blend = wgpu::ColorStateDescriptor {
+            format: self.format,
+            write_mask,
+            color_blend: wgpu::BlendDescriptor {
+                src_factor: wgpu::BlendFactor::SrcAlpha,
+                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha_blend: wgpu::BlendDescriptor {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                operation: wgpu::BlendOperation::Add,
+            },
+        };
+
+        let desc = wgpu::RenderPipelineDescriptor {
+            layout: &self.layout,
             vertex_stage: wgpu::ProgrammableStageDescriptor {
                 module: &shader.vs,
                 entry_point: "main",
@@ -309,8 +288,16 @@ impl PipelineBuilder {
                 depth_bias_clamp: 0.0,
             }),
             primitive_topology: wgpu::PrimitiveTopology::TriangleStrip,
-            color_states: &[straight_alpha_blend(format, write_mask)],
-            depth_stencil_state: Some(stencil_state),
+            color_states: &[straight_alpha_blend],
+            depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                format: DEPTH,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil_front,
+                stencil_back,
+                stencil_read_mask: 0xFF,
+                stencil_write_mask: 0xFF,
+            }),
             vertex_state: wgpu::VertexStateDescriptor {
                 index_format: wgpu::IndexFormat::Uint16,
                 vertex_buffers: &[
@@ -324,8 +311,8 @@ impl PipelineBuilder {
                         step_mode: wgpu::InputStepMode::Instance,
                         attributes: &wgpu::vertex_attr_array![
                             2 => Float4,
-                            3 => Float4,
-                            4 => Float4,
+                            3 => Uchar4Norm,
+                            4 => Uchar4Norm,
                             5 => Float4,
                             6 => Float2
                         ],
@@ -335,26 +322,8 @@ impl PipelineBuilder {
             sample_count: 1,
             sample_mask: !0,
             alpha_to_coverage_enabled: false,
-        })
-    }
-}
+        };
 
-fn straight_alpha_blend(
-    format: wgpu::TextureFormat,
-    write_mask: wgpu::ColorWrite,
-) -> wgpu::ColorStateDescriptor {
-    wgpu::ColorStateDescriptor {
-        format,
-        write_mask,
-        color_blend: wgpu::BlendDescriptor {
-            src_factor: wgpu::BlendFactor::SrcAlpha,
-            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-            operation: wgpu::BlendOperation::Add,
-        },
-        alpha_blend: wgpu::BlendDescriptor {
-            src_factor: wgpu::BlendFactor::One,
-            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-            operation: wgpu::BlendOperation::Add,
-        },
+        self.device.create_render_pipeline(&desc)
     }
 }

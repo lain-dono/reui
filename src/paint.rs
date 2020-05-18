@@ -1,14 +1,179 @@
-use crate::{
-    canvas::Gradient,
-    math::{Color, Transform},
-};
+pub use crate::math::{Color, Rect, Transform};
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+#[repr(u32)]
+pub enum StrokeCap {
+    Butt = 0,
+    Round = 1,
+    Square = 2,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+#[repr(u32)]
+pub enum StrokeJoin {
+    Round = 1,
+    Bevel = 3,
+    Miter = 4,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum PaintingStyle {
+    Fill = 0,
+    Stroke = 1,
+}
+
+#[derive(Clone, Copy)]
+pub enum Gradient {
+    Linear {
+        from: [f32; 2],
+        to: [f32; 2],
+        inner_color: Color,
+        outer_color: Color,
+    },
+    Box {
+        rect: Rect,
+        radius: f32,
+        feather: f32,
+        inner_color: Color,
+        outer_color: Color,
+    },
+    Radial {
+        center: [f32; 2],
+        inr: f32,
+        outr: f32,
+        inner_color: Color,
+        outer_color: Color,
+    },
+}
+
+#[derive(Clone, Copy)]
+pub struct Paint {
+    pub style: PaintingStyle,
+    pub color: Color,
+
+    pub cap: StrokeCap,
+    pub join: StrokeJoin,
+    pub miter: f32,
+    pub width: f32,
+
+    pub gradient: Option<Gradient>,
+}
+
+impl Default for Paint {
+    fn default() -> Self {
+        Self {
+            style: PaintingStyle::Fill,
+            color: Color::BLACK,
+            cap: StrokeCap::Butt,
+            join: StrokeJoin::Miter,
+            miter: 10.0,
+            width: 1.0,
+            gradient: None,
+        }
+    }
+}
+
+impl Paint {
+    pub fn fill(color: Color) -> Self {
+        Self {
+            style: PaintingStyle::Fill,
+            color,
+            ..Self::default()
+        }
+    }
+
+    pub fn stroke(color: Color) -> Self {
+        Self {
+            style: PaintingStyle::Stroke,
+            color,
+            ..Self::default()
+        }
+    }
+
+    pub fn stroke_cap(self, cap: StrokeCap) -> Self {
+        Self { cap, ..self }
+    }
+
+    pub fn stroke_join(self, join: StrokeJoin) -> Self {
+        Self { join, ..self }
+    }
+
+    pub fn stroke_miter_limit(self, miter: f32) -> Self {
+        Self { miter, ..self }
+    }
+
+    pub fn stroke_width(self, width: f32) -> Self {
+        Self { width, ..self }
+    }
+
+    pub fn with_gradient(self, gradient: Gradient) -> Self {
+        Self {
+            gradient: Some(gradient),
+            ..self
+        }
+    }
+
+    pub fn linear_gradient(
+        from: [f32; 2],
+        to: [f32; 2],
+        inner_color: Color,
+        outer_color: Color,
+    ) -> Self {
+        Self::gradient(Gradient::Linear {
+            from,
+            to,
+            inner_color,
+            outer_color,
+        })
+    }
+
+    pub fn box_gradient(
+        rect: Rect,
+        radius: f32,
+        feather: f32,
+        inner_color: Color,
+        outer_color: Color,
+    ) -> Self {
+        Self::gradient(Gradient::Box {
+            rect,
+            radius,
+            feather,
+            inner_color,
+            outer_color,
+        })
+    }
+
+    pub fn radial_gradient(
+        center: [f32; 2],
+        inr: f32,
+        outr: f32,
+        inner_color: Color,
+        outer_color: Color,
+    ) -> Self {
+        Self::gradient(Gradient::Radial {
+            center,
+            inr,
+            outr,
+            inner_color,
+            outer_color,
+        })
+    }
+
+    fn gradient(gradient: Gradient) -> Self {
+        Self {
+            gradient: Some(gradient),
+            ..Self::default()
+        }
+    }
+}
 
 #[derive(Default)]
 #[repr(C, align(4))]
 pub struct Uniforms {
     pub paint_mat: [f32; 4],
-    pub inner_color: [f32; 4],
-    pub outer_color: [f32; 4],
+    pub inner_color: [u8; 4],
+    pub outer_color: [u8; 4],
 
     pub extent: [f32; 2],
     pub radius: f32,
@@ -19,7 +184,7 @@ pub struct Uniforms {
 }
 
 impl Uniforms {
-    pub fn fill(paint: &Paint, width: f32, fringe: f32, stroke_thr: f32) -> Self {
+    pub fn fill(paint: &InternalPaint, width: f32, fringe: f32, stroke_thr: f32) -> Self {
         Self {
             paint_mat: paint.xform.inverse().into(),
 
@@ -37,7 +202,7 @@ impl Uniforms {
 }
 
 #[derive(Clone, Copy)]
-pub struct Paint {
+pub struct InternalPaint {
     pub xform: Transform,
     pub extent: [f32; 2],
     pub radius: f32,
@@ -46,7 +211,7 @@ pub struct Paint {
     pub outer_color: Color,
 }
 
-impl Paint {
+impl InternalPaint {
     pub fn convert(paint: &crate::canvas::Paint, xform: Transform) -> Self {
         if let Some(gradient) = paint.gradient {
             match gradient {

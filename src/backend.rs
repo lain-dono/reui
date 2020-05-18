@@ -1,15 +1,9 @@
-mod commands;
-mod paint;
-mod pipeline;
-
-pub use self::{
-    commands::{Call, Picture},
-    paint::{Paint, Uniforms},
-    pipeline::{Pipeline, Target},
-};
 use crate::{
     cache::PathCache,
-    canvas::{Canvas, PictureRecorder},
+    canvas::Canvas,
+    picture::Picture,
+    pipeline::{Pipeline, Target},
+    recorder::PictureRecorder,
     state::TransformStack,
 };
 
@@ -24,11 +18,6 @@ impl Vertex {
     pub fn new(pos: [f32; 2], uv: [f32; 2]) -> Self {
         let uv = [(uv[0] * 65535.0) as u16, (uv[1] * 65535.0) as u16];
         Self { pos, uv }
-    }
-
-    #[inline(always)]
-    pub fn set(&mut self, pos: [f32; 2], uv: [f32; 2]) {
-        *self = Self::new(pos, uv);
     }
 }
 

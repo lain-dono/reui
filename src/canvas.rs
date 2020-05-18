@@ -1,15 +1,9 @@
-mod paint;
-mod path;
-mod recorder;
-
-pub use crate::canvas::{
+pub use crate::{
+    backend::Renderer,
+    math::{Offset, PartialClamp, RRect, Rect, Transform},
     paint::{Color, Gradient, Paint, PaintingStyle, StrokeCap, StrokeJoin},
     path::Path,
     recorder::PictureRecorder,
-};
-use crate::{
-    backend::Renderer,
-    math::{Offset, PartialClamp, RRect, Rect, Transform},
 };
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -38,11 +32,11 @@ impl<'a> Canvas<'a> {
         let cache = &mut self.ctx.cache;
         let xform = self.ctx.states.transform();
 
-        let mut raw_paint = crate::backend::Paint::convert(paint, xform);
+        let mut raw_paint = crate::paint::InternalPaint::convert(paint, xform);
 
         if force_stroke || paint.style == PaintingStyle::Stroke {
             let scale = xform.average_scale();
-            let mut stroke_width = (paint.stroke_width * scale).clamp(0.0, 200.0);
+            let mut stroke_width = (paint.width * scale).clamp(0.0, 200.0);
             let fringe = cache.fringe_width;
 
             if stroke_width < cache.fringe_width {
@@ -58,9 +52,9 @@ impl<'a> Canvas<'a> {
             cache.expand_stroke(
                 stroke_width * 0.5,
                 fringe,
-                paint.stroke_cap,
-                paint.stroke_join,
-                paint.stroke_miter_limit,
+                paint.cap,
+                paint.join,
+                paint.miter,
             );
 
             self.ctx
@@ -126,7 +120,6 @@ impl<'a> Canvas<'a> {
 
 impl<'a> Canvas<'a> {
     /*
-    /*
     /// Reduces the clip region to the intersection of the current clip and the given Path. [...]
     clipPath(Path path, { bool doAntiAlias: true }) -> void
     /// Reduces the clip region to the intersection of the current clip and the given rectangle. [...]
@@ -135,6 +128,7 @@ impl<'a> Canvas<'a> {
     clipRRect(RRect rrect, { bool doAntiAlias: true }) -> void
     */
 
+    /*
     /// Draw an arc scaled to fit inside the given rectangle.
     /// It starts from startAngle radians around the oval up to startAngle + sweepAngle radians around the oval,
     /// with zero radians being the point on the right hand side of the oval that crosses the horizontal line

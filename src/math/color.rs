@@ -15,6 +15,17 @@ impl Into<[f32; 4]> for Color {
     }
 }
 
+impl Into<[u8; 4]> for Color {
+    fn into(self) -> [u8; 4] {
+        [
+            (self.red.clamp(0.0, 1.0) * 255.0) as u8,
+            (self.green.clamp(0.0, 1.0) * 255.0) as u8,
+            (self.blue.clamp(0.0, 1.0) * 255.0) as u8,
+            (self.alpha.clamp(0.0, 1.0) * 255.0) as u8,
+        ]
+    }
+}
+
 impl Color {
     const fn raw(red: f32, green: f32, blue: f32, alpha: f32) -> Self {
         Self {
