@@ -13,13 +13,13 @@ fn transform_pt(pt: &mut [f32], t: &Transform) {
 fn dist_pt_seg(point: Offset, p: Offset, q: Offset) -> f32 {
     let pq = q - p;
 
-    let len = pq.square_length();
+    let len = pq.magnitude_sq();
     let mut t = pq.dot(point - p);
     if len > 0.0 {
         t /= len
     }
 
-    (p + pq * t.clamp(0.0, 1.0) + point).square_length()
+    (p + pq * t.clamp(0.0, 1.0) + point).magnitude_sq()
 }
 
 pub const MOVETO: u32 = 0;

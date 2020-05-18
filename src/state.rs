@@ -37,7 +37,7 @@ impl TransformStack {
 
     #[inline]
     pub fn pre_transform(&mut self, m: Transform) {
-        self.last_mut().append_mut(m);
+        *self.last_mut() *= m;
     }
 
     #[inline(always)]

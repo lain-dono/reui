@@ -32,17 +32,12 @@ fn normalize(x: &mut f32, y: &mut f32) -> f32 {
 
 #[inline]
 fn poly_area(pts: &[PathPoint]) -> f32 {
-    #[inline(always)]
-    fn triarea2(a: Offset, b: Offset, c: Offset) -> f32 {
-        (c - a).cross(b - a)
-    }
-
     let mut area = 0.0;
     let a = &pts[0];
     for i in 2..pts.len() {
         let b = &pts[i - 1];
         let c = &pts[i];
-        area += triarea2(a.pos, b.pos, c.pos);
+        area += (c.pos - a.pos).cross(b.pos - a.pos);
     }
     area * 0.5
 }
@@ -56,10 +51,9 @@ fn curve_divs(r: f32, arc: f32, tol: f32) -> usize {
 #[inline]
 fn choose_bevel(bevel: bool, p0: &PathPoint, p1: &PathPoint, w: f32) -> [Offset; 2] {
     if bevel {
-        [
-            Offset::new(p1.pos.x + p0.dir.y * w, p1.pos.y - p0.dir.x * w),
-            Offset::new(p1.pos.x + p1.dir.y * w, p1.pos.y - p1.dir.x * w),
-        ]
+        let a = Offset::new(p1.pos.x + p0.dir.y * w, p1.pos.y - p0.dir.x * w);
+        let b = Offset::new(p1.pos.x + p1.dir.y * w, p1.pos.y - p1.dir.x * w);
+        [a, b]
     } else {
         [p1.pos + p1.ext * w, p1.pos + p1.ext * w]
     }
@@ -313,7 +307,7 @@ impl PathCache {
 
                 // Calculate extrusions
                 p1.ext = (dl0 + dl1) * 0.5;
-                let dmr2 = p1.ext.square_length();
+                let dmr2 = p1.ext.magnitude_sq();
                 if dmr2 > 0.000_001 {
                     p1.ext *= f32::min(1.0 / dmr2, 600.0);
                 }
@@ -496,7 +490,7 @@ impl PathCache {
         let tol = self.tess_tol * 4.0;
         while times < AFD_ONE {
             // Flatness measure.
-            let mut flatness = d2.square_length() + d3.square_length();
+            let mut flatness = d2.magnitude_sq() + d3.magnitude_sq();
             // Go to higher resolution if we're moving a lot
             // or overshooting the end.
             while flatness > tol && stepsize > 1 || times + stepsize > AFD_ONE {
@@ -506,7 +500,7 @@ impl PathCache {
                 d3 *= 0.125;
 
                 stepsize /= 2;
-                flatness = d2.square_length() + d3.square_length();
+                flatness = d2.magnitude_sq() + d3.magnitude_sq();
             }
             // Go to lower resolution if we're really flat
             // and we aren't going to overshoot the end.
@@ -522,7 +516,7 @@ impl PathCache {
                 d3 *= 8.0;
 
                 stepsize *= 2;
-                flatness = d2.square_length() + d3.square_length();
+                flatness = d2.magnitude_sq() + d3.magnitude_sq();
             }
             // Forward differencing.
             d0 += d1;

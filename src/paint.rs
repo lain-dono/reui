@@ -236,14 +236,16 @@ impl InternalPaint {
                         (0.0, 1.0)
                     };
 
-                    Self {
-                        xform: Transform {
+                    let xform = xform
+                        * Transform {
                             re: dy,
                             im: -dx,
                             tx: sx - dx * large,
                             ty: sy - dy * large,
-                        }
-                        .prepend(xform),
+                        };
+
+                    Self {
+                        xform,
                         extent: [large, large + d * 0.5],
                         radius: 0.0,
                         feather: d.max(1.0),
@@ -260,7 +262,7 @@ impl InternalPaint {
                 } => {
                     let center = rect.center();
                     Self {
-                        xform: Transform::translation(center.x, center.y).prepend(xform),
+                        xform: xform * Transform::translation(center.x, center.y),
                         extent: [rect.dx() * 0.5, rect.dy() * 0.5],
                         radius,
                         feather: feather.max(1.0),
@@ -278,7 +280,7 @@ impl InternalPaint {
                     let radius = (inr + outr) * 0.5;
                     let feather = (outr - inr).max(1.0);
                     Self {
-                        xform: Transform::translation(center[0], center[1]).prepend(xform),
+                        xform: xform * Transform::translation(center[0], center[1]),
                         extent: [radius, radius],
                         radius,
                         feather,
