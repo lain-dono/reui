@@ -396,25 +396,25 @@ impl RRect {
         self.rect
     }
 
-    pub fn width(&self) -> f32 {
+    pub fn dx(&self) -> f32 {
         self.rect.dx()
     }
 
-    pub fn height(&self) -> f32 {
+    pub fn dy(&self) -> f32 {
         self.rect.dy()
     }
 
     pub fn inflate(self, v: f32) -> Self {
         Self {
             rect: self.rect.inflate(v),
-            radius: self.radius,
+            ..self
         }
     }
 
     pub fn deflate(self, v: f32) -> Self {
         Self {
             rect: self.rect.deflate(v),
-            radius: self.radius,
+            ..self
         }
     }
 }

@@ -147,67 +147,68 @@ impl<A: Array<Item = f32>> Path<A> {
         ]);
     }
     /// Adds a new sub-path that consists of the straight lines and curves needed to form the rounded rectangle described by the argument.
-    pub fn add_rrect(&mut self, rr: RRect) {
-        let (x, y, w, h) = (rr.rect.min.x, rr.rect.min.y, rr.width(), rr.height());
-        if rr.radius.tl < 0.1 && rr.radius.tr < 0.1 && rr.radius.br < 0.1 && rr.radius.bl < 0.1 {
-            self.add_rect(rr.rect);
+    pub fn add_rrect(&mut self, RRect { rect, radius }: RRect) {
+        if radius.tl < 0.1 && radius.tr < 0.1 && radius.br < 0.1 && radius.bl < 0.1 {
+            self.add_rect(rect);
         } else {
+            let (w, h) = rect.size().into();
+            let Rect { min, max } = rect;
             let halfw = w.abs() * 0.5;
             let halfh = h.abs() * 0.5;
-            let sign = if w < 0.0 { -1.0 } else { 1.0 };
-            let rx_bl = sign * halfw.min(rr.radius.bl);
-            let ry_bl = sign * halfh.min(rr.radius.bl);
-            let rx_br = sign * halfw.min(rr.radius.br);
-            let ry_br = sign * halfh.min(rr.radius.br);
-            let rx_tr = sign * halfw.min(rr.radius.tr);
-            let ry_tr = sign * halfh.min(rr.radius.tr);
-            let rx_tl = sign * halfw.min(rr.radius.tl);
-            let ry_tl = sign * halfh.min(rr.radius.tl);
+            let sign = w.signum();
+            let rx_bl = sign * halfw.min(radius.bl);
+            let ry_bl = sign * halfh.min(radius.bl);
+            let rx_br = sign * halfw.min(radius.br);
+            let ry_br = sign * halfh.min(radius.br);
+            let rx_tr = sign * halfw.min(radius.tr);
+            let ry_tr = sign * halfh.min(radius.tr);
+            let rx_tl = sign * halfw.min(radius.tl);
+            let ry_tl = sign * halfh.min(radius.tl);
             let kappa = 1.0 - KAPPA90;
             self.commands.extend_from_slice(&[
                 MOVETO as f32,
-                x,
-                y + ry_tl,
+                min.x,
+                min.y + ry_tl,
                 LINETO as f32,
-                x,
-                y + h - ry_bl,
+                min.x,
+                max.y - ry_bl,
                 BEZIERTO as f32,
-                x,
-                y + h - ry_bl * kappa,
-                x + rx_bl * kappa,
-                y + h,
-                x + rx_bl,
-                y + h,
+                min.x,
+                max.y - ry_bl * kappa,
+                min.x + rx_bl * kappa,
+                max.y,
+                min.x + rx_bl,
+                max.y,
                 LINETO as f32,
-                x + w - rx_br,
-                y + h,
+                max.x - rx_br,
+                max.y,
                 BEZIERTO as f32,
-                x + w - rx_br * kappa,
-                y + h,
-                x + w,
-                y + h - ry_br * kappa,
-                x + w,
-                y + h - ry_br,
+                max.x - rx_br * kappa,
+                max.y,
+                max.x,
+                max.y - ry_br * kappa,
+                max.x,
+                max.y - ry_br,
                 LINETO as f32,
-                x + w,
-                y + ry_tr,
+                max.x,
+                min.y + ry_tr,
                 BEZIERTO as f32,
-                x + w,
-                y + ry_tr * kappa,
-                x + w - rx_tr * kappa,
-                y,
-                x + w - rx_tr,
-                y,
+                max.x,
+                min.y + ry_tr * kappa,
+                max.x - rx_tr * kappa,
+                min.y,
+                max.x - rx_tr,
+                min.y,
                 LINETO as f32,
-                x + rx_tl,
-                y,
+                min.x + rx_tl,
+                min.y,
                 BEZIERTO as f32,
-                x + rx_tl * kappa,
-                y,
-                x,
-                y + ry_tl * kappa,
-                x,
-                y + ry_tl,
+                min.x + rx_tl * kappa,
+                min.y,
+                min.x,
+                min.y + ry_tl * kappa,
+                min.x,
+                min.y + ry_tl,
                 CLOSE as f32,
             ]);
         }

@@ -22,6 +22,14 @@ fn dist_pt_seg(point: Offset, p: Offset, q: Offset) -> f32 {
     (p + pq * t.clamp(0.0, 1.0) + point).magnitude_sq()
 }
 
+enum Command {
+    Move { p: Offset },
+    Line { p: Offset },
+    Bezier { p1: Offset, p2: Offset, p3: Offset },
+    Winding { dir: Winding },
+    Close,
+}
+
 pub const MOVETO: u32 = 0;
 pub const LINETO: u32 = 1;
 pub const BEZIERTO: u32 = 2;
