@@ -1,7 +1,7 @@
 pub use crate::math::{Color, Rect, Transform};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(u8)]
 pub enum StrokeCap {
     Butt = 0,
     Round = 1,
@@ -9,7 +9,7 @@ pub enum StrokeCap {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(u8)]
 pub enum StrokeJoin {
     Round = 1,
     Bevel = 3,
@@ -17,7 +17,7 @@ pub enum StrokeJoin {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(u8)]
 pub enum PaintingStyle {
     Fill = 0,
     Stroke = 1,
@@ -50,13 +50,11 @@ pub enum Gradient {
 #[derive(Clone, Copy)]
 pub struct Paint {
     pub style: PaintingStyle,
-    pub color: Color,
-
     pub cap: StrokeCap,
     pub join: StrokeJoin,
     pub miter: f32,
     pub width: f32,
-
+    pub color: Color,
     pub gradient: Option<Gradient>,
 }
 
@@ -184,7 +182,7 @@ pub struct Uniforms {
 }
 
 impl Uniforms {
-    pub fn fill(paint: &InternalPaint, width: f32, fringe: f32, stroke_thr: f32) -> Self {
+    pub fn fill(paint: &RawPaint, width: f32, fringe: f32, stroke_thr: f32) -> Self {
         Self {
             paint_mat: paint.xform.inverse().into(),
 
@@ -202,7 +200,7 @@ impl Uniforms {
 }
 
 #[derive(Clone, Copy)]
-pub struct InternalPaint {
+pub struct RawPaint {
     pub xform: Transform,
     pub extent: [f32; 2],
     pub radius: f32,
@@ -211,8 +209,8 @@ pub struct InternalPaint {
     pub outer_color: Color,
 }
 
-impl InternalPaint {
-    pub fn convert(paint: &crate::canvas::Paint, xform: Transform) -> Self {
+impl RawPaint {
+    pub fn convert(paint: &Paint, xform: Transform) -> Self {
         if let Some(gradient) = paint.gradient {
             match gradient {
                 Gradient::Linear {
@@ -230,22 +228,17 @@ impl InternalPaint {
                     let dx = ex - sx;
                     let dy = ey - sy;
                     let d = (dx * dx + dy * dy).sqrt();
-                    let (dx, dy) = if d > 0.0001 {
-                        (dx / d, dy / d)
+                    let (im, re) = if d > 0.0001 {
+                        (-dx / d, dy / d)
                     } else {
                         (0.0, 1.0)
                     };
 
-                    let xform = xform
-                        * Transform {
-                            re: dy,
-                            im: -dx,
-                            tx: sx - dx * large,
-                            ty: sy - dy * large,
-                        };
+                    let tx = sx + im * large;
+                    let ty = sy - re * large;
 
                     Self {
-                        xform,
+                        xform: xform * Transform { re, im, tx, ty },
                         extent: [large, large + d * 0.5],
                         radius: 0.0,
                         feather: d.max(1.0),

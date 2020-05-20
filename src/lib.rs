@@ -1,25 +1,21 @@
 #![warn(clippy::all)]
 #![allow(unstable_name_collisions)] // TODO: clamp
 
-mod backend;
 mod cache;
 mod canvas;
 mod math;
 mod paint;
 mod path;
 mod picture;
-mod pipeline;
-mod recorder;
 mod shader;
-mod state;
+mod valloc;
 
 pub use self::{
-    backend::Renderer,
-    canvas::{Canvas, Winding},
+    canvas::Canvas,
     math::{Color, Offset, RRect, Rect, Transform},
     paint::{Gradient, Paint, PaintingStyle, StrokeCap, StrokeJoin},
-    path::Path,
-    pipeline::Target,
+    path::{Path, Winding},
+    picture::{Renderer, Target},
 };
 
 #[doc(hidden)]

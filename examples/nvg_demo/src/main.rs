@@ -6,7 +6,7 @@ mod canvas;
 
 mod time;
 
-use reui::{Target, Offset, Renderer};
+use reui::{Offset, Renderer, Target};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -15,6 +15,9 @@ use winit::{
 
 pub fn main() {
     env_logger::init();
+
+    use std::mem::size_of;
+    let _ = dbg!(size_of::<reui::Paint>());
 
     let event_loop = EventLoop::new();
     let window = winit::window::Window::new(&event_loop).unwrap();

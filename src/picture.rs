@@ -1,9 +1,278 @@
 use crate::{
-    backend::Vertex,
-    cache::Path,
-    paint::{InternalPaint, Uniforms},
+    cache::{CPath, PathCache},
+    canvas::Canvas,
+    paint::{RawPaint, Uniforms},
+    path::Path,
+    shader::Shader,
+    valloc::VecAlloc,
 };
 use std::ops::Range;
+
+const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
+
+macro_rules! stencil_face {
+    ($name:ident, $comp:ident, $fail:ident, $pass:ident) => {
+        const $name: wgpu::StencilStateFaceDescriptor = stencil_face!($comp, $fail, $pass);
+    };
+
+    ($comp:ident, $fail:ident, $pass:ident) => {
+        wgpu::StencilStateFaceDescriptor {
+            compare: wgpu::CompareFunction::$comp,
+            fail_op: wgpu::StencilOperation::$fail,
+            depth_fail_op: wgpu::StencilOperation::$fail,
+            pass_op: wgpu::StencilOperation::$pass,
+        }
+    };
+}
+
+pub struct Target<'a> {
+    pub color: &'a wgpu::TextureView,
+    pub depth: &'a wgpu::TextureView,
+
+    pub width: u32,
+    pub height: u32,
+    pub scale: f32,
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct Vertex {
+    pub pos: [f32; 2],
+    pub uv: [u16; 2],
+}
+
+impl Vertex {
+    #[inline(always)]
+    pub fn new(pos: [f32; 2], uv: [f32; 2]) -> Self {
+        let uv = [(uv[0] * 65535.0) as u16, (uv[1] * 65535.0) as u16];
+        Self { pos, uv }
+    }
+}
+
+pub struct Renderer {
+    pub(crate) recorder: Path,
+    pub(crate) cache: PathCache,
+    pub(crate) picture: Picture,
+
+    dpi: f32,
+
+    bind_group_layout: wgpu::BindGroupLayout,
+
+    convex: wgpu::RenderPipeline,
+    fringes: wgpu::RenderPipeline,
+
+    fill_stencil: wgpu::RenderPipeline,
+    fill_quad: wgpu::RenderPipeline,
+
+    stroke_base: wgpu::RenderPipeline,
+    stroke_stencil: wgpu::RenderPipeline,
+}
+
+impl Renderer {
+    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("VG bind group layout"),
+            bindings: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStage::VERTEX,
+                ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+            }],
+        });
+
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            bind_group_layouts: &[&bind_group_layout],
+        });
+
+        let builder = Builder {
+            format,
+            device,
+            layout,
+
+            base: Shader::base(device).unwrap(),
+            stencil: Shader::stencil(device).unwrap(),
+        };
+
+        stencil_face!(ALWAYS_ZERO, Always, Zero, Zero);
+        stencil_face!(INCR_WRAP, Always, Keep, IncrementWrap);
+        stencil_face!(DECR_WRAP, Always, Keep, DecrementWrap);
+
+        Self {
+            cache: PathCache::new(),
+            recorder: Path::new(),
+            picture: Picture::new(),
+            dpi: 1.0,
+
+            bind_group_layout,
+
+            convex: builder.base(stencil_face!(Always, Keep, Keep)),
+            fringes: builder.base(stencil_face!(Equal, Keep, Keep)),
+
+            fill_stencil: builder.stencil(wgpu::CullMode::None, INCR_WRAP, DECR_WRAP),
+            fill_quad: builder.base(stencil_face!(NotEqual, Zero, Zero)),
+
+            stroke_base: builder.base(stencil_face!(Equal, Keep, IncrementClamp)),
+            stroke_stencil: builder.stencil(wgpu::CullMode::Back, ALWAYS_ZERO, ALWAYS_ZERO),
+        }
+    }
+
+    pub fn begin_frame(&mut self, dpi: f32) -> Canvas {
+        self.picture.clear();
+        self.cache.set_dpi(dpi);
+        self.dpi = dpi;
+        Canvas::new(self)
+    }
+
+    pub fn draw(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        device: &wgpu::Device,
+        target: Target,
+    ) {
+        let picture = &self.picture;
+
+        const UNIFORM: wgpu::BufferUsage = wgpu::BufferUsage::UNIFORM;
+        const VERTEX: wgpu::BufferUsage = wgpu::BufferUsage::VERTEX;
+
+        let (_, vertices) = create_buffer(device, picture.verts.as_ref(), VERTEX);
+        let (_, instances) = create_buffer(device, picture.uniforms.as_ref(), VERTEX);
+
+        let bind_group = {
+            let w = target.width as f32 / target.scale;
+            let h = target.height as f32 / target.scale;
+            let viewport = [w, h, 0.0, 0.0];
+
+            let (len, buffer) = create_buffer(device, &viewport, UNIFORM);
+
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Viewport bind group"),
+                layout: &self.bind_group_layout,
+                bindings: &[wgpu::Binding {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &buffer,
+                        range: 0..len,
+                    },
+                }],
+            })
+        };
+
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                attachment: &target.color,
+                resolve_target: None,
+                load_op: wgpu::LoadOp::Load,
+                store_op: wgpu::StoreOp::Store,
+                clear_color: wgpu::Color::TRANSPARENT,
+            }],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
+                attachment: &target.depth,
+                depth_load_op: wgpu::LoadOp::Load,
+                depth_store_op: wgpu::StoreOp::Store,
+                clear_depth: 0.0,
+                stencil_load_op: wgpu::LoadOp::Load,
+                stencil_store_op: wgpu::StoreOp::Store,
+                clear_stencil: 0,
+            }),
+        });
+
+        rpass.set_stencil_reference(0);
+        rpass.set_bind_group(0, &bind_group, &[]);
+        rpass.set_vertex_buffer(0, &vertices, 0, 0);
+        rpass.set_vertex_buffer(1, &instances, 0, 0);
+
+        for call in picture.calls.iter().cloned() {
+            match call {
+                Call::Convex { idx, path } => {
+                    let paths = &picture.paths[path];
+                    let start = idx;
+                    let end = idx + 1;
+
+                    rpass.set_pipeline(&self.convex);
+                    for path in paths {
+                        rpass.draw(path.fill.clone(), start..end);
+                        rpass.draw(path.stroke.clone(), start..end); // fringes
+                    }
+                }
+                Call::Fill { idx, path, quad } => {
+                    let paths = &picture.paths[path];
+                    let instances = idx..idx + 1;
+
+                    rpass.set_pipeline(&self.fill_stencil);
+                    for path in paths {
+                        rpass.draw(path.fill.clone(), instances.clone());
+                    }
+
+                    let instances = idx + 1..idx + 2;
+
+                    // Draw fringes
+                    rpass.set_pipeline(&self.fringes);
+                    for path in paths {
+                        rpass.draw(path.stroke.clone(), instances.clone());
+                    }
+
+                    // Draw fill
+                    rpass.set_pipeline(&self.fill_quad);
+                    rpass.draw(quad..quad + 4, instances.clone());
+                }
+                Call::Stroke { idx, path } => {
+                    let stroke = &picture.strokes[path];
+                    let instances = idx..idx + 1;
+
+                    // Fill the stroke base without overlap
+                    rpass.set_pipeline(&self.stroke_base);
+                    for path in stroke {
+                        rpass.draw(path.clone(), instances.clone());
+                    }
+
+                    let instances = idx + 1..idx + 2;
+
+                    // Draw anti-aliased pixels.
+                    rpass.set_pipeline(&self.fringes);
+                    for path in stroke {
+                        rpass.draw(path.clone(), instances.clone());
+                    }
+
+                    // Clear stencil buffer
+                    rpass.set_pipeline(&self.stroke_stencil);
+                    for path in stroke {
+                        rpass.draw(path.clone(), instances.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    /*
+    pub fn _begin_path(&mut self) {
+        self.picture.commands.clear();
+        self.cache.clear();
+    }
+
+    pub fn _close_path(&mut self) {
+        self.picture.close_path();
+    }
+
+    pub fn _bezier_to(&mut self, p1: Offset, p2: Offset, p3: Offset) {
+        self.picture.xform = self.states.last().xform;
+        self.picture.bezier_to(p1, p2, p3);
+    }
+
+    pub fn _quad_to(&mut self, p1: Offset, p2: Offset) {
+        self.picture.xform = self.states.last().xform;
+        self.picture.quad_to(p1, p2);
+    }
+
+    pub fn _arc_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, radius: f32) {
+        self.picture.xform = self.states.last().xform;
+        self.picture
+            .arc_to(point2(x1, y1), point2(x2, y2), radius, self.cache.dist_tol);
+    }
+
+    pub fn _arc(&mut self, cx: f32, cy: f32, r: f32, a0: f32, a1: f32, dir: Winding) {
+        self.picture.xform = self.states.last().xform;
+        self.picture.arc(point2(cx, cy), r, a0, a1, dir);
+    }
+    */
+}
 
 #[derive(Clone)]
 pub struct RawPath {
@@ -36,84 +305,6 @@ pub enum Call {
         idx: u32,
         path: Range<u32>,
     },
-}
-
-pub struct VecAlloc<T>(Vec<T>);
-
-impl<T> std::ops::Index<Range<u32>> for VecAlloc<T> {
-    type Output = [T];
-    #[inline]
-    fn index(&self, raw: Range<u32>) -> &Self::Output {
-        &self.0[raw.start as usize..raw.end as usize]
-    }
-}
-
-impl<T> std::ops::IndexMut<Range<u32>> for VecAlloc<T> {
-    #[inline]
-    fn index_mut(&mut self, raw: Range<u32>) -> &mut Self::Output {
-        &mut self.0[raw.start as usize..raw.end as usize]
-    }
-}
-
-impl<T> AsRef<[T]> for VecAlloc<T> {
-    #[inline]
-    fn as_ref(&self) -> &[T] {
-        self.0.as_ref()
-    }
-}
-
-impl<T> VecAlloc<T> {
-    #[inline]
-    fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    #[inline]
-    fn clear(&mut self) {
-        self.0.clear();
-    }
-
-    #[inline]
-    fn push(&mut self, value: T) -> u32 {
-        let start = self.0.len();
-        self.0.push(value);
-        start as u32
-    }
-
-    #[inline]
-    fn alloc_with<F: FnMut() -> T>(&mut self, count: usize, f: F) -> (Range<u32>, &mut [T]) {
-        let start = self.0.len();
-        self.0.resize_with(start + count as usize, f);
-        (
-            start as u32..start as u32 + count as u32,
-            &mut self.0[start..start + count],
-        )
-    }
-
-    #[inline]
-    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) -> Range<u32> {
-        let start = self.0.len() as u32;
-        self.0.extend(iter);
-        let end = self.0.len() as u32;
-        start..end
-    }
-}
-
-impl<T: Default> VecAlloc<T> {
-    #[inline]
-    fn alloc(&mut self, count: usize) -> (Range<u32>, &mut [T]) {
-        self.alloc_with(count, Default::default)
-    }
-}
-
-impl<T: Copy> VecAlloc<T> {
-    #[inline]
-    fn extend_with(&mut self, src: &[T]) -> Range<u32> {
-        let start = self.0.len() as u32;
-        self.0.extend_from_slice(src);
-        let end = self.0.len() as u32;
-        start..end
-    }
 }
 
 pub struct Picture {
@@ -151,13 +342,7 @@ impl Picture {
         self.uniforms.clear();
     }
 
-    pub fn draw_fill(
-        &mut self,
-        paint: InternalPaint,
-        fringe: f32,
-        bounds: [f32; 4],
-        paths: &[Path],
-    ) {
+    pub fn draw_fill(&mut self, paint: RawPaint, fringe: f32, bounds: [f32; 4], paths: &[CPath]) {
         // Bounding box fill quad not needed for convex fill
         let kind = !(paths.len() == 1 && paths[0].convex);
 
@@ -197,10 +382,10 @@ impl Picture {
 
     pub fn draw_stroke(
         &mut self,
-        paint: InternalPaint,
+        paint: RawPaint,
         fringe: f32,
         stroke_width: f32,
-        paths: &[Path],
+        paths: &[CPath],
     ) {
         // Allocate vertices for all the paths.
         let verts = &mut self.verts;
@@ -218,5 +403,127 @@ impl Picture {
         let _ = self.uniforms.push(b);
 
         self.calls.push(Call::Stroke { idx, path })
+    }
+}
+
+#[inline(always)]
+fn cast_slice<T>(data: &[T]) -> &[u8] {
+    use std::{mem::size_of, slice::from_raw_parts};
+    unsafe { from_raw_parts(data.as_ptr() as *const u8, data.len() * size_of::<T>()) }
+}
+
+fn create_buffer<T>(
+    device: &wgpu::Device,
+    data: &[T],
+    usage: wgpu::BufferUsage,
+) -> (u64, wgpu::Buffer) {
+    let data = cast_slice(data);
+    let len = data.len() as wgpu::BufferAddress;
+    (len, device.create_buffer_with_data(&data, usage))
+}
+
+struct Builder<'a> {
+    format: wgpu::TextureFormat,
+    device: &'a wgpu::Device,
+    layout: wgpu::PipelineLayout,
+    base: Shader,
+    stencil: Shader,
+}
+
+impl<'a> Builder<'a> {
+    fn base(&self, stencil: wgpu::StencilStateFaceDescriptor) -> wgpu::RenderPipeline {
+        let (front, back) = (stencil.clone(), stencil);
+        let (write_mask, cull_mode) = (wgpu::ColorWrite::ALL, wgpu::CullMode::Back);
+        self.pipeline(&self.base, write_mask, cull_mode, front, back)
+    }
+
+    fn stencil(
+        &self,
+        cull_mode: wgpu::CullMode,
+        front: wgpu::StencilStateFaceDescriptor,
+        back: wgpu::StencilStateFaceDescriptor,
+    ) -> wgpu::RenderPipeline {
+        let write_mask = wgpu::ColorWrite::empty();
+        self.pipeline(&self.stencil, write_mask, cull_mode, front, back)
+    }
+
+    fn pipeline(
+        &self,
+        shader: &Shader,
+        write_mask: wgpu::ColorWrite,
+        cull_mode: wgpu::CullMode,
+        stencil_front: wgpu::StencilStateFaceDescriptor,
+        stencil_back: wgpu::StencilStateFaceDescriptor,
+    ) -> wgpu::RenderPipeline {
+        let straight_alpha_blend = wgpu::ColorStateDescriptor {
+            format: self.format,
+            write_mask,
+            color_blend: wgpu::BlendDescriptor {
+                src_factor: wgpu::BlendFactor::SrcAlpha,
+                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha_blend: wgpu::BlendDescriptor {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                operation: wgpu::BlendOperation::Add,
+            },
+        };
+
+        let desc = wgpu::RenderPipelineDescriptor {
+            layout: &self.layout,
+            vertex_stage: wgpu::ProgrammableStageDescriptor {
+                module: &shader.vs,
+                entry_point: "main",
+            },
+            fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
+                module: &shader.fs,
+                entry_point: "main",
+            }),
+            rasterization_state: Some(wgpu::RasterizationStateDescriptor {
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode,
+                depth_bias: 0,
+                depth_bias_slope_scale: 0.0,
+                depth_bias_clamp: 0.0,
+            }),
+            primitive_topology: wgpu::PrimitiveTopology::TriangleStrip,
+            color_states: &[straight_alpha_blend],
+            depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                format: DEPTH,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil_front,
+                stencil_back,
+                stencil_read_mask: 0xFF,
+                stencil_write_mask: 0xFF,
+            }),
+            vertex_state: wgpu::VertexStateDescriptor {
+                index_format: wgpu::IndexFormat::Uint16,
+                vertex_buffers: &[
+                    wgpu::VertexBufferDescriptor {
+                        stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+                        step_mode: wgpu::InputStepMode::Vertex,
+                        attributes: &wgpu::vertex_attr_array![0 => Float2, 1 => Ushort2Norm],
+                    },
+                    wgpu::VertexBufferDescriptor {
+                        stride: std::mem::size_of::<Uniforms>() as wgpu::BufferAddress,
+                        step_mode: wgpu::InputStepMode::Instance,
+                        attributes: &wgpu::vertex_attr_array![
+                            2 => Float4,
+                            3 => Uchar4Norm,
+                            4 => Uchar4Norm,
+                            5 => Float4,
+                            6 => Float2
+                        ],
+                    },
+                ],
+            },
+            sample_count: 1,
+            sample_mask: !0,
+            alpha_to_coverage_enabled: false,
+        };
+
+        self.device.create_render_pipeline(&desc)
     }
 }

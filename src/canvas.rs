@@ -1,24 +1,50 @@
-pub use crate::{
-    backend::Renderer,
+use crate::{
     math::{Offset, PartialClamp, RRect, Rect, Transform},
-    paint::{Color, Gradient, Paint, PaintingStyle, StrokeCap, StrokeJoin},
-    path::Path,
-    recorder::PictureRecorder,
+    paint::{Paint, PaintingStyle, RawPaint, StrokeJoin},
+    path::PathCmd,
+    picture::Renderer,
 };
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum Winding {
-    CCW = 1, // Winding for solid shapes
-    CW = 2,  // Winding for holes
+#[derive(Default)]
+struct TransformStack(Transform, Vec<Transform>);
+
+impl TransformStack {
+    #[inline]
+    fn save_count(&mut self) -> usize {
+        self.1.len()
+    }
+
+    #[inline]
+    fn save(&mut self) {
+        self.1.push(self.transform())
+    }
+
+    #[inline]
+    fn restore(&mut self) -> bool {
+        self.1.pop().is_some()
+    }
+
+    #[inline]
+    fn transform(&self) -> Transform {
+        *self.1.last().unwrap_or(&self.0)
+    }
+
+    #[inline]
+    fn pre_transform(&mut self, m: Transform) {
+        *self.1.last_mut().unwrap_or(&mut self.0) *= m;
+    }
 }
 
 pub struct Canvas<'a> {
     ctx: &'a mut Renderer,
+
+    states: TransformStack,
 }
 
 impl<'a> Canvas<'a> {
     pub fn new(ctx: &'a mut Renderer) -> Self {
-        Self { ctx }
+        let states = TransformStack(Transform::default(), Vec::with_capacity(16));
+        Self { ctx, states }
     }
 
     fn fill_or_stroke(&mut self, paint: &Paint, force_stroke: bool) {
@@ -30,16 +56,17 @@ impl<'a> Canvas<'a> {
         }
 
         let cache = &mut self.ctx.cache;
-        let xform = self.ctx.states.transform();
+        let xform = self.states.transform();
+        let commands = self.ctx.recorder.transformed(xform);
 
-        let mut raw_paint = crate::paint::InternalPaint::convert(paint, xform);
+        let mut raw_paint = RawPaint::convert(paint, xform);
 
         if force_stroke || paint.style == PaintingStyle::Stroke {
             let scale = xform.average_scale();
             let mut stroke_width = (paint.width * scale).clamp(0.0, 200.0);
             let fringe = cache.fringe_width;
 
-            if stroke_width < cache.fringe_width {
+            if stroke_width < fringe {
                 // If the stroke width is less than pixel size, use alpha to emulate coverage.
                 // Since coverage is area, scale by alpha*alpha.
                 let alpha = (stroke_width / fringe).clamp(0.0, 1.0);
@@ -48,7 +75,7 @@ impl<'a> Canvas<'a> {
                 stroke_width = cache.fringe_width;
             }
 
-            cache.flatten_paths(self.ctx.recorder.commands());
+            cache.flatten_paths(commands);
             cache.expand_stroke(
                 stroke_width * 0.5,
                 fringe,
@@ -61,7 +88,7 @@ impl<'a> Canvas<'a> {
                 .picture
                 .draw_stroke(raw_paint, fringe, stroke_width, &cache.paths);
         } else {
-            cache.flatten_paths(self.ctx.recorder.commands());
+            cache.flatten_paths(commands);
             cache.expand_fill(cache.fringe_width, StrokeJoin::Miter, 2.4);
 
             self.ctx
@@ -74,12 +101,12 @@ impl<'a> Canvas<'a> {
     /// This means it returns 1 for a clean canvas, and that each call to save and saveLayer increments it,
     /// and that each matching call to restore decrements it. [...]
     pub fn save_count(&mut self) -> usize {
-        self.ctx.states.save_count()
+        self.states.save_count()
     }
 
     /// Saves a copy of the current transform and clip on the save stack. [...]
     pub fn save(&mut self) {
-        self.ctx.states.save();
+        self.states.save();
     }
 
     /// Saves a copy of the current transform and clip on the save stack,
@@ -92,7 +119,7 @@ impl<'a> Canvas<'a> {
 
     /// Pops the current save stack, if there is anything to pop. Otherwise, does nothing. [...]
     pub fn restore(&mut self) {
-        self.ctx.states.restore();
+        self.states.restore();
     }
 
     /// Add a rotation to the current transform. The argument is in radians clockwise.
@@ -114,7 +141,7 @@ impl<'a> Canvas<'a> {
 
     /// Multiply the current transform by the specified 4⨉4 transformation matrix specified as a list of values in column-major order.
     pub fn transform(&mut self, t: Transform) {
-        self.ctx.states.pre_transform(t);
+        self.states.pre_transform(t);
     }
 }
 
@@ -147,9 +174,8 @@ impl<'a> Canvas<'a> {
     /// Whether the circle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_circle(&mut self, c: Offset, radius: f32, paint: Paint) {
         self.ctx.cache.clear();
-        self.ctx.recorder.clear_commands();
-        let xform = self.ctx.states.transform();
-        self.ctx.recorder.circle(c.x, c.y, radius, xform);
+        self.ctx.recorder.clear();
+        self.ctx.recorder.add_circle(c, radius);
         self.fill_or_stroke(&paint, false);
     }
 
@@ -177,10 +203,10 @@ impl<'a> Canvas<'a> {
     /// The line is stroked, the value of the Paint.style is ignored for this call. [...]
     pub fn draw_line(&mut self, p1: Offset, p2: Offset, paint: Paint) {
         self.ctx.cache.clear();
-        self.ctx.recorder.clear_commands();
-        let xform = self.ctx.states.transform();
-        self.ctx.recorder.move_to(p1, xform);
-        self.ctx.recorder.line_to(p2, xform);
+        self.ctx.recorder.clear();
+        let xform = self.states.transform();
+        self.ctx.recorder.move_to(xform.apply(p1));
+        self.ctx.recorder.line_to(xform.apply(p2));
         self.fill_or_stroke(&paint, true);
     }
 
@@ -189,11 +215,11 @@ impl<'a> Canvas<'a> {
             return;
         }
         self.ctx.cache.clear();
-        self.ctx.recorder.clear_commands();
-        let xform = self.ctx.states.transform();
-        self.ctx.recorder.move_to(points[0], xform);
-        for p in points.iter().skip(1) {
-            self.ctx.recorder.line_to(*p, xform);
+
+        self.ctx.recorder.clear();
+        self.ctx.recorder.move_to(points[0]);
+        for &p in &points[1..] {
+            self.ctx.recorder.line_to(p);
         }
         self.fill_or_stroke(&paint, true);
     }
@@ -201,12 +227,9 @@ impl<'a> Canvas<'a> {
     /// Draws an axis-aligned oval that fills the given axis-aligned rectangle with the given Paint.
     /// Whether the oval is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
-        let (cx, cy) = (rect.min.x, rect.min.y);
-        let (rx, ry) = (rect.dx(), rect.dy());
         self.ctx.cache.clear();
-        self.ctx.recorder.clear_commands();
-        let xform = self.ctx.states.transform();
-        self.ctx.recorder.ellipse(cx, cy, rx, ry, xform);
+        self.ctx.recorder.clear();
+        self.ctx.recorder.add_ellipse(rect.min, rect.size());
         self.fill_or_stroke(&paint, false);
     }
 
@@ -221,20 +244,11 @@ impl<'a> Canvas<'a> {
     /// Draws the given Path with the given Paint.
     /// Whether this shape is filled or stroked (or both) is controlled by Paint.style.
     /// If the path is filled, then sub-paths within it are implicitly closed (see Path.close).
-    pub fn draw_path(&mut self, path: &mut [f32], paint: Paint) {
-        let xform = self.ctx.states.transform();
+    pub fn draw_path(&mut self, path: impl AsRef<[PathCmd]>, paint: Paint) {
+        let path = path.as_ref();
         self.ctx.cache.clear();
-        self.ctx.recorder.clear_commands();
-        self.ctx.recorder.extend(path, xform);
-        self.fill_or_stroke(&paint, false);
-    }
-
-    pub fn draw_path_cloned(&mut self, path: &[f32], paint: Paint) {
-        let mut path = path.to_owned();
-        let xform = self.ctx.states.transform();
-        self.ctx.cache.clear();
-        self.ctx.recorder.clear_commands();
-        self.ctx.recorder.extend(&mut path, xform);
+        self.ctx.recorder.clear();
+        self.ctx.recorder.extend(path);
         self.fill_or_stroke(&paint, false);
     }
 
@@ -254,9 +268,8 @@ impl<'a> Canvas<'a> {
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
         self.ctx.cache.clear();
-        self.ctx.recorder.clear_commands();
-        let xform = self.ctx.states.transform();
-        self.ctx.recorder.rect(rect, xform);
+        self.ctx.recorder.clear();
+        self.ctx.recorder.add_rect(rect);
         self.fill_or_stroke(&paint, false);
     }
 
@@ -264,16 +277,8 @@ impl<'a> Canvas<'a> {
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rrect(&mut self, rrect: RRect, paint: Paint) {
         self.ctx.cache.clear();
-        self.ctx.recorder.clear_commands();
-        let xform = self.ctx.states.transform();
-        self.ctx.recorder.rrect_varying(
-            rrect.rect(),
-            rrect.radius.tl,
-            rrect.radius.tr,
-            rrect.radius.br,
-            rrect.radius.bl,
-            xform,
-        );
+        self.ctx.recorder.clear();
+        self.ctx.recorder.add_rrect(rrect);
         self.fill_or_stroke(&paint, false);
     }
 

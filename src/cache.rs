@@ -1,21 +1,12 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::{
-    backend::Vertex,
-    canvas::{StrokeCap, StrokeJoin, Winding},
     math::{Offset, PartialClamp},
+    paint::{StrokeCap, StrokeJoin},
+    path::{PathCmd, Winding},
+    picture::Vertex,
 };
 use std::{f32::consts::PI, slice::from_raw_parts_mut};
-
-const INIT_POINTS_SIZE: usize = 128;
-const INIT_PATHS_SIZE: usize = 16;
-const INIT_VERTS_SIZE: usize = 256;
-
-const MOVETO: i32 = 0;
-const LINETO: i32 = 1;
-const BEZIERTO: i32 = 2;
-const CLOSE: i32 = 3;
-const WINDING: i32 = 4;
 
 #[inline(always)]
 fn normalize(x: &mut f32, y: &mut f32) -> f32 {
@@ -93,7 +84,7 @@ impl PathPoint {
     }
 }
 
-pub struct Path {
+pub struct CPath {
     pub first: usize,
     pub count: usize,
 
@@ -107,7 +98,7 @@ pub struct Path {
     pub convex: bool,
 }
 
-impl Default for Path {
+impl Default for CPath {
     fn default() -> Self {
         Self {
             first: 0,
@@ -122,7 +113,7 @@ impl Default for Path {
     }
 }
 
-impl Path {
+impl CPath {
     fn points<'a>(&self, pts: &'a [PathPoint]) -> &'a [PathPoint] {
         let start = self.first as usize;
         let len = self.count as usize;
@@ -215,7 +206,7 @@ fn fan2strip(i: usize, len: usize) -> usize {
 
 pub struct PathCache {
     points: Vec<PathPoint>,
-    pub paths: Vec<Path>,
+    pub paths: Vec<CPath>,
     verts: Vec<Vertex>,
     pub bounds: [f32; 4],
 
@@ -227,9 +218,9 @@ pub struct PathCache {
 impl Default for PathCache {
     fn default() -> Self {
         Self {
-            points: Vec::with_capacity(INIT_POINTS_SIZE),
-            paths: Vec::with_capacity(INIT_PATHS_SIZE),
-            verts: Vec::with_capacity(INIT_VERTS_SIZE),
+            points: Vec::new(),
+            paths: Vec::new(),
+            verts: Vec::new(),
             bounds: [0.0; 4],
 
             tess_tol: 0.25,
@@ -278,7 +269,7 @@ impl PathCache {
         path.count += 1;
     }
 
-    pub(crate) fn temp_verts(&mut self, count: usize) -> &mut [Vertex] {
+    fn temp_verts(&mut self, count: usize) -> &mut [Vertex] {
         self.verts.resize_with(count, Default::default);
         &mut self.verts[..count]
     }
@@ -350,63 +341,41 @@ impl PathCache {
         }
     }
 
-    pub(crate) fn flatten_paths(&mut self, commands: &[f32]) {
+    pub fn flatten_paths(&mut self, commands: impl IntoIterator<Item = PathCmd>) {
         if !self.paths.is_empty() {
             return;
         }
 
         // Flatten
-        let mut i = 0;
-        while i < commands.len() {
-            let cmd = &commands[i..];
-            let kind = cmd[0] as i32;
-            match kind {
-                MOVETO => {
-                    self.paths.push(Path {
+        for cmd in commands {
+            match cmd {
+                PathCmd::MoveTo(p) => {
+                    self.paths.push(CPath {
                         winding: Winding::CCW,
                         first: self.points.len(),
                         ..Default::default()
                     });
 
-                    let [x, y] = [cmd[1], cmd[2]];
-                    self.add_point(x, y, self.dist_tol, PointFlags::CORNER);
-                    i += 3;
+                    self.add_point(p.x, p.y, self.dist_tol, PointFlags::CORNER);
                 }
-                LINETO => {
-                    let [x, y] = [cmd[1], cmd[2]];
-                    self.add_point(x, y, self.dist_tol, PointFlags::CORNER);
-                    i += 3;
+                PathCmd::LineTo(p) => {
+                    self.add_point(p.x, p.y, self.dist_tol, PointFlags::CORNER);
                 }
-                BEZIERTO => {
+                PathCmd::BezierTo(p1, p2, p3) => {
                     if let Some(last) = self.points.last().map(|p| p.pos) {
-                        self.tesselate_bezier(
-                            last,
-                            [cmd[1], cmd[2]].into(),
-                            [cmd[3], cmd[4]].into(),
-                            [cmd[5], cmd[6]].into(),
-                            PointFlags::CORNER,
-                        );
+                        self.tesselate_bezier(last, p1, p2, p3, PointFlags::CORNER);
                     }
-                    i += 7;
                 }
-                CLOSE => {
+                PathCmd::Close => {
                     if let Some(path) = self.paths.last_mut() {
                         path.closed = true;
                     }
-                    i += 1;
                 }
-                WINDING => {
+                PathCmd::Winding(dir) => {
                     if let Some(path) = self.paths.last_mut() {
-                        path.winding = match cmd[1] as i32 {
-                            1 => Winding::CCW,
-                            2 => Winding::CW,
-                            _ => unreachable!(),
-                        };
+                        path.winding = dir;
                     }
-                    i += 2;
                 }
-                //_ => { i += 1 }
-                _ => unreachable!(),
             }
         }
 
@@ -468,20 +437,20 @@ impl PathCache {
     // ACM SIGGRAPH Computer Graphics. Vol. 21. No. 4. ACM, 1987.
     fn tesselate_bezier(
         &mut self,
+        p0: Offset,
         p1: Offset,
         p2: Offset,
         p3: Offset,
-        p4: Offset,
         kind: PointFlags,
     ) {
         const AFD_ONE: i32 = 1 << 10;
 
         // Power basis.
-        let a = p2 * 3.0 - p1 - p3 * 3.0 + p4;
-        let b = p1 * 3.0 - p2 * 6.0 + p3 * 3.0;
-        let c = p2 * 3.0 - p1 * 3.0;
+        let a = p1 * 3.0 - p0 - p2 * 3.0 + p3;
+        let b = p0 * 3.0 - p1 * 6.0 + p2 * 3.0;
+        let c = p1 * 3.0 - p0 * 3.0;
         // Transform to forward difference basis (stepsize 1)
-        let mut d0 = p1;
+        let mut d0 = p0;
         let mut d1 = a + b + c;
         let mut d2 = a * 6.0 + b * 2.0;
         let mut d3 = a * 6.0;
@@ -765,12 +734,7 @@ struct Verts {
 impl std::ops::Index<usize> for Verts {
     type Output = Vertex;
     fn index(&self, idx: usize) -> &Self::Output {
-        debug_assert!(
-            idx < self.count,
-            "verts index: {}, len: {}",
-            idx,
-            self.count
-        );
+        //debug_assert!(idx < self.count);
         unsafe { &*self.start.add(idx) }
     }
 }

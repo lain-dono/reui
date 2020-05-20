@@ -1,13 +1,179 @@
-use crate::{
-    canvas::Winding,
-    math::{Offset, PartialClamp, RRect, Rect},
-    recorder::{BEZIERTO, CLOSE, LINETO, MOVETO, WINDING},
-};
-use smallvec::{Array, SmallVec};
+use crate::math::{Corners, Offset, PartialClamp, RRect, Rect, Transform};
 use std::f32::consts::PI;
 
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.
 const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
+
+#[derive(Clone, Copy)]
+pub enum PathCmd {
+    MoveTo(Offset),
+    LineTo(Offset),
+    BezierTo(Offset, Offset, Offset),
+    Winding(Winding),
+    Close,
+}
+
+impl PathCmd {
+    pub fn last_point(self) -> Option<Offset> {
+        match self {
+            Self::MoveTo(p) => Some(p),
+            Self::LineTo(p) => Some(p),
+            Self::BezierTo(_, _, p) => Some(p),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn transform(self, t: Transform) -> Self {
+        match self {
+            Self::MoveTo(p) => Self::MoveTo(t.apply(p)),
+            Self::LineTo(p) => Self::LineTo(t.apply(p)),
+            Self::BezierTo(p1, p2, p3) => Self::BezierTo(t.apply(p1), t.apply(p2), t.apply(p3)),
+            Self::Winding(dir) => Self::Winding(dir),
+            Self::Close => Self::Close,
+        }
+    }
+
+    #[inline]
+    pub fn move_to(x: f32, y: f32) -> Self {
+        Self::MoveTo(Offset { x, y })
+    }
+
+    #[inline]
+    pub fn line_to(x: f32, y: f32) -> Self {
+        Self::LineTo(Offset { x, y })
+    }
+
+    #[inline]
+    pub fn bezier_to(x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) -> Self {
+        Self::BezierTo(
+            Offset { x: x1, y: y1 },
+            Offset { x: x2, y: y2 },
+            Offset { x: x3, y: y3 },
+        )
+    }
+
+    #[inline]
+    pub fn quad_to(p0: Offset, c: Offset, p1: Offset) -> Self {
+        const FIX: f32 = 2.0 / 3.0;
+        Self::BezierTo(p0 + (c - p0) * FIX, p1 + (c - p1) * FIX, p1)
+    }
+
+    #[inline]
+    pub fn rect(Rect { min, max }: Rect) -> [Self; 5] {
+        [
+            Self::move_to(min.x, min.y),
+            Self::line_to(min.x, max.y),
+            Self::line_to(max.x, max.y),
+            Self::line_to(max.x, min.y),
+            Self::Close,
+        ]
+    }
+
+    #[inline]
+    pub fn rrect(rect: Rect, radius: Corners) -> [Self; 10] {
+        let (w, h) = rect.size().into();
+        let Rect { min, max } = rect;
+        let halfw = w.abs() * 0.5;
+        let halfh = h.abs() * 0.5;
+        let sign = if w < 0.0 { -1.0 } else { 1.0 };
+        let rx_bl = sign * halfw.min(radius.bl);
+        let ry_bl = sign * halfh.min(radius.bl);
+        let rx_br = sign * halfw.min(radius.br);
+        let ry_br = sign * halfh.min(radius.br);
+        let rx_tr = sign * halfw.min(radius.tr);
+        let ry_tr = sign * halfh.min(radius.tr);
+        let rx_tl = sign * halfw.min(radius.tl);
+        let ry_tl = sign * halfh.min(radius.tl);
+        let kappa = 1.0 - KAPPA90;
+        [
+            Self::move_to(min.x, min.y + ry_tl),
+            Self::line_to(min.x, max.y - ry_bl),
+            Self::bezier_to(
+                min.x,
+                max.y - ry_bl * kappa,
+                min.x + rx_bl * kappa,
+                max.y,
+                min.x + rx_bl,
+                max.y,
+            ),
+            Self::line_to(max.x - rx_br, max.y),
+            Self::bezier_to(
+                max.x - rx_br * kappa,
+                max.y,
+                max.x,
+                max.y - ry_br * kappa,
+                max.x,
+                max.y - ry_br,
+            ),
+            Self::line_to(max.x, min.y + ry_tr),
+            Self::bezier_to(
+                max.x,
+                min.y + ry_tr * kappa,
+                max.x - rx_tr * kappa,
+                min.y,
+                max.x - rx_tr,
+                min.y,
+            ),
+            Self::line_to(min.x + rx_tl, min.y),
+            Self::bezier_to(
+                min.x + rx_tl * kappa,
+                min.y,
+                min.x,
+                min.y + ry_tl * kappa,
+                min.x,
+                min.y + ry_tl,
+            ),
+            Self::Close,
+        ]
+    }
+
+    #[inline]
+    pub fn ellipse(cx: f32, cy: f32, rx: f32, ry: f32) -> [Self; 6] {
+        [
+            Self::move_to(cx - rx, cy),
+            Self::bezier_to(
+                cx - rx,
+                cy + ry * KAPPA90,
+                cx - rx * KAPPA90,
+                cy + ry,
+                cx,
+                cy + ry,
+            ),
+            Self::bezier_to(
+                cx + rx * KAPPA90,
+                cy + ry,
+                cx + rx,
+                cy + ry * KAPPA90,
+                cx + rx,
+                cy,
+            ),
+            Self::bezier_to(
+                cx + rx,
+                cy - ry * KAPPA90,
+                cx + rx * KAPPA90,
+                cy - ry,
+                cx,
+                cy - ry,
+            ),
+            Self::bezier_to(
+                cx - rx * KAPPA90,
+                cy - ry,
+                cx - rx,
+                cy - ry * KAPPA90,
+                cx - rx,
+                cy,
+            ),
+            Self::Close,
+        ]
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum Winding {
+    CCW = 1, // Winding for solid shapes
+    CW = 2,  // Winding for holes
+}
 
 pub enum PathFillType {
     NonZero = 0,
@@ -15,40 +181,36 @@ pub enum PathFillType {
 }
 
 #[derive(Default)]
-pub struct Path<A: Array<Item = f32>> {
-    current: [f32; 2],
-    commands: SmallVec<A>,
+pub struct Path {
+    commands: Vec<PathCmd>,
 }
 
-impl<A: Array<Item = f32>> std::ops::Deref for Path<A> {
-    type Target = [f32];
-    fn deref(&self) -> &[f32] {
-        &self.commands[..]
+impl AsRef<[PathCmd]> for Path {
+    fn as_ref(&self) -> &[PathCmd] {
+        &self.commands
     }
 }
 
-impl<A: Array<Item = f32>> std::ops::DerefMut for Path<A> {
-    fn deref_mut(&mut self) -> &mut [f32] {
-        &mut self.commands[..]
-    }
-}
-
-impl<A: Array<Item = f32>> Path<A> {
+impl Path {
     pub fn new() -> Self {
-        Self {
-            commands: SmallVec::new(),
-            current: [0.0, 0.0],
-        }
+        let commands = Vec::new();
+        Self { commands }
     }
 
     pub fn clear(&mut self) {
         self.commands.clear();
-        self.current = [0.0, 0.0];
+    }
+
+    pub fn transformed(&mut self, t: Transform) -> impl Iterator<Item = PathCmd> + '_ {
+        self.commands.iter_mut().map(move |c| c.transform(t))
+    }
+
+    pub fn extend(&mut self, commands: &[PathCmd]) {
+        self.commands.extend(commands);
     }
 
     pub fn path_winding(&mut self, dir: Winding) {
-        self.commands
-            .extend_from_slice(&[WINDING as f32, dir as i32 as f32]);
+        self.commands.push(PathCmd::Winding(dir));
     }
 
     pub fn set_fill_type(&mut self, _fill_type: PathFillType) {
@@ -58,13 +220,13 @@ impl<A: Array<Item = f32>> Path<A> {
 
     pub fn bezier_to(&mut self, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) {
         self.commands
-            .extend_from_slice(&[BEZIERTO as f32, c1x, c1y, c2x, c2y, x, y]);
+            .push(PathCmd::bezier_to(c1x, c1y, c2x, c2y, x, y));
     }
 
     /// Closes the last sub-path,
     /// as if a straight line had been drawn from the current point to the first point of the sub-path.
     pub fn close(&mut self) {
-        self.commands.extend_from_slice(&[CLOSE as f32]);
+        self.commands.push(PathCmd::Close);
     }
 
     /*
@@ -81,44 +243,17 @@ impl<A: Array<Item = f32>> Path<A> {
         let [cx, cy] = [oval.min.x, oval.min.y];
         //let Offset { x: cx, y: cy } = oval.center();
         let Offset { x: rx, y: ry } = oval.size();
-        self.commands.extend_from_slice(&[
-            MOVETO as f32,
-            cx - rx,
-            cy,
-            BEZIERTO as f32,
-            cx - rx,
-            cy + ry * KAPPA90,
-            cx - rx * KAPPA90,
-            cy + ry,
-            cx,
-            cy + ry,
-            BEZIERTO as f32,
-            cx + rx * KAPPA90,
-            cy + ry,
-            cx + rx,
-            cy + ry * KAPPA90,
-            cx + rx,
-            cy,
-            BEZIERTO as f32,
-            cx + rx,
-            cy - ry * KAPPA90,
-            cx + rx * KAPPA90,
-            cy - ry,
-            cx,
-            cy - ry,
-            BEZIERTO as f32,
-            cx - rx * KAPPA90,
-            cy - ry,
-            cx - rx,
-            cy - ry * KAPPA90,
-            cx - rx,
-            cy,
-            CLOSE as f32,
-        ]);
+
+        self.commands.extend(&PathCmd::ellipse(cx, cy, rx, ry));
+    }
+
+    pub fn add_ellipse(&mut self, center: Offset, radius: Offset) {
+        self.commands
+            .extend(&PathCmd::ellipse(center.x, center.y, radius.x, radius.y));
     }
 
     pub fn add_circle(&mut self, c: Offset, r: f32) {
-        self.add_oval(Rect::from_ltwh(c.x, c.y, r, r));
+        self.commands.extend(&PathCmd::ellipse(c.x, c.y, r, r));
     }
 
     /*
@@ -130,87 +265,15 @@ impl<A: Array<Item = f32>> Path<A> {
 
     /// Adds a new sub-path that consists of four lines that outline the given rectangle.
     pub fn add_rect(&mut self, rect: Rect) {
-        self.commands.extend_from_slice(&[
-            MOVETO as f32,
-            rect.min.x,
-            rect.min.y,
-            LINETO as f32,
-            rect.min.x,
-            rect.max.y,
-            LINETO as f32,
-            rect.max.x,
-            rect.max.y,
-            LINETO as f32,
-            rect.max.x,
-            rect.min.y,
-            CLOSE as f32,
-        ]);
+        self.commands.extend(&PathCmd::rect(rect));
     }
+
     /// Adds a new sub-path that consists of the straight lines and curves needed to form the rounded rectangle described by the argument.
     pub fn add_rrect(&mut self, RRect { rect, radius }: RRect) {
         if radius.tl < 0.1 && radius.tr < 0.1 && radius.br < 0.1 && radius.bl < 0.1 {
             self.add_rect(rect);
         } else {
-            let (w, h) = rect.size().into();
-            let Rect { min, max } = rect;
-            let halfw = w.abs() * 0.5;
-            let halfh = h.abs() * 0.5;
-            let sign = w.signum();
-            let rx_bl = sign * halfw.min(radius.bl);
-            let ry_bl = sign * halfh.min(radius.bl);
-            let rx_br = sign * halfw.min(radius.br);
-            let ry_br = sign * halfh.min(radius.br);
-            let rx_tr = sign * halfw.min(radius.tr);
-            let ry_tr = sign * halfh.min(radius.tr);
-            let rx_tl = sign * halfw.min(radius.tl);
-            let ry_tl = sign * halfh.min(radius.tl);
-            let kappa = 1.0 - KAPPA90;
-            self.commands.extend_from_slice(&[
-                MOVETO as f32,
-                min.x,
-                min.y + ry_tl,
-                LINETO as f32,
-                min.x,
-                max.y - ry_bl,
-                BEZIERTO as f32,
-                min.x,
-                max.y - ry_bl * kappa,
-                min.x + rx_bl * kappa,
-                max.y,
-                min.x + rx_bl,
-                max.y,
-                LINETO as f32,
-                max.x - rx_br,
-                max.y,
-                BEZIERTO as f32,
-                max.x - rx_br * kappa,
-                max.y,
-                max.x,
-                max.y - ry_br * kappa,
-                max.x,
-                max.y - ry_br,
-                LINETO as f32,
-                max.x,
-                min.y + ry_tr,
-                BEZIERTO as f32,
-                max.x,
-                min.y + ry_tr * kappa,
-                max.x - rx_tr * kappa,
-                min.y,
-                max.x - rx_tr,
-                min.y,
-                LINETO as f32,
-                min.x + rx_tl,
-                min.y,
-                BEZIERTO as f32,
-                min.x + rx_tl * kappa,
-                min.y,
-                min.x,
-                min.y + ry_tl * kappa,
-                min.x,
-                min.y + ry_tl,
-                CLOSE as f32,
-            ]);
+            self.commands.extend(&PathCmd::rrect(rect, radius));
         }
     }
 
@@ -238,20 +301,12 @@ impl<A: Array<Item = f32>> Path<A> {
     */
 
     /// Starts a new sub-path at the given coordinate.
-    pub fn move_to(&mut self, x: f32, y: f32) {
-        self.commands.extend_from_slice(&[MOVETO as f32, x, y]);
-    }
-    /// Starts a new sub-path at the given offset from the current point.
-    pub fn relative_move_to(&mut self, dx: f32, dy: f32) {
-        self.move_to(self.current[0] + dx, self.current[1] + dy);
+    pub fn move_to(&mut self, p: Offset) {
+        self.commands.push(PathCmd::MoveTo(p));
     }
     /// Adds a straight line segment from the current point to the given point.
-    pub fn line_to(&mut self, x: f32, y: f32) {
-        self.commands.extend_from_slice(&[LINETO as f32, x, y]);
-    }
-    /// Adds a straight line segment from the current point to the point at the given offset from the current point.
-    pub fn relative_line_to(&mut self, dx: f32, dy: f32) {
-        self.line_to(self.current[0] + dx, self.current[1] + dy);
+    pub fn line_to(&mut self, p: Offset) {
+        self.commands.push(PathCmd::LineTo(p));
     }
 
     /*
@@ -278,14 +333,8 @@ impl<A: Array<Item = f32>> Path<A> {
     */
 }
 
-impl<A: Array<Item = f32>> Path<A> {
+impl Path {
     pub fn arc(&mut self, cx: f32, cy: f32, r: f32, a0: f32, a1: f32, dir: Winding) {
-        let mov = if !self.commands.is_empty() {
-            LINETO
-        } else {
-            MOVETO
-        };
-
         // Clamp angles
         let mut da = a1 - a0;
         if dir == Winding::CW {
@@ -310,7 +359,7 @@ impl<A: Array<Item = f32>> Path<A> {
         let kappa = (4.0 / 3.0 * (1.0 - hda.cos()) / hda.sin()).abs();
         let kappa = if dir == Winding::CCW { -kappa } else { kappa };
 
-        let mut vals = [0f32; 3 + 5 * 7];
+        let mut vals = [PathCmd::Close; 1 + 5];
         let mut nvals = 0;
         let (mut px, mut py, mut ptanx, mut ptany) = (0.0, 0.0, 0.0, 0.0);
         for i in 0..=ndivs {
@@ -323,19 +372,15 @@ impl<A: Array<Item = f32>> Path<A> {
             let tany = dx * r * kappa;
 
             if i == 0 {
-                vals[nvals] = mov as f32;
-                vals[nvals + 1] = x;
-                vals[nvals + 2] = y;
-                nvals += 3;
+                vals[nvals] = if !self.commands.is_empty() {
+                    PathCmd::line_to(x, y)
+                } else {
+                    PathCmd::move_to(x, y)
+                };
+                nvals += 1;
             } else {
-                vals[nvals] = BEZIERTO as f32;
-                vals[nvals + 1] = px + ptanx;
-                vals[nvals + 2] = py + ptany;
-                vals[nvals + 3] = x - tanx;
-                vals[nvals + 4] = y - tany;
-                vals[nvals + 5] = x;
-                vals[nvals + 6] = y;
-                nvals += 7;
+                vals[nvals] = PathCmd::bezier_to(px + ptanx, py + ptany, x - tanx, y - tany, x, y);
+                nvals += 1;
             }
             px = x;
             py = y;
@@ -343,6 +388,6 @@ impl<A: Array<Item = f32>> Path<A> {
             ptany = tany;
         }
 
-        self.commands.extend_from_slice(&vals[..nvals]);
+        self.commands.extend(&vals[..nvals]);
     }
 }

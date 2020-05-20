@@ -194,12 +194,12 @@ pub fn draw_window(ctx: &mut Canvas, rr: Rect) {
     ctx.draw_rrect(rrect, Paint::fill(Color::hex(0xC0_1C1E22)));
 
     // Drop shadow
-    let mut path: Path<[_; 128]> = Path::new();
+    let mut path = Path::new();
     path.add_rect(Rect::from_ltwh(x - 10.0, y - 10.0, w + 20.0, h + 20.0));
     path.add_rrect(rrect);
     path.path_winding(Winding::CW);
     ctx.draw_path(
-        &mut path,
+        &path,
         Paint::box_gradient(
             Rect::from_ltwh(x, y + 2.0, rr.dx(), rr.dy()),
             corner_radius * 2.0,
@@ -433,8 +433,8 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
     }
 
     // Graph background
-    let mut path: Path<[_; 128]> = Path::new();
-    path.move_to(sx[0], sy[0]);
+    let mut path = Path::new();
+    path.move_to((sx[0], sy[0]).into());
     for i in 1..6 {
         path.bezier_to(
             sx[i - 1] + dx * 0.5,
@@ -445,10 +445,10 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
             sy[i],
         );
     }
-    path.line_to(x + w, y + h);
-    path.line_to(x, y + h);
+    path.line_to((x + w, y + h).into());
+    path.line_to((x, y + h).into());
     ctx.draw_path(
-        &mut path,
+        &path,
         Paint::linear_gradient(
             [x, y],
             [x, y + h],
@@ -459,7 +459,7 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
 
     // Graph line
     path.clear();
-    path.move_to(sx[0], sy[0] + 2.0);
+    path.move_to((sx[0], sy[0] + 2.0).into());
     for i in 1..6 {
         path.bezier_to(
             sx[i - 1] + dx * 0.5,
@@ -471,12 +471,12 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
         );
     }
     ctx.draw_path(
-        &mut path,
+        &path,
         Paint::stroke(Color::hex(0x20_000000)).stroke_width(3.0),
     );
 
     path.clear();
-    path.move_to(sx[0], sy[0]);
+    path.move_to((sx[0], sy[0]).into());
     for i in 1..6 {
         path.bezier_to(
             sx[i - 1] + dx * 0.5,
@@ -488,7 +488,7 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
         );
     }
     ctx.draw_path(
-        &mut path,
+        &path,
         Paint::stroke(Color::hex(0xFF_00A0C0)).stroke_width(3.0),
     );
 
@@ -571,20 +571,20 @@ pub fn draw_lines(ctx: &mut Canvas, x: f32, y: f32, w: f32, _h: f32, t: f32) {
         (-t * 0.3).sin() * size * 0.5,
     ];
 
-    let mut path: Path<[_; 128]> = Path::new();
+    let mut path = Path::new();
     for (i, &cap) in caps.iter().enumerate() {
         for (j, &join) in joins.iter().enumerate() {
             let fx = x + size * 0.5 + ((i * 3 + j) as f32) / 9.0 * w + pad;
             let fy = y - size * 0.5 + pad;
 
             path.clear();
-            path.move_to(fx + pts[0], fy + pts[1]);
-            path.line_to(fx + pts[2], fy + pts[3]);
-            path.line_to(fx + pts[4], fy + pts[5]);
-            path.line_to(fx + pts[6], fy + pts[7]);
+            path.move_to((fx + pts[0], fy + pts[1]).into());
+            path.line_to((fx + pts[2], fy + pts[3]).into());
+            path.line_to((fx + pts[4], fy + pts[5]).into());
+            path.line_to((fx + pts[6], fy + pts[7]).into());
 
             ctx.draw_path(
-                &mut path,
+                &path,
                 Paint::stroke(Color::hex(0xA0_000000))
                     .stroke_width(size * 0.3)
                     .stroke_cap(cap)
@@ -592,7 +592,7 @@ pub fn draw_lines(ctx: &mut Canvas, x: f32, y: f32, w: f32, _h: f32, t: f32) {
             );
 
             ctx.draw_path(
-                &mut path,
+                &path,
                 Paint::stroke(Color::hex(0xFF_00C0FF))
                     .stroke_width(1.0)
                     .stroke_cap(StrokeCap::Butt)
@@ -658,7 +658,7 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, x: f32, y: f32, w: f32, h: f32) {
     );
 
     // Knob Shadow
-    let mut path: Path<[_; 128]> = Path::new();
+    let mut path = Path::new();
     path.add_rect(Rect::from_ltwh(
         x + (pos * w).floor() - kr - 5.0,
         cy - kr - 5.0,
@@ -668,7 +668,7 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, x: f32, y: f32, w: f32, h: f32) {
     path.add_circle([x + (pos * w).floor(), cy].into(), kr);
     path.path_winding(Winding::CW);
     ctx.draw_path(
-        &mut path,
+        &path,
         Paint::radial_gradient(
             [x + (pos * w).floor(), cy + 1.0],
             kr - 3.0,
@@ -702,7 +702,7 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     let r0 = r1 - 20.0;
     let aeps = 0.5 / r1; // half a pixel arc length in radians (2pi cancels out).
 
-    let mut path: Path<[_; 128]> = Path::new();
+    let mut path = Path::new();
     for i in 0..6 {
         let a0 = (i as f32) / 6.0 * PI * 2.0 - aeps;
         let a1 = ((i as f32) + 1.0) / 6.0 * PI * 2.0 + aeps;
@@ -720,13 +720,13 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
         let outer_color = Color::hsla(a1 / (PI * 2.0), 1.0, 0.55, 1.0);
 
         let paint = Paint::linear_gradient([ax, ay], [bx, by], inner_color, outer_color);
-        ctx.draw_path(&mut path, paint);
+        ctx.draw_path(&path, paint);
     }
 
     path.clear();
     path.add_circle([cx, cy].into(), r0 - 0.5);
     path.add_circle([cx, cy].into(), r1 + 0.5);
-    ctx.draw_path(&mut path, Paint::stroke(Color::hex(0x40_000000)));
+    ctx.draw_path(&path, Paint::stroke(Color::hex(0x40_000000)));
 
     // Selector
     ctx.save();
@@ -753,7 +753,7 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     ));
     path.add_rect(Rect::from_ltwh(r0 - 2.0, -4.0, r1 - r0 + 4.0, 8.0));
     path.path_winding(Winding::CW);
-    ctx.draw_path(&mut path, paint);
+    ctx.draw_path(&path, paint);
 
     // Center triangle
     let radius = r0 - 6.0;
@@ -763,22 +763,22 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     let by = (-120.0 / 180.0 * PI).sin() * radius;
 
     path.clear();
-    path.move_to(radius, 0.0);
-    path.line_to(ax, ay);
-    path.line_to(bx, by);
+    path.move_to((radius, 0.0).into());
+    path.line_to((ax, ay).into());
+    path.line_to((bx, by).into());
     path.close();
 
     let inner_color = Color::hsla(hue, 1.0, 0.5, 1.0);
     let paint = Paint::linear_gradient([radius, 0.0], [ax, ay], inner_color, Color::WHITE);
 
-    ctx.draw_path_cloned(&path, paint);
+    ctx.draw_path(&path, paint);
 
     let from = [(radius + ax) * 0.5, (0.0 + ay) * 0.5];
     let paint = Paint::linear_gradient(from, [bx, by], Color::TRANSPARENT, Color::BLACK);
-    ctx.draw_path_cloned(&path, paint);
+    ctx.draw_path(&path, paint);
 
     let paint = Paint::stroke(Color::hex(0x40_000000)).stroke_width(2.0);
-    ctx.draw_path(&mut path, paint);
+    ctx.draw_path(&path, paint);
 
     // Select circle on triangle
     let ax = (120.0 / 180.0 * PI).cos() * radius * 0.3;
@@ -797,7 +797,7 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     path.add_rect(Rect::from_ltwh(ax - 20.0, ay - 20.0, 40.0, 40.0));
     path.add_circle([ax, ay].into(), 7.0);
     path.path_winding(Winding::CW);
-    ctx.draw_path(&mut path, paint);
+    ctx.draw_path(&path, paint);
 
     ctx.restore();
 }

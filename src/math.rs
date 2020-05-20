@@ -121,8 +121,10 @@ impl Color {
         let green = channel(hue, m1, m2);
         let blue = channel(hue - 1.0 / 3.0, m1, m2);
 
-        let color = Srgb::new(red, green, blue);
-        Self::from_srgba(Srgba { color, alpha })
+        //let color = Srgb::new(red, green, blue);
+        //Self::from_srgba(Srgba { color, alpha })
+        let color = palette::LinSrgb::new(red, green, blue);
+        Self::from_linear(LinSrgba { color, alpha })
     }
 }
 
@@ -503,11 +505,11 @@ impl Transform {
     }
 
     #[inline]
-    pub fn apply(&self, [x, y]: [f32; 2]) -> [f32; 2] {
-        [
-            self.re * x - self.im * y + self.tx,
-            self.im * x + self.re * y + self.ty,
-        ]
+    pub fn apply(&self, Offset { x, y }: Offset) -> Offset {
+        Offset {
+            x: self.re * x - self.im * y + self.tx,
+            y: self.im * x + self.re * y + self.ty,
+        }
     }
 
     #[inline]

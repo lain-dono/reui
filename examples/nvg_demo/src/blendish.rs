@@ -129,12 +129,9 @@ pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
         ctx.draw_rect(rect, Paint::fill(Color::hex(0xFF_CC0000)));
 
         let tr = Transform::rotation(time);
-        let pos = tr.apply([20.0, 0.0]);
+        let pos = tr.apply(Offset::new(20.0, 0.0));
 
-        ctx.draw_rect(
-            rect.translate(pos.into()),
-            Paint::fill(Color::hex(0x99_CC0000)),
-        );
+        ctx.draw_rect(rect.translate(pos), Paint::fill(Color::hex(0x99_CC0000)));
     }
 }
 
