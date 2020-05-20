@@ -1,8 +1,8 @@
 use crate::{
     math::{Offset, PartialClamp, RRect, Rect, Transform},
-    paint::{Paint, PaintingStyle, RawPaint, StrokeJoin},
+    paint::{Paint, PaintingStyle, RawPaint, StrokeJoin, Uniforms},
     path::PathCmd,
-    picture::Renderer,
+    picture::{Call, Renderer, Vertex},
 };
 
 #[derive(Default)]
@@ -37,7 +37,6 @@ impl TransformStack {
 
 pub struct Canvas<'a> {
     ctx: &'a mut Renderer,
-
     states: TransformStack,
 }
 
@@ -57,7 +56,8 @@ impl<'a> Canvas<'a> {
 
         let cache = &mut self.ctx.cache;
         let xform = self.states.transform();
-        let commands = self.ctx.recorder.transformed(xform);
+        let commands = self.ctx.recorder.transform(xform);
+        let pic = &mut self.ctx.picture;
 
         let mut raw_paint = RawPaint::convert(paint, xform);
 
@@ -84,16 +84,64 @@ impl<'a> Canvas<'a> {
                 paint.miter,
             );
 
-            self.ctx
-                .picture
-                .draw_stroke(raw_paint, fringe, stroke_width, &cache.paths);
+            // Allocate vertices for all the paths.
+            let verts = &mut pic.verts;
+            let iter = cache
+                .paths
+                .iter()
+                .filter_map(|path| path.stroke.as_ref().map(|src| verts.extend_with(src)));
+
+            let path = pic.strokes.extend(iter);
+
+            // Fill shader
+            let a = Uniforms::fill(&raw_paint, stroke_width, fringe, 1.0 - 0.5 / 255.0);
+            let b = Uniforms::fill(&raw_paint, stroke_width, fringe, -1.0);
+
+            let idx = pic.uniforms.push(a);
+            let _ = pic.uniforms.push(b);
+
+            pic.calls.push(Call::Stroke { idx, path })
         } else {
             cache.flatten_paths(commands);
             cache.expand_fill(cache.fringe_width, StrokeJoin::Miter, 2.4);
+            let fringe = cache.fringe_width;
+            let paths = &cache.paths;
 
-            self.ctx
-                .picture
-                .draw_fill(raw_paint, cache.fringe_width, cache.bounds, &cache.paths);
+            // Bounding box fill quad not needed for convex fill
+            let kind = !(paths.len() == 1 && paths[0].convex);
+
+            // Allocate vertices for all the paths.
+            let (path, path_dst) = pic.paths.alloc(paths.len());
+            for (src, dst) in paths.iter().zip(path_dst.iter_mut()) {
+                if let Some(src) = &src.fill {
+                    dst.fill = pic.verts.extend_with(src);
+                }
+                if let Some(src) = &src.stroke {
+                    dst.stroke = pic.verts.extend_with(src);
+                }
+            }
+
+            // Setup uniforms for draw calls
+            if kind {
+                let quad = pic.verts.extend_with(&[
+                    Vertex::new([cache.bounds[2], cache.bounds[3]], [0.5, 1.0]),
+                    Vertex::new([cache.bounds[2], cache.bounds[1]], [0.5, 1.0]),
+                    Vertex::new([cache.bounds[0], cache.bounds[3]], [0.5, 1.0]),
+                    Vertex::new([cache.bounds[0], cache.bounds[1]], [0.5, 1.0]),
+                ]);
+
+                let uniform = Uniforms::fill(&raw_paint, fringe, fringe, -1.0);
+
+                let idx = pic.uniforms.push(Default::default());
+                let _ = pic.uniforms.push(uniform);
+
+                let quad = quad.start;
+                pic.calls.push(Call::Fill { idx, path, quad })
+            } else {
+                let uniform = Uniforms::fill(&raw_paint, fringe, fringe, -1.0);
+                let idx = pic.uniforms.push(uniform);
+                pic.calls.push(Call::Convex { idx, path })
+            };
         }
     }
 
@@ -229,7 +277,7 @@ impl<'a> Canvas<'a> {
     pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
         self.ctx.cache.clear();
         self.ctx.recorder.clear();
-        self.ctx.recorder.add_ellipse(rect.min, rect.size());
+        self.ctx.recorder.add_oval(rect);
         self.fill_or_stroke(&paint, false);
     }
 
@@ -248,7 +296,7 @@ impl<'a> Canvas<'a> {
         let path = path.as_ref();
         self.ctx.cache.clear();
         self.ctx.recorder.clear();
-        self.ctx.recorder.extend(path);
+        self.ctx.recorder.extend(path.iter().copied());
         self.fill_or_stroke(&paint, false);
     }
 

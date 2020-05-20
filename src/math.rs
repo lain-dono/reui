@@ -296,6 +296,13 @@ impl Rect {
     }
 
     #[inline]
+    pub fn from_oval(cx: f32, cy: f32, rx: f32, ry: f32) -> Self {
+        let center = Offset::new(cx, cy);
+        let pad = Offset::new(rx, ry);
+        Self::new(center - pad, center + pad)
+    }
+
+    #[inline]
     pub fn from_ltwh(left: f32, top: f32, width: f32, height: f32) -> Self {
         Self::from_ltrb(left, top, left + width, top + height)
     }

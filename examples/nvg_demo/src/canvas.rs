@@ -335,8 +335,7 @@ pub fn draw_eyes(ctx: &mut Canvas, rr: Rect, mouse: Offset, time: f32) {
 
     let (mx, my) = mouse.into();
 
-    let ex = w * 0.23;
-    let ey = h * 0.5;
+    let [ex, ey] = [w * 0.23, h * 0.5];
     let lx = x + ex;
     let ly = y + ey;
     let rx = x + w - ex;
@@ -350,8 +349,8 @@ pub fn draw_eyes(ctx: &mut Canvas, rr: Rect, mouse: Offset, time: f32) {
         Color::hex(0x20_000000),
         Color::hex(0x10_000000),
     );
-    ctx.draw_oval(Rect::from_ltwh(lx + 3.0, ly + 16.0, ex, ey), bg);
-    ctx.draw_oval(Rect::from_ltwh(rx + 3.0, ry + 16.0, ex, ey), bg);
+    ctx.draw_oval(Rect::from_oval(lx + 3.0, ly + 16.0, ex, ey), bg);
+    ctx.draw_oval(Rect::from_oval(rx + 3.0, ry + 16.0, ex, ey), bg);
 
     let bg = Paint::linear_gradient(
         [x, y + h * 0.25],
@@ -359,8 +358,10 @@ pub fn draw_eyes(ctx: &mut Canvas, rr: Rect, mouse: Offset, time: f32) {
         Color::hex(0xFF_DCDCDC),
         Color::hex(0xFF_808080),
     );
-    ctx.draw_oval(Rect::from_ltwh(lx, ly, ex, ey), bg);
-    ctx.draw_oval(Rect::from_ltwh(rx, ry, ex, ey), bg);
+    ctx.draw_oval(Rect::from_oval(lx, ly, ex, ey), bg);
+    ctx.draw_oval(Rect::from_oval(rx, ry, ex, ey), bg);
+
+    let eye_paint = Paint::fill(Color::hex(0xFF_202020));
 
     let mut dx = (mx - rx) / (ex * 10.0);
     let mut dy = (my - ry) / (ey * 10.0);
@@ -372,8 +373,8 @@ pub fn draw_eyes(ctx: &mut Canvas, rr: Rect, mouse: Offset, time: f32) {
     dx *= ex * 0.4;
     dy *= ey * 0.5;
     ctx.draw_oval(
-        Rect::from_ltwh(lx + dx, ly + dy + ey * 0.25 * (1.0 - blink), br, br * blink),
-        Paint::fill(Color::hex(0xFF_202020)),
+        Rect::from_oval(lx + dx, ly + dy + ey * 0.25 * (1.0 - blink), br, br * blink),
+        eye_paint,
     );
 
     let mut dx = (mx - rx) / (ex * 10.0);
@@ -386,30 +387,26 @@ pub fn draw_eyes(ctx: &mut Canvas, rr: Rect, mouse: Offset, time: f32) {
     dx *= ex * 0.4;
     dy *= ey * 0.5;
     ctx.draw_oval(
-        Rect::from_ltwh(rx + dx, ry + dy + ey * 0.25 * (1.0 - blink), br, br * blink),
-        Paint::fill(Color::hex(0xFF_202020)),
+        Rect::from_oval(rx + dx, ry + dy + ey * 0.25 * (1.0 - blink), br, br * blink),
+        eye_paint,
+    );
+
+    let inr = ex * 0.1;
+    let outr = ex * 0.75;
+    let inner_color = Color::hex(0x80_FFFFFF);
+    let outer_color = Color::hex(0x00_FFFFFF);
+
+    let left = [lx - ex * 0.25, ly - ey * 0.5];
+    let right = [rx - ex * 0.25, ry - ey * 0.5];
+
+    ctx.draw_oval(
+        Rect::from_oval(lx, ly, ex, ey),
+        Paint::radial_gradient(left, inr, outr, inner_color, outer_color),
     );
 
     ctx.draw_oval(
-        Rect::from_ltwh(lx, ly, ex, ey),
-        Paint::radial_gradient(
-            [lx - ex * 0.25, ly - ey * 0.5],
-            ex * 0.1,
-            ex * 0.75,
-            Color::hex(0x80_FFFFFF),
-            Color::hex(0x00_FFFFFF),
-        ),
-    );
-
-    ctx.draw_oval(
-        Rect::from_ltwh(rx, ry, ex, ey),
-        Paint::radial_gradient(
-            [rx - ex * 0.25, ry - ey * 0.5],
-            ex * 0.1,
-            ex * 0.75,
-            Color::hex(0x80_FFFFFF),
-            Color::hex(0x00_FFFFFF),
-        ),
+        Rect::from_oval(rx, ry, ex, ey),
+        Paint::radial_gradient(right, inr, outr, inner_color, outer_color),
     );
 }
 
@@ -436,13 +433,10 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
     let mut path = Path::new();
     path.move_to((sx[0], sy[0]).into());
     for i in 1..6 {
-        path.bezier_to(
-            sx[i - 1] + dx * 0.5,
-            sy[i - 1],
-            sx[i] - dx * 0.5,
-            sy[i],
-            sx[i],
-            sy[i],
+        path.cubic_to(
+            (sx[i - 1] + dx * 0.5, sy[i - 1]).into(),
+            (sx[i] - dx * 0.5, sy[i]).into(),
+            (sx[i], sy[i]).into(),
         );
     }
     path.line_to((x + w, y + h).into());
@@ -461,13 +455,10 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
     path.clear();
     path.move_to((sx[0], sy[0] + 2.0).into());
     for i in 1..6 {
-        path.bezier_to(
-            sx[i - 1] + dx * 0.5,
-            sy[i - 1] + 2.0,
-            sx[i] - dx * 0.5,
-            sy[i] + 2.0,
-            sx[i],
-            sy[i] + 2.0,
+        path.cubic_to(
+            (sx[i - 1] + dx * 0.5, sy[i - 1] + 2.0).into(),
+            (sx[i] - dx * 0.5, sy[i] + 2.0).into(),
+            (sx[i], sy[i] + 2.0).into(),
         );
     }
     ctx.draw_path(
@@ -478,13 +469,10 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
     path.clear();
     path.move_to((sx[0], sy[0]).into());
     for i in 1..6 {
-        path.bezier_to(
-            sx[i - 1] + dx * 0.5,
-            sy[i - 1],
-            sx[i] - dx * 0.5,
-            sy[i],
-            sx[i],
-            sy[i],
+        path.cubic_to(
+            (sx[i - 1] + dx * 0.5, sy[i - 1]).into(),
+            (sx[i] - dx * 0.5, sy[i]).into(),
+            (sx[i], sy[i]).into(),
         );
     }
     ctx.draw_path(

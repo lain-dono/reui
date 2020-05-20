@@ -1,10 +1,5 @@
 use crate::{
-    cache::{CPath, PathCache},
-    canvas::Canvas,
-    paint::{RawPaint, Uniforms},
-    path::Path,
-    shader::Shader,
-    valloc::VecAlloc,
+    cache::PathCache, canvas::Canvas, paint::Uniforms, path::Path, shader::Shader, valloc::VecAlloc,
 };
 use std::ops::Range;
 
@@ -240,38 +235,6 @@ impl Renderer {
             }
         }
     }
-
-    /*
-    pub fn _begin_path(&mut self) {
-        self.picture.commands.clear();
-        self.cache.clear();
-    }
-
-    pub fn _close_path(&mut self) {
-        self.picture.close_path();
-    }
-
-    pub fn _bezier_to(&mut self, p1: Offset, p2: Offset, p3: Offset) {
-        self.picture.xform = self.states.last().xform;
-        self.picture.bezier_to(p1, p2, p3);
-    }
-
-    pub fn _quad_to(&mut self, p1: Offset, p2: Offset) {
-        self.picture.xform = self.states.last().xform;
-        self.picture.quad_to(p1, p2);
-    }
-
-    pub fn _arc_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, radius: f32) {
-        self.picture.xform = self.states.last().xform;
-        self.picture
-            .arc_to(point2(x1, y1), point2(x2, y2), radius, self.cache.dist_tol);
-    }
-
-    pub fn _arc(&mut self, cx: f32, cy: f32, r: f32, a0: f32, a1: f32, dir: Winding) {
-        self.picture.xform = self.states.last().xform;
-        self.picture.arc(point2(cx, cy), r, a0, a1, dir);
-    }
-    */
 }
 
 #[derive(Clone)]
@@ -340,69 +303,6 @@ impl Picture {
         self.strokes.clear();
         self.calls.clear();
         self.uniforms.clear();
-    }
-
-    pub fn draw_fill(&mut self, paint: RawPaint, fringe: f32, bounds: [f32; 4], paths: &[CPath]) {
-        // Bounding box fill quad not needed for convex fill
-        let kind = !(paths.len() == 1 && paths[0].convex);
-
-        // Allocate vertices for all the paths.
-        let (path, path_dst) = self.paths.alloc(paths.len());
-        for (src, dst) in paths.iter().zip(path_dst.iter_mut()) {
-            if let Some(src) = &src.fill {
-                dst.fill = self.verts.extend_with(src);
-            }
-            if let Some(src) = &src.stroke {
-                dst.stroke = self.verts.extend_with(src);
-            }
-        }
-
-        // Setup uniforms for draw calls
-        if kind {
-            let quad = self.verts.extend_with(&[
-                Vertex::new([bounds[2], bounds[3]], [0.5, 1.0]),
-                Vertex::new([bounds[2], bounds[1]], [0.5, 1.0]),
-                Vertex::new([bounds[0], bounds[3]], [0.5, 1.0]),
-                Vertex::new([bounds[0], bounds[1]], [0.5, 1.0]),
-            ]);
-
-            let uniform = Uniforms::fill(&paint, fringe, fringe, -1.0);
-
-            let idx = self.uniforms.push(Default::default());
-            let _ = self.uniforms.push(uniform);
-
-            let quad = quad.start;
-            self.calls.push(Call::Fill { idx, path, quad })
-        } else {
-            let uniform = Uniforms::fill(&paint, fringe, fringe, -1.0);
-            let idx = self.uniforms.push(uniform);
-            self.calls.push(Call::Convex { idx, path })
-        };
-    }
-
-    pub fn draw_stroke(
-        &mut self,
-        paint: RawPaint,
-        fringe: f32,
-        stroke_width: f32,
-        paths: &[CPath],
-    ) {
-        // Allocate vertices for all the paths.
-        let verts = &mut self.verts;
-        let iter = paths
-            .iter()
-            .filter_map(|path| path.stroke.as_ref().map(|src| verts.extend_with(src)));
-
-        let path = self.strokes.extend(iter);
-
-        // Fill shader
-        let a = Uniforms::fill(&paint, stroke_width, fringe, 1.0 - 0.5 / 255.0);
-        let b = Uniforms::fill(&paint, stroke_width, fringe, -1.0);
-
-        let idx = self.uniforms.push(a);
-        let _ = self.uniforms.push(b);
-
-        self.calls.push(Call::Stroke { idx, path })
     }
 }
 
