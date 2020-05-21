@@ -25,7 +25,7 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
         // Line caps
         draw_widths(ctx, 10.0, 50.0, 30.0);
         // Line caps
-        draw_caps(ctx, 10.0, 300.0, 30.0);
+        draw_caps(ctx, 10.0, 400.0, 30.0);
 
         if blowup {
             ctx.rotate((time * 0.3).sin() * 5.0 / 180.0 * PI);
@@ -513,10 +513,10 @@ pub fn draw_widths(ctx: &mut Canvas, x: f32, y: f32, width: f32) {
     let paint = Paint::stroke(Color::hex(0xFF_000000));
 
     let mut y = y;
-    for i in 0..20 {
-        let paint = paint.stroke_width(((i as f32) + 0.5) * 0.1);
+    for i in 0..75 {
+        let paint = paint.stroke_width((0.05 + i as f32) * 0.025);
         ctx.draw_line([x, y].into(), [x + width, y + width * 0.3].into(), paint);
-        y += 10.0;
+        y += 4.0;
     }
 }
 

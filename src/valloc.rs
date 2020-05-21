@@ -61,14 +61,7 @@ impl<T> VecAlloc<T> {
     }
 }
 
-impl<T: Default> VecAlloc<T> {
-    #[inline]
-    pub fn alloc(&mut self, count: usize) -> (Range<u32>, &mut [T]) {
-        self.alloc_with(count, Default::default)
-    }
-}
-
-impl<T: Copy> VecAlloc<T> {
+impl<T: Clone> VecAlloc<T> {
     #[inline]
     pub fn extend_with(&mut self, src: &[T]) -> Range<u32> {
         let start = self.0.len() as u32;

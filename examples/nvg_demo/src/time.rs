@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 pub struct Counter {
     time: Instant,
     tt: Duration,
-    deltas: [f32; 120],
+    deltas: [f32; 240],
     pub index: usize,
 }
 
@@ -12,7 +12,7 @@ impl Counter {
         Self {
             time: Instant::now(),
             tt: Duration::new(1, 0),
-            deltas: [0.0f32; 120],
+            deltas: [0.0f32; 240],
             index: 0,
         }
     }

@@ -111,7 +111,7 @@ impl<'a> Canvas<'a> {
             let kind = !(paths.len() == 1 && paths[0].convex);
 
             // Allocate vertices for all the paths.
-            let (path, path_dst) = pic.paths.alloc(paths.len());
+            let (path, path_dst) = pic.paths.alloc_with(paths.len(), Default::default);
             for (src, dst) in paths.iter().zip(path_dst.iter_mut()) {
                 if let Some(src) = &src.fill {
                     dst.fill = pic.verts.extend_with(src);
