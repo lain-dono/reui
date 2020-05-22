@@ -252,10 +252,10 @@ impl PathCache {
         Self::default()
     }
 
-    pub fn set_dpi(&mut self, ratio: f32) {
-        self.tess_tol = 0.25 / ratio;
-        self.dist_tol = 0.01 / ratio;
-        self.fringe_width = 1.0 / ratio;
+    pub fn set_scale(&mut self, scale: f32) {
+        self.tess_tol = 0.25 / scale;
+        self.dist_tol = 0.01 / scale;
+        self.fringe_width = 1.0 / scale;
     }
 
     pub fn clear(&mut self) {

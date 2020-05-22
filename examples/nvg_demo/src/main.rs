@@ -6,201 +6,78 @@ mod canvas;
 
 mod time;
 
-use reui::{Offset, Renderer, Target};
-use winit::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::Window,
+use reui::{
+    app::{self, ControlFlow, Options, Surface, WindowEvent},
+    wgpu, Offset, Renderer,
 };
 
 pub fn main() {
-    env_logger::init();
-
-    use std::mem::size_of;
-    let _ = dbg!(size_of::<reui::Paint>());
-
-    let event_loop = EventLoop::new();
-    let window = winit::window::Window::new(&event_loop).unwrap();
+    let event_loop = app::EventLoop::new();
+    let window = app::Window::new(&event_loop).unwrap();
     window.set_title("Anti-aliased vector graphics (wgpu-rs)");
-    window.set_inner_size(winit::dpi::PhysicalSize::new(2000, 1200));
+    window.set_inner_size(app::PhysicalSize::new(2000, 1200));
 
-    let format = wgpu::TextureFormat::Bgra8UnormSrgb;
-    futures::executor::block_on(run(event_loop, window, format));
+    let options = Options::default();
+    app::run::<Demo>(event_loop, window, options);
 }
 
-async fn run(event_loop: EventLoop<()>, window: Window, swapchain_format: wgpu::TextureFormat) {
-    let size = window.inner_size();
-    let surface = wgpu::Surface::create(&window);
+struct Demo {
+    vg: Renderer,
+    mouse: Offset,
+    counter: crate::time::Counter,
+}
 
-    let adapter = wgpu::Adapter::request(
-        &wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::Default,
-            compatible_surface: Some(&surface),
-        },
-        wgpu::BackendBit::PRIMARY,
-    )
-    .await
-    .unwrap();
+impl app::Application for Demo {
+    type UserEvent = ();
 
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            extensions: wgpu::Extensions {
-                anisotropic_filtering: false,
-            },
-            limits: wgpu::Limits::default(),
-        })
-        .await;
+    fn init(device: &wgpu::Device, _queue: &wgpu::Queue, surface: &mut Surface) -> Self {
+        Self {
+            vg: Renderer::new(&device, surface.format()),
+            mouse: Offset::zero(),
+            counter: crate::time::Counter::new(),
+        }
+    }
 
-    let mut vg = Renderer::new(&device, swapchain_format);
-
-    let mut sc_desc = wgpu::SwapChainDescriptor {
-        usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
-        format: swapchain_format,
-        width: size.width,
-        height: size.height,
-        present_mode: wgpu::PresentMode::Mailbox,
-    };
-
-    let mut swap_chain = device.create_swap_chain(&surface, &sc_desc);
-    let mut depth = create_depth(&device, size.width, size.height);
-
-    let (mut mx, mut my) = (0.0f32, 0.0f32);
-
-    let mut counter = crate::time::Counter::new();
-
-    let mut scale = window.scale_factor() as f32;
-
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
+    fn update(&mut self, event: WindowEvent, control_flow: &mut ControlFlow) {
         match event {
-            Event::MainEventsCleared => window.request_redraw(),
-            Event::WindowEvent {
-                event: WindowEvent::Resized(size),
-                ..
-            } => {
-                scale = window.scale_factor() as f32;
-                sc_desc.width = size.width;
-                sc_desc.height = size.height;
-                swap_chain = device.create_swap_chain(&surface, &sc_desc);
-                depth = create_depth(&device, size.width, size.height);
+            WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+            WindowEvent::CursorMoved { position, .. } => {
+                self.mouse = Offset::new(position.x as f32, position.y as f32)
             }
-            Event::WindowEvent {
-                event: WindowEvent::CursorMoved { position, .. },
-                ..
-            } => {
-                mx = position.x as f32;
-                my = position.y as f32;
-            }
-
-            Event::RedrawRequested(_) => {
-                let time = counter.update();
-
-                if counter.index == 0 {
-                    println!("average wgpu: {}ms", counter.average_ms());
-                }
-
-                let frame = swap_chain
-                    .get_next_texture()
-                    .expect("Timeout when acquiring next swap chain texture");
-
-                let mut encoder =
-                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-                clear_pass(&mut encoder, &frame.view, &depth);
-
-                {
-                    let width = sc_desc.width;
-                    let height = sc_desc.height;
-                    {
-                        let mut ctx = vg.begin_frame(scale);
-
-                        canvas::render_demo(
-                            &mut ctx,
-                            Offset::new(mx, my) / scale,
-                            Offset::new(width as f32, height as f32) / scale,
-                            time as f32,
-                            false,
-                        );
-
-                        drop(ctx);
-                    }
-
-                    let target = Target {
-                        width,
-                        height,
-                        scale,
-                        color: &frame.view,
-                        depth: &depth,
-                    };
-
-                    vg.draw(&mut encoder, &device, target);
-                }
-
-                queue.submit(&[encoder.finish()]);
-            }
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => *control_flow = ControlFlow::Exit,
             _ => {}
         }
-    });
-}
+    }
 
-const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
+    fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, surface: &mut Surface) {
+        let time = self.counter.update();
+        let scale = surface.scale() as f32;
+        let (width, height) = surface.size();
+        let mouse = self.mouse / scale;
+        let wsize = Offset::new(width as f32, height as f32) / scale;
 
-fn create_depth(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("DEPTH"),
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth: 1,
-        },
-        array_layer_count: 1,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: DEPTH,
-        usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
-    });
-    texture.create_default_view()
-}
+        if self.counter.index == 0 {
+            println!("average wgpu: {}ms", self.counter.average_ms());
+        }
 
-fn clear_pass(
-    encoder: &mut wgpu::CommandEncoder,
-    view: &wgpu::TextureView,
-    depth: &wgpu::TextureView,
-) {
-    use palette::{LinSrgba, Srgba};
+        let frame = surface
+            .next_frame()
+            .expect("Timeout when acquiring next swap chain texture");
 
-    let [r, g, b, a] = [0.3, 0.3, 0.32, 1.0];
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-    let srgb = Srgba::new(r, g, b, a);
-    let lin: LinSrgba = srgb.into_encoding();
+        let _ = frame.clear(&mut encoder, [0.3, 0.3, 0.32, 1.0]);
 
-    let clear_color = wgpu::Color {
-        r: lin.color.red as f64,
-        g: lin.color.green as f64,
-        b: lin.color.blue as f64,
-        a: lin.alpha as f64,
-    };
-    let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-            attachment: view,
-            resolve_target: None,
-            load_op: wgpu::LoadOp::Clear,
-            store_op: wgpu::StoreOp::Store,
-            clear_color,
-        }],
-        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
-            attachment: depth,
-            depth_load_op: wgpu::LoadOp::Load,
-            depth_store_op: wgpu::StoreOp::Store,
-            clear_depth: 0.0,
-            stencil_load_op: wgpu::LoadOp::Clear,
-            stencil_store_op: wgpu::StoreOp::Store,
-            clear_stencil: 0,
-        }),
-    });
+        {
+            {
+                let mut ctx = self.vg.begin_frame(scale);
+                canvas::render_demo(&mut ctx, mouse, wsize, time);
+                drop(ctx);
+            }
+
+            self.vg.draw(&mut encoder, &device, frame.target());
+        }
+
+        queue.submit(&[encoder.finish()]);
+    }
 }

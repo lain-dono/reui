@@ -3,7 +3,8 @@ use reui::{
 };
 use std::f32::consts::PI;
 
-pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, blowup: bool) {
+pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32) {
+    let blowup = false;
     let (width, height) = wsize.into();
 
     {

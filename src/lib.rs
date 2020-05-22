@@ -1,6 +1,11 @@
 #![warn(clippy::all)]
 #![allow(unstable_name_collisions)] // TODO: clamp
 
+pub use wgpu;
+
+#[cfg(feature = "standalone")]
+pub mod app;
+
 mod cache;
 mod canvas;
 mod math;

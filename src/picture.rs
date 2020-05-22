@@ -26,7 +26,6 @@ pub struct Target<'a> {
 
     pub width: u32,
     pub height: u32,
-    pub scale: f32,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -48,7 +47,7 @@ pub struct Renderer {
     pub(crate) cache: PathCache,
     pub(crate) picture: Picture,
 
-    dpi: f32,
+    scale: f32,
 
     bind_group_layout: wgpu::BindGroupLayout,
 
@@ -94,7 +93,7 @@ impl Renderer {
             cache: PathCache::new(),
             recorder: Path::new(),
             picture: Picture::new(),
-            dpi: 1.0,
+            scale: 1.0,
 
             bind_group_layout,
 
@@ -109,10 +108,10 @@ impl Renderer {
         }
     }
 
-    pub fn begin_frame(&mut self, dpi: f32) -> Canvas {
+    pub fn begin_frame(&mut self, scale: f32) -> Canvas {
         self.picture.clear();
-        self.cache.set_dpi(dpi);
-        self.dpi = dpi;
+        self.cache.set_scale(scale);
+        self.scale = scale;
         Canvas::new(self)
     }
 
@@ -122,6 +121,7 @@ impl Renderer {
         device: &wgpu::Device,
         target: Target,
     ) {
+        let scale = self.scale;
         let picture = &self.picture;
 
         const UNIFORM: wgpu::BufferUsage = wgpu::BufferUsage::UNIFORM;
@@ -131,8 +131,8 @@ impl Renderer {
         let (_, instances) = create_buffer(device, picture.uniforms.as_ref(), VERTEX);
 
         let bind_group = {
-            let w = target.width as f32 / target.scale;
-            let h = target.height as f32 / target.scale;
+            let w = target.width as f32 / scale;
+            let h = target.height as f32 / scale;
             let viewport = [w, h, 0.0, 0.0];
 
             let (len, buffer) = create_buffer(device, &viewport, UNIFORM);
