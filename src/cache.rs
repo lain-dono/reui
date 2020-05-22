@@ -1,4 +1,4 @@
-#![allow(clippy::too_many_arguments)]
+//#![allow(clippy::too_many_arguments)]
 
 use crate::{
     math::{Offset, PartialClamp},
@@ -8,17 +8,26 @@ use crate::{
 };
 use std::{f32::consts::PI, slice::from_raw_parts_mut};
 
-#[inline(always)]
-fn normalize(x: &mut f32, y: &mut f32) -> f32 {
-    let xx = (*x) * (*x);
-    let yy = (*y) * (*y);
-    let d = (xx + yy).sqrt();
-    if d > 1e-6 {
-        let id = d.recip();
-        *x *= id;
-        *y *= id;
+impl Offset {
+    #[inline]
+    fn approx_eq_eps(self, other: Self, epsilon: f32) -> bool {
+        let x = (self.x - other.x).abs() < epsilon;
+        let y = (self.y - other.y).abs() < epsilon;
+        x && y
     }
-    d
+
+    #[inline(always)]
+    fn normalize_mut(&mut self) -> f32 {
+        let xx = self.x * self.x;
+        let yy = self.y * self.y;
+        let d = (xx + yy).sqrt();
+        if d > 1e-6 {
+            let id = d.recip();
+            self.x *= id;
+            self.y *= id;
+        }
+        d
+    }
 }
 
 #[inline]
@@ -82,19 +91,23 @@ impl Point {
     pub fn is_innerbevel(&self) -> bool {
         self.flags.contains(PointFlags::INNERBEVEL)
     }
+
+    pub fn any_bevel(&self) -> bool {
+        self.flags
+            .intersects(PointFlags::BEVEL | PointFlags::INNERBEVEL)
+    }
 }
 
 pub struct CPath {
     start: usize,
     end: usize,
 
-    closed: bool,
-    nbevel: usize,
-
     pub fill: Option<&'static mut [Vertex]>,
     pub stroke: Option<&'static mut [Vertex]>,
 
+    nbevel: usize,
     winding: Winding,
+    closed: bool,
     pub convex: bool,
 }
 
@@ -103,10 +116,11 @@ impl Default for CPath {
         Self {
             start: 0,
             end: 0,
-            closed: false,
-            nbevel: 0,
             fill: None,
             stroke: None,
+
+            closed: false,
+            nbevel: 0,
             winding: Winding::CCW,
             convex: false,
         }
@@ -180,6 +194,15 @@ impl<'a> PairIterFan<'a> {
 impl<'a> Iterator for PairIterFan<'a> {
     type Item = (&'a Point, &'a Point);
     fn next(&mut self) -> Option<Self::Item> {
+        #[inline(always)]
+        fn fan2strip(i: usize, len: usize) -> usize {
+            if i % 2 != 0 {
+                i / 2
+            } else {
+                len - 1 - i / 2
+            }
+        }
+
         if self.idx >= self.pts.len() {
             None
         } else {
@@ -194,19 +217,10 @@ impl<'a> Iterator for PairIterFan<'a> {
     }
 }
 
-#[inline(always)]
-fn fan2strip(i: usize, len: usize) -> usize {
-    if i % 2 != 0 {
-        i / 2
-    } else {
-        len - 1 - i / 2
-    }
-}
-
 pub struct PathCache {
     points: Vec<Point>,
     pub paths: Vec<CPath>,
-    verts: Vec<Vertex>,
+    pub verts: Vec<Vertex>,
     pub bounds: [f32; 4],
 
     pub tess_tol: f32,
@@ -256,11 +270,12 @@ impl PathCache {
             None => return,
         };
 
-        if path.len() > 0 && !self.points.is_empty() {
-            let pt = self.points.last_mut().expect("last point");
-            if pt.pos.approx_eq_eps(point, dist_tol) {
-                pt.flags |= flags;
-                return;
+        if path.len() > 0 {
+            if let Some(pt) = self.points.last_mut() {
+                if pt.pos.approx_eq_eps(point, dist_tol) {
+                    pt.flags |= flags;
+                    return;
+                }
             }
         }
 
@@ -274,11 +289,6 @@ impl PathCache {
         self.last_point = point;
     }
 
-    fn temp_verts(&mut self, count: usize) -> &mut [Vertex] {
-        self.verts.resize_with(count, Default::default);
-        &mut self.verts[..count]
-    }
-
     fn calculate_joins(&mut self, w: f32, line_join: StrokeJoin, miter_limit: f32) {
         let iw = if w > 0.0 { 1.0 / w } else { 0.0 };
 
@@ -288,15 +298,13 @@ impl PathCache {
         for path in &mut self.paths {
             let pts = &mut self.points[path.range()];
 
-            let last_idx = path.len() - 1;
-            let (mut p0_idx, mut p1_idx) = (last_idx, 0);
-
             path.nbevel = 0;
 
+            let mut p0_idx = path.len() - 1;
             let mut nleft = 0;
-            for _ in 0..pts.len() {
+            for i in 0..pts.len() {
                 let p0 = pts[p0_idx].clone();
-                let p1 = &mut pts[p1_idx];
+                let p1 = &mut pts[i];
 
                 let dl0 = Offset::new(p0.dir.y, -p0.dir.x);
                 let dl1 = Offset::new(p1.dir.y, -p1.dir.x);
@@ -332,15 +340,11 @@ impl PathCache {
                     p1.flags |= PointFlags::BEVEL;
                 }
 
-                if p1
-                    .flags
-                    .intersects(PointFlags::BEVEL | PointFlags::INNERBEVEL)
-                {
+                if p1.any_bevel() {
                     path.nbevel += 1;
                 }
 
-                p0_idx = p1_idx;
-                p1_idx += 1;
+                p0_idx = i;
             }
             path.convex = nleft == path.len();
         }
@@ -368,14 +372,14 @@ impl PathCache {
                     let p0 = self.last_point;
                     self.tesselate_bezier(p0, p1, p2, p3, PointFlags::CORNER);
                 }
-                PathCmd::Close => {
-                    if let Some(path) = self.paths.last_mut() {
-                        path.closed = true;
-                    }
-                }
                 PathCmd::Winding(dir) => {
                     if let Some(path) = self.paths.last_mut() {
                         path.winding = dir;
+                    }
+                }
+                PathCmd::Close => {
+                    if let Some(path) = self.paths.last_mut() {
+                        path.closed = true;
                     }
                 }
             }
@@ -389,15 +393,11 @@ impl PathCache {
             assert!(pts.len() >= 2);
 
             // If the first and last points are the same, remove the last, mark as closed path.
-            let mut p0: *mut Point = &mut pts[path.len() - 1];
-            let mut p1: *mut Point = &mut pts[0];
 
-            unsafe {
-                if (*p0).pos.approx_eq_eps((*p1).pos, self.dist_tol) {
-                    path.end -= 1;
-                    p0 = pts.get_unchecked_mut(path.len() - 1);
-                    path.closed = true;
-                }
+            let last = pts.len() - 1;
+            if pts[last].pos.approx_eq_eps(pts[0].pos, self.dist_tol) {
+                path.end -= 1;
+                path.closed = true;
             }
 
             let pts = &mut self.points[path.range()];
@@ -405,30 +405,29 @@ impl PathCache {
             // Enforce winding.
             if path.len() > 2 {
                 let area = poly_area(&pts[..path.len()]);
-                if path.winding == Winding::CCW && area < 0.0
-                    || path.winding == Winding::CW && area > 0.0
-                {
+                if path.winding == Winding::CCW && area < 0.0 {
+                    pts.reverse();
+                }
+                if path.winding == Winding::CW && area > 0.0 {
                     pts.reverse();
                 }
             }
 
-            for _ in 0..path.len() {
-                unsafe {
-                    // Calculate segment direction and length
-                    (*p0).dir = (*p1).pos - (*p0).pos;
-                    (*p0).len = normalize(&mut (*p0).dir.x, &mut (*p0).dir.y);
-                    let pos = (*p0).pos;
-                    // Update bounds
-                    self.bounds = [
-                        self.bounds[0].min(pos.x),
-                        self.bounds[1].min(pos.y),
-                        self.bounds[2].max(pos.x),
-                        self.bounds[3].max(pos.y),
-                    ];
-                    // Advance
-                    p0 = p1;
-                    p1 = p1.add(1);
-                }
+            let mut p0 = path.len() - 1;
+            for p1 in 0..path.len() {
+                // Calculate segment direction and length
+                pts[p0].dir = pts[p1].pos - pts[p0].pos;
+                pts[p0].len = pts[p0].dir.normalize_mut();
+                let pos = pts[p0].pos;
+                // Update bounds
+                self.bounds = [
+                    self.bounds[0].min(pos.x),
+                    self.bounds[1].min(pos.y),
+                    self.bounds[2].max(pos.x),
+                    self.bounds[3].max(pos.y),
+                ];
+                // Advance
+                p0 = p1;
             }
         }
     }
@@ -522,52 +521,47 @@ impl PathCache {
         self.calculate_joins(w, line_join, miter_limit);
 
         // Calculate max vertex usage.
-        let mut cverts = 0;
+        let mut additional = 0;
         for path in &self.paths {
             let count = if line_join == StrokeJoin::Round {
                 ncap + 2
             } else {
                 5
             };
-            cverts += (path.len() + path.nbevel * count + 1) * 2; // plus one for loop
+            additional += (path.len() + path.nbevel * count + 1) * 2; // plus one for loop
             if !path.closed {
                 // space for caps
                 if line_cap == StrokeCap::Round {
-                    cverts += (ncap * 2 + 2) * 2;
+                    additional += (ncap * 2 + 2) * 2;
                 } else {
-                    cverts += (3 + 3) * 2;
+                    additional += (3 + 3) * 2;
                 }
             }
         }
-
-        let mut verts = self.temp_verts(cverts as usize).as_mut_ptr();
+        self.verts.reserve(additional);
 
         for path in &mut self.paths {
             // Calculate fringe or stroke
             let looped = path.closed;
 
-            let mut dst = Verts::new(verts);
+            let start = self.verts.len();
+            let dst = &mut self.verts;
 
             let pts = &self.points[path.range()];
             let last_idx = path.len() - 1;
 
-            let (mut p0_idx, mut p1_idx, s, e);
+            let (mut p0_idx, mut p1_idx, range);
             if looped {
                 // Looping
                 p0_idx = last_idx;
                 p1_idx = 0;
-                s = 0;
-                e = path.len();
+                range = 0..path.len();
             } else {
                 // Add cap
                 p0_idx = 0;
                 p1_idx = 1;
-                s = 1;
-                e = path.len() - 1;
-            }
+                range = 1..path.len() - 1;
 
-            if !looped {
-                // Add cap
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx]);
                 let delta: Offset = (p1.pos - p0.pos).normalize();
                 match line_cap {
@@ -577,21 +571,18 @@ impl PathCache {
                 };
             }
 
-            for _ in s..e {
+            for _ in range {
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx]);
 
-                if p1
-                    .flags
-                    .intersects(PointFlags::BEVEL | PointFlags::INNERBEVEL)
-                {
+                if p1.any_bevel() {
                     if line_join == StrokeJoin::Round {
-                        dst.round_join(p0, p1, w, w, u.0, u.1, ncap);
+                        dst.round_join(p0, p1, [w, w, u.0, u.1], ncap);
                     } else {
-                        dst.bevel_join(p0, p1, w, w, u.0, u.1);
+                        dst.bevel_join(p0, p1, [w, w, u.0, u.1]);
                     }
                 } else {
-                    dst.push(p1.pos + p1.ext * w, [u.0, 1.0]);
-                    dst.push(p1.pos - p1.ext * w, [u.1, 1.0]);
+                    dst.add(p1.pos + p1.ext * w, [u.0, 1.0]);
+                    dst.add(p1.pos - p1.ext * w, [u.1, 1.0]);
                 }
 
                 p0_idx = p1_idx;
@@ -600,9 +591,9 @@ impl PathCache {
 
             if looped {
                 // Loop it
-                let (v0, v1) = (dst[0].pos, dst[1].pos);
-                dst.push(v0.into(), [u.0, 1.0]);
-                dst.push(v1.into(), [u.1, 1.0]);
+                let (v0, v1) = (dst[start].pos, dst[start + 1].pos);
+                dst.add(v0.into(), [u.0, 1.0]);
+                dst.add(v1.into(), [u.1, 1.0]);
             } else {
                 // Add cap
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx % pts.len()]); // XXX
@@ -615,8 +606,10 @@ impl PathCache {
             }
 
             path.fill = None;
-            path.stroke = Some(dst.raw_parts_mut());
-            verts = dst.end_ptr();
+            path.stroke = Some(unsafe {
+                let slice = &mut self.verts[start..];
+                from_raw_parts_mut(slice.as_mut_ptr(), slice.len())
+            });
         }
     }
 
@@ -627,15 +620,14 @@ impl PathCache {
         self.calculate_joins(w, line_join, miter_limit);
 
         // Calculate max vertex usage.
-        let mut cverts = 0;
+        let mut additional = 0;
         for path in &self.paths {
-            cverts += path.len() + path.nbevel + 1;
+            additional += path.len() + path.nbevel + 1;
             if has_fringe {
-                cverts += (path.len() + path.nbevel * 5 + 1) * 2; // plus one for loop
+                additional += (path.len() + path.nbevel * 5 + 1) * 2; // plus one for loop
             }
         }
-
-        let mut verts = self.temp_verts(cverts).as_mut_ptr();
+        self.verts.reserve(additional);
 
         let convex = self.paths.len() == 1 && self.paths[0].convex;
 
@@ -645,120 +637,85 @@ impl PathCache {
 
             // Calculate shape vertices.
 
-            let mut dst = Verts::new(verts);
+            let start = self.verts.len();
+            let dst = &mut self.verts;
 
             if has_fringe {
                 // Looping
                 for (p0, p1) in path.pts_fan(&self.points, last_idx, 0) {
-                    if p1.is_bevel() {
-                        let dl0 = Offset::new(p0.dir.y, -p0.dir.x);
-                        let dl1 = Offset::new(p1.dir.y, -p1.dir.x);
-                        if p1.is_left() {
-                            dst.push(p1.pos + p1.ext * woff, [0.5, 1.0]);
-                        } else {
-                            dst.push(p1.pos + dl0 * woff, [0.5, 1.0]);
-                            dst.push(p1.pos + dl1 * woff, [0.5, 1.0]);
-                        }
+                    if p1.is_bevel() && !p1.is_left() {
+                        let dl0 = p1.pos + Offset::new(p0.dir.y, -p0.dir.x) * woff;
+                        let dl1 = p1.pos + Offset::new(p1.dir.y, -p1.dir.x) * woff;
+                        dst.add(dl0, [0.5, 1.0]);
+                        dst.add(dl1, [0.5, 1.0]);
                     } else {
-                        dst.push(p1.pos + p1.ext * woff, [0.5, 1.0]);
+                        dst.add(p1.pos + p1.ext * woff, [0.5, 1.0]);
                     }
                 }
-            } else {
-                for p in pts {
-                    dst.push(p.pos, [0.5, 1.0]);
-                }
-            }
 
-            path.fill = Some(dst.raw_parts_mut());
-            verts = dst.end_ptr();
+                path.fill = Some(unsafe {
+                    let slice = &mut self.verts[start..];
+                    from_raw_parts_mut(slice.as_mut_ptr(), slice.len())
+                });
 
-            // Calculate fringe
-            if has_fringe {
-                let mut lw = w + woff;
-                let rw = w - woff;
-                let mut lu = 0.0;
-                let ru = 1.0;
-
-                let mut dst = Verts::new(verts);
+                // Calculate fringe
 
                 // Create only half a fringe for convex shapes so that
                 // the shape can be rendered without stenciling.
-                if convex {
-                    lw = woff; // This should generate the same vertex as fill inset above.
-                    lu = 0.5; // Set outline fade at middle.
-                }
+
+                let (rw, ru) = (w - woff, 1.0);
+                let (lw, lu) = if convex {
+                    // This should generate the same vertex as fill inset above.
+                    // Set outline fade at middle.
+                    (woff, 0.5)
+                } else {
+                    (w + woff, 0.0)
+                };
+
+                let start = self.verts.len();
+                let dst = &mut self.verts;
 
                 // Looping
                 for (p0, p1) in path.pts(&self.points, last_idx, 0) {
-                    if p1
-                        .flags
-                        .intersects(PointFlags::BEVEL | PointFlags::INNERBEVEL)
-                    {
-                        dst.bevel_join(p0, p1, lw, rw, lu, ru);
+                    if p1.any_bevel() {
+                        dst.bevel_join(p0, p1, [lw, rw, lu, ru]);
                     } else {
-                        dst.push(p1.pos + p1.ext * lw, [lu, 1.0]);
-                        dst.push(p1.pos - p1.ext * rw, [ru, 1.0]);
+                        dst.add(p1.pos + p1.ext * lw, [lu, 1.0]);
+                        dst.add(p1.pos - p1.ext * rw, [ru, 1.0]);
                     }
                 }
 
                 // Loop it
-                let (v0, v1) = (dst[0].pos, dst[1].pos);
-                dst.push(v0.into(), [lu, 1.0]);
-                dst.push(v1.into(), [ru, 1.0]);
+                let (v0, v1) = (dst[start].pos, dst[start + 1].pos);
+                dst.add(v0.into(), [lu, 1.0]);
+                dst.add(v1.into(), [ru, 1.0]);
 
-                path.stroke = Some(dst.raw_parts_mut());
-                verts = dst.end_ptr();
+                path.stroke = Some(unsafe {
+                    let slice = &mut self.verts[start..];
+                    from_raw_parts_mut(slice.as_mut_ptr(), slice.len())
+                });
             } else {
+                for p in pts {
+                    dst.add(p.pos, [0.5, 1.0]);
+                }
+
+                path.fill = Some(unsafe {
+                    let slice = &mut self.verts[start..];
+                    from_raw_parts_mut(slice.as_mut_ptr(), slice.len())
+                });
+
                 path.stroke = None;
+
+                unimplemented!("fill without AA");
             }
         }
     }
 }
 
-struct Verts {
-    start: *mut Vertex,
-    count: usize,
-}
+trait Tess {
+    fn add(&mut self, pos: Offset, uv: [f32; 2]);
 
-impl std::ops::Index<usize> for Verts {
-    type Output = Vertex;
-    fn index(&self, idx: usize) -> &Self::Output {
-        debug_assert!(idx < self.count);
-        unsafe { &*self.start.add(idx) }
-    }
-}
-
-impl Verts {
-    fn new(start: *mut Vertex) -> Self {
-        Self { start, count: 0 }
-    }
-
-    fn end_ptr(self) -> *mut Vertex {
-        unsafe { self.start.add(self.count) }
-    }
-
-    fn raw_parts_mut<'a>(&mut self) -> &'a mut [Vertex] {
-        unsafe { from_raw_parts_mut(self.start, self.count) }
-    }
-
-    #[inline(always)]
-    fn push(&mut self, pos: Offset, uv: [f32; 2]) {
-        unsafe {
-            *self.start.add(self.count) = Vertex::new(pos.into(), uv);
-            self.count += 1;
-        }
-    }
-
-    fn round_join(
-        &mut self,
-        p0: &Point,
-        p1: &Point,
-        lw: f32,
-        rw: f32,
-        lu: f32,
-        ru: f32,
-        ncap: usize,
-    ) {
+    fn round_join(&mut self, p0: &Point, p1: &Point, [lw, rw, lu, ru]: [f32; 4], ncap: usize) {
         let dl0 = Offset::new(p0.dir.y, -p0.dir.x);
         let dl1 = Offset::new(p1.dir.y, -p1.dir.x);
 
@@ -768,8 +725,8 @@ impl Verts {
             let a1 = (-dl1.y).atan2(-dl1.x);
             let a1 = if a1 > a0 { a1 - PI * 2.0 } else { a1 };
 
-            self.push(l0, [lu, 1.0]);
-            self.push(p1.pos - dl0 * rw, [ru, 1.0]);
+            self.add(l0, [lu, 1.0]);
+            self.add(p1.pos - dl0 * rw, [ru, 1.0]);
 
             let n = (a0 - a1) / PI;
             let n = ((n * ncap as f32).ceil() as i32).clamp(2, ncap as i32);
@@ -777,20 +734,20 @@ impl Verts {
                 let u = (i as f32) / (n - 1) as f32;
                 let a = a0 + u * (a1 - a0);
                 let (sn, cs) = a.sin_cos();
-                self.push(p1.pos, [0.5, 1.0]);
-                self.push(p1.pos + Offset::new(cs, sn) * rw, [ru, 1.0]);
+                self.add(p1.pos, [0.5, 1.0]);
+                self.add(p1.pos + Offset::new(cs, sn) * rw, [ru, 1.0]);
             }
 
-            self.push(l1, [lu, 1.0]);
-            self.push(p1.pos - dl1 * rw, [ru, 1.0]);
+            self.add(l1, [lu, 1.0]);
+            self.add(p1.pos - dl1 * rw, [ru, 1.0]);
         } else {
             let [r0, r1] = choose_bevel(p1.is_innerbevel(), p0, p1, -rw);
             let a0 = f32::atan2(dl0.y, dl0.x);
             let a1 = f32::atan2(dl1.y, dl1.x);
             let a1 = if a1 < a0 { a1 + PI * 2.0 } else { a1 };
 
-            self.push(p1.pos + dl0 * rw, [lu, 1.0]);
-            self.push(r0, [ru, 1.0]);
+            self.add(p1.pos + dl0 * rw, [lu, 1.0]);
+            self.add(r0, [ru, 1.0]);
 
             let n = (a1 - a0) / PI;
             let n = ((n * ncap as f32).ceil() as i32).clamp(2, ncap as i32);
@@ -798,73 +755,73 @@ impl Verts {
                 let u = (i as f32) / (n - 1) as f32;
                 let a = a0 + u * (a1 - a0);
                 let (sn, cs) = a.sin_cos();
-                self.push(p1.pos + Offset::new(cs, sn) * lw, [lu, 1.0]);
-                self.push(p1.pos, [0.5, 1.0]);
+                self.add(p1.pos + Offset::new(cs, sn) * lw, [lu, 1.0]);
+                self.add(p1.pos, [0.5, 1.0]);
             }
 
-            self.push(p1.pos + dl1 * rw, [lu, 1.0]);
-            self.push(r1, [ru, 1.0]);
+            self.add(p1.pos + dl1 * rw, [lu, 1.0]);
+            self.add(r1, [ru, 1.0]);
         }
     }
 
-    fn bevel_join(&mut self, p0: &Point, p1: &Point, lw: f32, rw: f32, lu: f32, ru: f32) {
+    fn bevel_join(&mut self, p0: &Point, p1: &Point, [lw, rw, lu, ru]: [f32; 4]) {
         let dl0 = Offset::new(p0.dir.y, -p0.dir.x);
         let dl1 = Offset::new(p1.dir.y, -p1.dir.x);
 
         if p1.is_left() {
             let [l0, l1] = choose_bevel(p1.is_innerbevel(), p0, p1, lw);
 
-            self.push(l0, [lu, 1.0]);
-            self.push(p1.pos - dl0 * rw, [ru, 1.0]);
+            self.add(l0, [lu, 1.0]);
+            self.add(p1.pos - dl0 * rw, [ru, 1.0]);
 
             if p1.is_bevel() {
-                self.push(l0, [lu, 1.0]);
-                self.push(p1.pos - dl0 * rw, [ru, 1.0]);
+                self.add(l0, [lu, 1.0]);
+                self.add(p1.pos - dl0 * rw, [ru, 1.0]);
 
-                self.push(l1, [lu, 1.0]);
-                self.push(p1.pos - dl1 * rw, [ru, 1.0]);
+                self.add(l1, [lu, 1.0]);
+                self.add(p1.pos - dl1 * rw, [ru, 1.0]);
             } else {
                 let r0 = p1.pos - p1.ext * rw;
 
-                self.push(p1.pos, [0.5, 1.0]);
-                self.push(p1.pos - dl0 * rw, [ru, 1.0]);
+                self.add(p1.pos, [0.5, 1.0]);
+                self.add(p1.pos - dl0 * rw, [ru, 1.0]);
 
-                self.push(r0, [ru, 1.0]);
-                self.push(r0, [ru, 1.0]);
+                self.add(r0, [ru, 1.0]);
+                self.add(r0, [ru, 1.0]);
 
-                self.push(p1.pos, [0.5, 1.0]);
-                self.push(p1.pos - dl1 * rw, [ru, 1.0]);
+                self.add(p1.pos, [0.5, 1.0]);
+                self.add(p1.pos - dl1 * rw, [ru, 1.0]);
             }
 
-            self.push(l1, [lu, 1.0]);
-            self.push(p1.pos - dl1 * rw, [ru, 1.0]);
+            self.add(l1, [lu, 1.0]);
+            self.add(p1.pos - dl1 * rw, [ru, 1.0]);
         } else {
             let [r0, r1] = choose_bevel(p1.is_innerbevel(), p0, p1, -rw);
 
-            self.push(p1.pos + dl0 * lw, [lu, 1.0]);
-            self.push(r0, [ru, 1.0]);
+            self.add(p1.pos + dl0 * lw, [lu, 1.0]);
+            self.add(r0, [ru, 1.0]);
 
             if p1.is_bevel() {
-                self.push(p1.pos + dl0 * lw, [lu, 1.0]);
-                self.push(r0, [ru, 1.0]);
+                self.add(p1.pos + dl0 * lw, [lu, 1.0]);
+                self.add(r0, [ru, 1.0]);
 
-                self.push(p1.pos + dl1 * lw, [lu, 1.0]);
-                self.push(r1, [ru, 1.0]);
+                self.add(p1.pos + dl1 * lw, [lu, 1.0]);
+                self.add(r1, [ru, 1.0]);
             } else {
                 let l0 = p1.pos + p1.ext * lw;
 
-                self.push(p1.pos + dl0 * lw, [lu, 1.0]);
-                self.push(p1.pos, [0.5, 1.0]);
+                self.add(p1.pos + dl0 * lw, [lu, 1.0]);
+                self.add(p1.pos, [0.5, 1.0]);
 
-                self.push(l0, [lu, 1.0]);
-                self.push(l0, [lu, 1.0]);
+                self.add(l0, [lu, 1.0]);
+                self.add(l0, [lu, 1.0]);
 
-                self.push(p1.pos + dl1 * lw, [lu, 1.0]);
-                self.push(p1.pos, [0.5, 1.0]);
+                self.add(p1.pos + dl1 * lw, [lu, 1.0]);
+                self.add(p1.pos, [0.5, 1.0]);
             }
 
-            self.push(p1.pos + dl1 * lw, [lu, 1.0]);
-            self.push(r1, [ru, 1.0]);
+            self.add(p1.pos + dl1 * lw, [lu, 1.0]);
+            self.add(r1, [ru, 1.0]);
         }
     }
 
@@ -872,20 +829,20 @@ impl Verts {
         let p1 = p.pos - delta * d;
         let p0 = p1 - delta * aa;
         let dl = Offset::new(delta.y, -delta.x) * w;
-        self.push(p0 + dl, [u.0, 0.0]);
-        self.push(p0 - dl, [u.1, 0.0]);
-        self.push(p1 + dl, [u.0, 1.0]);
-        self.push(p1 - dl, [u.1, 1.0]);
+        self.add(p0 + dl, [u.0, 0.0]);
+        self.add(p0 - dl, [u.1, 0.0]);
+        self.add(p1 + dl, [u.0, 1.0]);
+        self.add(p1 - dl, [u.1, 1.0]);
     }
 
     fn butt_cap_end(&mut self, p: &Point, delta: Offset, w: f32, d: f32, aa: f32, u: (f32, f32)) {
         let p1 = p.pos + delta * d;
         let p0 = p1 + delta * aa;
         let dl = Offset::new(delta.y, -delta.x) * w;
-        self.push(p1 + dl, [u.0, 1.0]);
-        self.push(p1 - dl, [u.1, 1.0]);
-        self.push(p0 + dl, [u.0, 0.0]);
-        self.push(p0 - dl, [u.1, 0.0]);
+        self.add(p1 + dl, [u.0, 1.0]);
+        self.add(p1 - dl, [u.1, 1.0]);
+        self.add(p0 + dl, [u.0, 0.0]);
+        self.add(p0 - dl, [u.1, 0.0]);
     }
 
     fn round_cap_start(
@@ -901,12 +858,12 @@ impl Verts {
         for i in 0..ncap {
             let angle = (i as f32) / ((ncap - 1) as f32) * PI;
             let (sin, cos) = angle.sin_cos();
-            self.push(p.pos - dl * cos - delta * sin, [u.0, 1.0]);
-            self.push(p.pos, [0.5, 1.0]);
+            self.add(p.pos - dl * cos - delta * sin, [u.0, 1.0]);
+            self.add(p.pos, [0.5, 1.0]);
         }
 
-        self.push(p.pos + dl, [u.0, 1.0]);
-        self.push(p.pos - dl, [u.1, 1.0]);
+        self.add(p.pos + dl, [u.0, 1.0]);
+        self.add(p.pos - dl, [u.1, 1.0]);
     }
 
     fn round_cap_end(
@@ -920,14 +877,21 @@ impl Verts {
     ) {
         let (delta, dl) = (delta * w, Offset::new(delta.y, -delta.x) * w);
 
-        self.push(p.pos + dl, [u.0, 1.0]);
-        self.push(p.pos - dl, [u.1, 1.0]);
+        self.add(p.pos + dl, [u.0, 1.0]);
+        self.add(p.pos - dl, [u.1, 1.0]);
 
         for i in 0..ncap {
             let angle = (i as f32) / ((ncap - 1) as f32) * PI;
             let (sin, cos) = angle.sin_cos();
-            self.push(p.pos, [0.5, 1.0]);
-            self.push(p.pos - dl * cos + delta * sin, [u.0, 1.0]);
+            self.add(p.pos, [0.5, 1.0]);
+            self.add(p.pos - dl * cos + delta * sin, [u.0, 1.0]);
         }
+    }
+}
+
+impl Tess for Vec<Vertex> {
+    #[inline(always)]
+    fn add(&mut self, pos: Offset, uv: [f32; 2]) {
+        Vec::push(self, Vertex::new(pos.into(), uv))
     }
 }

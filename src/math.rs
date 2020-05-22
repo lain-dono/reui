@@ -221,13 +221,6 @@ impl Offset {
     }
 
     #[inline]
-    pub fn approx_eq_eps(self, other: Self, epsilon: f32) -> bool {
-        let x = (self.x - other.x).abs() < epsilon;
-        let y = (self.y - other.y).abs() < epsilon;
-        x && y
-    }
-
-    #[inline]
     pub fn magnitude(self) -> f32 {
         self.magnitude_sq().sqrt()
     }
@@ -244,11 +237,13 @@ impl Offset {
 
     #[inline]
     pub fn dot(self, other: Self) -> f32 {
+        // sx * ox + (sy * oy)
         self.x.mul_add(other.x, self.y * other.y)
     }
 
     #[inline]
     pub fn cross(self, other: Self) -> f32 {
+        // sx * oy + -(ox * sy)
         self.x.mul_add(other.y, -(other.x * self.y))
     }
 }

@@ -167,6 +167,7 @@ impl PathCmd {
     }
 }
 
+#[repr(u32)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Winding {
     CCW = 1, // Winding for solid shapes
