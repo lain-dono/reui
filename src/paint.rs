@@ -52,6 +52,7 @@ pub struct Paint {
     pub style: PaintingStyle,
     pub cap: StrokeCap,
     pub join: StrokeJoin,
+    pub antialias: bool,
     pub miter: f32,
     pub width: f32,
     pub color: Color,
@@ -65,6 +66,7 @@ impl Default for Paint {
             color: Color::BLACK,
             cap: StrokeCap::Butt,
             join: StrokeJoin::Miter,
+            antialias: true,
             miter: 10.0,
             width: 1.0,
             gradient: None,
@@ -103,6 +105,10 @@ impl Paint {
 
     pub fn stroke_width(self, width: f32) -> Self {
         Self { width, ..self }
+    }
+
+    pub fn antialias(self, antialias: bool) -> Self {
+        Self { antialias, ..self }
     }
 
     pub fn with_gradient(self, gradient: Gradient) -> Self {
@@ -162,39 +168,6 @@ impl Paint {
         Self {
             gradient: Some(gradient),
             ..Self::default()
-        }
-    }
-}
-
-#[derive(Default)]
-#[repr(C, align(4))]
-pub struct Uniforms {
-    pub paint_mat: [f32; 4],
-    pub inner_color: [u8; 4],
-    pub outer_color: [u8; 4],
-
-    pub extent: [f32; 2],
-    pub radius: f32,
-    pub feather: f32,
-
-    pub stroke_mul: f32, // scale
-    pub stroke_thr: f32, // threshold
-}
-
-impl Uniforms {
-    pub fn fill(paint: &RawPaint, width: f32, fringe: f32, stroke_thr: f32) -> Self {
-        Self {
-            paint_mat: paint.xform.inverse().into(),
-
-            inner_color: paint.inner_color.into(),
-            outer_color: paint.outer_color.into(),
-
-            extent: paint.extent,
-            radius: paint.radius,
-            feather: paint.feather,
-
-            stroke_mul: (width * 0.5 + fringe * 0.5) / fringe,
-            stroke_thr,
         }
     }
 }
@@ -291,6 +264,39 @@ impl RawPaint {
                 inner_color: paint.color,
                 outer_color: paint.color,
             }
+        }
+    }
+}
+
+#[derive(Default)]
+#[repr(C, align(4))]
+pub struct Uniforms {
+    pub paint_mat: [f32; 4],
+    pub inner_color: [u8; 4],
+    pub outer_color: [u8; 4],
+
+    pub extent: [f32; 2],
+    pub radius: f32,
+    pub feather: f32,
+
+    pub stroke_mul: f32, // scale
+    pub stroke_thr: f32, // threshold
+}
+
+impl Uniforms {
+    pub fn fill(paint: &RawPaint, width: f32, fringe: f32, stroke_thr: f32) -> Self {
+        Self {
+            paint_mat: paint.xform.inverse().into(),
+
+            inner_color: paint.inner_color.into(),
+            outer_color: paint.outer_color.into(),
+
+            extent: paint.extent,
+            radius: paint.radius,
+            feather: paint.feather,
+
+            stroke_mul: (width * 0.5 + fringe * 0.5) / fringe,
+            stroke_thr,
         }
     }
 }

@@ -1,9 +1,9 @@
-use crate::picture::Target;
+use crate::renderer::Target;
 pub use futures;
 pub use winit;
 
 pub use winit::{
-    dpi::PhysicalSize,
+    dpi::{LogicalSize, PhysicalSize},
     event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,

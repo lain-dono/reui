@@ -2,7 +2,8 @@ use crate::{
     math::{Offset, PartialClamp, RRect, Rect, Transform},
     paint::{Paint, PaintingStyle, RawPaint, StrokeJoin, Uniforms},
     path::PathCmd,
-    picture::{Call, Renderer, Vertex},
+    picture::{Call, Vertex},
+    renderer::Renderer,
 };
 
 #[derive(Default)]
@@ -46,6 +47,33 @@ impl<'a> Canvas<'a> {
         Self { ctx, states }
     }
 
+    pub fn draw_image(&mut self, image: u32, offset: Offset) {
+        // [012 023] [11 10 00 01]
+
+        if let Some(image_bind) = self.ctx.images.get(&image) {
+            let Offset { x: x0, y: y0 } = offset;
+            let (x1, y1) = (
+                x0 + image_bind.width as f32 * 100.0,
+                y0 + image_bind.height as f32 * 100.0,
+            );
+
+            let vtx = [
+                Vertex::new([x1, y1], [1.0, 1.0]),
+                Vertex::new([x1, y0], [1.0, 0.0]),
+                Vertex::new([x0, y0], [0.0, 0.0]),
+                Vertex::new([x0, y1], [0.0, 1.0]),
+            ];
+
+            let pic = &mut self.ctx.picture;
+
+            let idx = pic.uniforms.push(Uniforms::default());
+            let vtx = pic
+                .verts
+                .extend_with(&[vtx[0], vtx[1], vtx[2], vtx[0], vtx[2], vtx[3]]);
+            pic.calls.push(Call::Image { idx, vtx, image });
+        }
+    }
+
     fn fill_or_stroke(&mut self, paint: &Paint, force_stroke: bool) {
         impl Transform {
             #[inline(always)]
@@ -54,7 +82,7 @@ impl<'a> Canvas<'a> {
             }
         }
 
-        let cache = &mut self.ctx.cache;
+        let cache = &mut self.ctx.tess;
         let xform = self.states.transform();
         let commands = self.ctx.recorder.transform(xform);
         let pic = &mut self.ctx.picture;
@@ -102,8 +130,14 @@ impl<'a> Canvas<'a> {
 
             pic.calls.push(Call::Stroke { idx, path })
         } else {
+            let w = if paint.antialias {
+                cache.fringe_width
+            } else {
+                0.0
+            };
+
             cache.flatten_paths(commands);
-            cache.expand_fill(cache.fringe_width, StrokeJoin::Miter, 2.4);
+            cache.expand_fill(w, StrokeJoin::Miter, 2.4);
             let fringe = cache.fringe_width;
             let paths = &cache.paths;
 
@@ -221,7 +255,7 @@ impl<'a> Canvas<'a> {
     /// and that has the radius given by the second argument, with the Paint given in the third argument.
     /// Whether the circle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_circle(&mut self, c: Offset, radius: f32, paint: Paint) {
-        self.ctx.cache.clear();
+        self.ctx.tess.clear();
         self.ctx.recorder.clear();
         self.ctx.recorder.add_circle(c, radius);
         self.fill_or_stroke(&paint, false);
@@ -250,7 +284,7 @@ impl<'a> Canvas<'a> {
     /// Draws a line between the given points using the given paint.
     /// The line is stroked, the value of the Paint.style is ignored for this call. [...]
     pub fn draw_line(&mut self, p1: Offset, p2: Offset, paint: Paint) {
-        self.ctx.cache.clear();
+        self.ctx.tess.clear();
         self.ctx.recorder.clear();
         let xform = self.states.transform();
         self.ctx.recorder.move_to(xform.apply(p1));
@@ -262,7 +296,7 @@ impl<'a> Canvas<'a> {
         if points.len() < 2 {
             return;
         }
-        self.ctx.cache.clear();
+        self.ctx.tess.clear();
 
         self.ctx.recorder.clear();
         self.ctx.recorder.move_to(points[0]);
@@ -275,7 +309,7 @@ impl<'a> Canvas<'a> {
     /// Draws an axis-aligned oval that fills the given axis-aligned rectangle with the given Paint.
     /// Whether the oval is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
-        self.ctx.cache.clear();
+        self.ctx.tess.clear();
         self.ctx.recorder.clear();
         self.ctx.recorder.add_oval(rect);
         self.fill_or_stroke(&paint, false);
@@ -294,7 +328,7 @@ impl<'a> Canvas<'a> {
     /// If the path is filled, then sub-paths within it are implicitly closed (see Path.close).
     pub fn draw_path(&mut self, path: impl AsRef<[PathCmd]>, paint: Paint) {
         let path = path.as_ref();
-        self.ctx.cache.clear();
+        self.ctx.tess.clear();
         self.ctx.recorder.clear();
         self.ctx.recorder.extend(path.iter().copied());
         self.fill_or_stroke(&paint, false);
@@ -315,7 +349,7 @@ impl<'a> Canvas<'a> {
     /// Draws a rectangle with the given Paint.
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
-        self.ctx.cache.clear();
+        self.ctx.tess.clear();
         self.ctx.recorder.clear();
         self.ctx.recorder.add_rect(rect);
         self.fill_or_stroke(&paint, false);
@@ -324,7 +358,7 @@ impl<'a> Canvas<'a> {
     /// Draws a rounded rectangle with the given Paint.
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rrect(&mut self, rrect: RRect, paint: Paint) {
-        self.ctx.cache.clear();
+        self.ctx.tess.clear();
         self.ctx.recorder.clear();
         self.ctx.recorder.add_rrect(rrect);
         self.fill_or_stroke(&paint, false);

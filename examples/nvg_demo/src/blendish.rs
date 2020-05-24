@@ -1,4 +1,4 @@
-use reui::{Canvas, Color, Offset, Paint, PartialClamp, RRect, Rect, Transform};
+use reui::{Canvas, Color, Offset, Paint, RRect, Rect, Transform};
 
 const HOVER_SHADE: i32 = 15;
 
@@ -14,9 +14,9 @@ fn offset_color(
     if delta != 0 {
         let offset = delta as f32 / 255.0;
         Color {
-            red: (red + offset).clamp(0.0, 1.0),
-            green: (green + offset).clamp(0.0, 1.0),
-            blue: (blue + offset).clamp(0.0, 1.0),
+            red: (red + offset).max(0.0).min(1.0),
+            green: (green + offset).max(0.0).min(1.0),
+            blue: (blue + offset).max(0.0).min(1.0),
             alpha,
         }
     } else {

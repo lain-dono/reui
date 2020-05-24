@@ -6,13 +6,14 @@ pub use wgpu;
 #[cfg(feature = "standalone")]
 pub mod app;
 
-mod cache;
 mod canvas;
 mod math;
 mod paint;
 mod path;
 mod picture;
+mod renderer;
 mod shader;
+mod tessellator;
 mod valloc;
 
 pub use self::{
@@ -20,8 +21,5 @@ pub use self::{
     math::{Color, Offset, RRect, Rect, Transform},
     paint::{Gradient, Paint, PaintingStyle, StrokeCap, StrokeJoin},
     path::{Path, Winding},
-    picture::{Renderer, Target},
+    renderer::{Renderer, Target},
 };
-
-#[doc(hidden)]
-pub use self::math::PartialClamp;

@@ -1,12 +1,8 @@
 #![warn(clippy::all)]
-mod blendish;
-mod canvas;
-
-mod time;
 
 use reui::{
     app::{self, ControlFlow, Options, Surface, WindowEvent},
-    wgpu, Offset, Renderer,
+    wgpu, Offset, Rect, Renderer,
 };
 
 pub fn main() {
@@ -21,41 +17,25 @@ pub fn main() {
 
 struct Demo {
     vg: Renderer,
-    mouse: Offset,
-    counter: crate::time::Counter,
 }
 
 impl app::Application for Demo {
     type UserEvent = ();
 
     fn init(device: &wgpu::Device, _queue: &wgpu::Queue, surface: &mut Surface) -> Self {
-        Self {
-            vg: Renderer::new(&device, surface.format()),
-            mouse: Offset::zero(),
-            counter: crate::time::Counter::new(),
-        }
+        let vg = Renderer::new(&device, surface.format());
+        Self { vg }
     }
 
     fn update(&mut self, event: WindowEvent, control_flow: &mut ControlFlow) {
-        match event {
-            WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-            WindowEvent::CursorMoved { position, .. } => {
-                self.mouse = Offset::new(position.x as f32, position.y as f32)
-            }
-            _ => {}
+        if let WindowEvent::CloseRequested = event {
+            *control_flow = ControlFlow::Exit
         }
     }
 
     fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, surface: &mut Surface) {
-        let time = self.counter.update();
         let scale = surface.scale() as f32;
         let (width, height) = surface.size();
-        let mouse = self.mouse / scale;
-        let wsize = Offset::new(width as f32, height as f32) / scale;
-
-        if self.counter.index == 0 {
-            println!("average wgpu: {}ms", self.counter.average_ms());
-        }
 
         let frame = surface
             .next_frame()
@@ -69,7 +49,18 @@ impl app::Application for Demo {
         {
             {
                 let mut ctx = self.vg.begin_frame(scale);
-                canvas::render_demo(&mut ctx, mouse, wsize, time);
+
+                let (width, height) = (width as f32 / scale, height as f32 / scale);
+                let size = width.min(height) / 4.0;
+
+                let rect = Rect::from_size(width, height).deflate(size);
+                let paint = Default::default();
+
+                ctx.rotate(f32::to_radians(10.0));
+                ctx.draw_rect(rect, paint);
+
+                ctx.draw_image(0, Offset::new(0.0, 0.0));
+
                 drop(ctx);
             }
 

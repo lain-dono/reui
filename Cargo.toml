@@ -14,9 +14,17 @@ exclude = ["Cargo.lock", "examples/**/*", "tests/**/*", "target/**/*"]
 [workspace]
 members = [
     "examples/nvg_demo",
+    "examples/hello_world",
 ]
 
 [dependencies]
 wgpu = "0.5.0"
 bitflags = "1.2"
 palette = "0.5.0"
+
+winit = { version = "0.22.2", optional = true }
+futures = { version = "0.3", optional = true }
+
+[features]
+default = []
+standalone = ["winit", "futures"]

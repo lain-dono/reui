@@ -27,4 +27,10 @@ impl Shader {
         let fs = include_bytes!("stencil.frag.spv");
         Self::new(device, vs, fs)
     }
+
+    pub fn image(device: &wgpu::Device) -> std::io::Result<Self> {
+        let vs = include_bytes!("image.vert.spv");
+        let fs = include_bytes!("image.frag.spv");
+        Self::new(device, vs, fs)
+    }
 }

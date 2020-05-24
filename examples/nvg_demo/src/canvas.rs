@@ -720,7 +720,7 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     // Selector
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.rotate(-hue * PI * 2.0);
+    ctx.rotate(hue * PI * 2.0);
 
     // Marker on
     let paint = Paint::stroke(Color::hex(0xC0_FFFFFF)).stroke_width(2.0);

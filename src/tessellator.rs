@@ -1,5 +1,3 @@
-//#![allow(clippy::too_many_arguments)]
-
 use crate::{
     math::{Offset, PartialClamp},
     paint::{StrokeCap, StrokeJoin},
@@ -217,7 +215,7 @@ impl<'a> Iterator for PairIterFan<'a> {
     }
 }
 
-pub struct PathCache {
+pub struct Tessellator {
     points: Vec<Point>,
     pub paths: Vec<CPath>,
     pub verts: Vec<Vertex>,
@@ -230,7 +228,7 @@ pub struct PathCache {
     last_point: Offset,
 }
 
-impl Default for PathCache {
+impl Default for Tessellator {
     fn default() -> Self {
         Self {
             points: Vec::new(),
@@ -247,7 +245,7 @@ impl Default for PathCache {
     }
 }
 
-impl PathCache {
+impl Tessellator {
     pub fn new() -> Self {
         Self::default()
     }
@@ -510,7 +508,7 @@ impl PathCache {
         line_join: StrokeJoin,
         miter_limit: f32,
     ) {
-        let aa = fringe; //self.fringeWidth;
+        let aa = fringe; //self.fringe_width;
         let ncap = curve_divs(w, PI, self.tess_tol); // Calculate divisions per half circle.
 
         let w = w + aa * 0.5;
@@ -695,7 +693,9 @@ impl PathCache {
                     from_raw_parts_mut(slice.as_mut_ptr(), slice.len())
                 });
             } else {
-                for p in pts {
+                let first = &pts[0];
+                for p in &pts[1..] {
+                    dst.add(first.pos, [0.5, 1.0]);
                     dst.add(p.pos, [0.5, 1.0]);
                 }
 
@@ -705,8 +705,6 @@ impl PathCache {
                 });
 
                 path.stroke = None;
-
-                unimplemented!("fill without AA");
             }
         }
     }

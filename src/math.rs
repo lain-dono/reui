@@ -481,8 +481,7 @@ impl Transform {
 
     #[inline]
     pub fn new(tx: f32, ty: f32, rotation: f32, scale: f32) -> Self {
-        let re = rotation.cos() * scale;
-        let im = -rotation.sin() * scale;
+        let (re, im) = (rotation.cos() * scale, rotation.sin() * scale);
         Self { re, im, tx, ty }
     }
 
@@ -494,8 +493,7 @@ impl Transform {
 
     #[inline]
     pub fn rotation(theta: f32) -> Self {
-        let (sin, cos) = theta.sin_cos();
-        let (re, im) = (cos, -sin);
+        let (im, re) = theta.sin_cos();
         let (tx, ty) = (0.0, 0.0);
         Self { re, im, tx, ty }
     }
@@ -508,30 +506,17 @@ impl Transform {
 
     #[inline]
     pub fn apply(&self, Offset { x, y }: Offset) -> Offset {
-        Offset {
-            x: self.re * x - self.im * y + self.tx,
-            y: self.im * x + self.re * y + self.ty,
-        }
+        let x = self.re * x - self.im * y + self.tx;
+        let y = self.im * x + self.re * y + self.ty;
+        Offset::new(x, y)
     }
 
     #[inline]
-    pub fn apply_inv(&self, [x, y]: [f32; 2]) -> [f32; 2] {
+    pub fn apply_inv(&self, Offset { x, y }: Offset) -> Offset {
         let id = (self.re * self.re + self.im * self.im).recip();
         let [re, im] = [self.re * id, self.im * id];
         let [dx, dy] = [x - self.tx, y - self.ty];
-        [re * dx + im * dy, re * dy - im * dx]
-    }
-
-    #[inline]
-    pub fn apply_vector(&self, [x, y]: [f32; 2]) -> [f32; 2] {
-        [self.re * x - self.im * y, self.im * x + self.re * y]
-    }
-
-    #[inline]
-    pub fn apply_inv_vector(&self, [x, y]: [f32; 2]) -> [f32; 2] {
-        let id = (self.re * self.re + self.im * self.im).recip();
-        let [re, im] = [self.re * id, self.im * id];
-        [re * x + im * y, re * y - im * x]
+        Offset::new(re * dx + im * dy, re * dy - im * dx)
     }
 
     #[inline]
