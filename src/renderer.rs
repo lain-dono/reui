@@ -119,11 +119,15 @@ pub struct Renderer {
     scale: f32,
 
     bind_group_layout: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
-
     image_layout: wgpu::BindGroupLayout,
+
+    sampler: wgpu::Sampler,
     images_idx: u32,
 
+    pipeline: Pipeline,
+}
+
+struct Pipeline {
     image: wgpu::RenderPipeline,
 
     convex: wgpu::RenderPipeline,
@@ -215,16 +219,18 @@ impl Renderer {
             image_layout,
             images_idx: 1,
 
-            image: builder.image(stencil_face!(Always, Keep, Keep)),
+            pipeline: Pipeline {
+                image: builder.image(stencil_face!(Always, Keep, Keep)),
 
-            convex: builder.base(stencil_face!(Always, Keep, Keep)),
-            fringes: builder.base(stencil_face!(Equal, Keep, Keep)),
+                convex: builder.base(stencil_face!(Always, Keep, Keep)),
+                fringes: builder.base(stencil_face!(Equal, Keep, Keep)),
 
-            fill_stencil: builder.stencil(wgpu::CullMode::None, INCR_WRAP, DECR_WRAP),
-            fill_quad: builder.base(stencil_face!(NotEqual, Zero, Zero)),
+                fill_stencil: builder.stencil(wgpu::CullMode::None, INCR_WRAP, DECR_WRAP),
+                fill_quad: builder.base(stencil_face!(NotEqual, Zero, Zero)),
 
-            stroke_base: builder.base(stencil_face!(Equal, Keep, IncrementClamp)),
-            stroke_stencil: builder.stencil(wgpu::CullMode::Back, ALWAYS_ZERO, ALWAYS_ZERO),
+                stroke_base: builder.base(stencil_face!(Equal, Keep, IncrementClamp)),
+                stroke_stencil: builder.stencil(wgpu::CullMode::Back, ALWAYS_ZERO, ALWAYS_ZERO),
+            },
         }
     }
 
@@ -336,7 +342,7 @@ impl Renderer {
                     let start = idx;
                     let end = idx + 1;
 
-                    rpass.set_pipeline(&self.convex);
+                    rpass.set_pipeline(&self.pipeline.convex);
                     for path in paths {
                         rpass.draw(path.fill.clone(), start..end);
                         rpass.draw(path.stroke.clone(), start..end); // fringes
@@ -346,7 +352,7 @@ impl Renderer {
                     let paths = &picture.paths[path];
                     let instances = idx..idx + 1;
 
-                    rpass.set_pipeline(&self.fill_stencil);
+                    rpass.set_pipeline(&self.pipeline.fill_stencil);
                     for path in paths {
                         rpass.draw(path.fill.clone(), instances.clone());
                     }
@@ -354,13 +360,13 @@ impl Renderer {
                     let instances = idx + 1..idx + 2;
 
                     // Draw fringes
-                    rpass.set_pipeline(&self.fringes);
+                    rpass.set_pipeline(&self.pipeline.fringes);
                     for path in paths {
                         rpass.draw(path.stroke.clone(), instances.clone());
                     }
 
                     // Draw fill
-                    rpass.set_pipeline(&self.fill_quad);
+                    rpass.set_pipeline(&self.pipeline.fill_quad);
                     rpass.draw(quad..quad + 4, instances.clone());
                 }
                 Call::Stroke { idx, path } => {
@@ -368,7 +374,7 @@ impl Renderer {
                     let instances = idx..idx + 1;
 
                     // Fill the stroke base without overlap
-                    rpass.set_pipeline(&self.stroke_base);
+                    rpass.set_pipeline(&self.pipeline.stroke_base);
                     for path in stroke {
                         rpass.draw(path.clone(), instances.clone());
                     }
@@ -376,13 +382,13 @@ impl Renderer {
                     let instances = idx + 1..idx + 2;
 
                     // Draw anti-aliased pixels.
-                    rpass.set_pipeline(&self.fringes);
+                    rpass.set_pipeline(&self.pipeline.fringes);
                     for path in stroke {
                         rpass.draw(path.clone(), instances.clone());
                     }
 
                     // Clear stencil buffer
-                    rpass.set_pipeline(&self.stroke_stencil);
+                    rpass.set_pipeline(&self.pipeline.stroke_stencil);
                     for path in stroke {
                         rpass.draw(path.clone(), instances.clone());
                     }
@@ -392,7 +398,7 @@ impl Renderer {
                     if let Some(image) = self.images.get(&image) {
                         rpass.set_bind_group(1, &image.bind_group, &[]);
                     }
-                    rpass.set_pipeline(&self.image);
+                    rpass.set_pipeline(&self.pipeline.image);
                     rpass.draw(vtx, idx..idx + 1);
                 }
             }

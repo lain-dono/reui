@@ -8,7 +8,7 @@ use reui::{
 pub fn main() {
     let event_loop = app::EventLoop::new();
     let window = app::Window::new(&event_loop).unwrap();
-    window.set_title("Anti-aliased vector graphics (wgpu-rs)");
+    window.set_title("Hello world");
     window.set_inner_size(app::LogicalSize::new(1000, 600));
 
     let options = Options::default();

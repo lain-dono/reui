@@ -434,7 +434,7 @@ pub struct Transform {
 impl Default for Transform {
     #[inline]
     fn default() -> Self {
-        Self::IDENTITY
+        Self::identity()
     }
 }
 
@@ -467,48 +467,43 @@ impl std::ops::MulAssign<Self> for Transform {
 }
 
 impl Transform {
-    pub const IDENTITY: Self = Self {
-        re: 1.0,
-        im: 0.0,
-        tx: 0.0,
-        ty: 0.0,
-    };
-
     #[inline]
-    pub fn identity() -> Self {
-        Self::IDENTITY
+    pub const fn identity() -> Self {
+        Self::new(1.0, 0.0, 0.0, 0.0)
     }
 
     #[inline]
-    pub fn new(tx: f32, ty: f32, rotation: f32, scale: f32) -> Self {
-        let (re, im) = (rotation.cos() * scale, rotation.sin() * scale);
+    pub const fn new(re: f32, im: f32, tx: f32, ty: f32) -> Self {
+        Self { re, im, tx, ty }
+    }
+
+    #[inline]
+    pub fn compose(tx: f32, ty: f32, rotation: f32, scale: f32) -> Self {
+        let (im, re) = (rotation.sin() * scale, rotation.cos() * scale);
         Self { re, im, tx, ty }
     }
 
     #[inline]
     pub fn translation(tx: f32, ty: f32) -> Self {
-        let (re, im) = (1.0, 0.0);
-        Self { re, im, tx, ty }
+        Self::new(1.0, 0.0, tx, ty)
     }
 
     #[inline]
     pub fn rotation(theta: f32) -> Self {
-        let (im, re) = theta.sin_cos();
-        let (tx, ty) = (0.0, 0.0);
-        Self { re, im, tx, ty }
+        Self::new(theta.cos(), theta.sin(), 0.0, 0.0)
     }
 
     #[inline]
     pub fn scale(factor: f32) -> Self {
-        let (re, im, tx, ty) = (factor, 0.0, 0.0, 0.0);
-        Self { re, im, tx, ty }
+        Self::new(factor, 0.0, 0.0, 0.0)
     }
 
     #[inline]
     pub fn apply(&self, Offset { x, y }: Offset) -> Offset {
-        let x = self.re * x - self.im * y + self.tx;
-        let y = self.im * x + self.re * y + self.ty;
-        Offset::new(x, y)
+        Offset {
+            x: self.re * x - self.im * y + self.tx,
+            y: self.im * x + self.re * y + self.ty,
+        }
     }
 
     #[inline]

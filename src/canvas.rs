@@ -92,25 +92,18 @@ impl<'a> Canvas<'a> {
         if force_stroke || paint.style == PaintingStyle::Stroke {
             let scale = xform.average_scale();
             let mut stroke_width = (paint.width * scale).clamp(0.0, 200.0);
-            let fringe = cache.fringe_width;
 
-            if stroke_width < fringe {
+            if stroke_width < cache.fringe_width {
                 // If the stroke width is less than pixel size, use alpha to emulate coverage.
                 // Since coverage is area, scale by alpha*alpha.
-                let alpha = (stroke_width / fringe).clamp(0.0, 1.0);
+                let alpha = (stroke_width / cache.fringe_width).clamp(0.0, 1.0);
                 raw_paint.inner_color.alpha *= alpha * alpha;
                 raw_paint.outer_color.alpha *= alpha * alpha;
                 stroke_width = cache.fringe_width;
             }
 
             cache.flatten_paths(commands);
-            cache.expand_stroke(
-                stroke_width * 0.5,
-                fringe,
-                paint.cap,
-                paint.join,
-                paint.miter,
-            );
+            cache.expand_stroke(stroke_width * 0.5, paint.cap, paint.join, paint.miter);
 
             // Allocate vertices for all the paths.
             let verts = &mut pic.verts;
@@ -122,8 +115,9 @@ impl<'a> Canvas<'a> {
             let path = pic.strokes.extend(iter);
 
             // Fill shader
-            let a = Uniforms::fill(&raw_paint, stroke_width, fringe, 1.0 - 0.5 / 255.0);
-            let b = Uniforms::fill(&raw_paint, stroke_width, fringe, -1.0);
+            let fringe = cache.fringe_width;
+            let a = raw_paint.to_uniform(stroke_width, fringe, 1.0 - 0.5 / 255.0);
+            let b = raw_paint.to_uniform(stroke_width, fringe, -1.0);
 
             let idx = pic.uniforms.push(a);
             let _ = pic.uniforms.push(b);
@@ -164,7 +158,7 @@ impl<'a> Canvas<'a> {
                     Vertex::new([cache.bounds[0], cache.bounds[1]], [0.5, 1.0]),
                 ]);
 
-                let uniform = Uniforms::fill(&raw_paint, fringe, fringe, -1.0);
+                let uniform = raw_paint.to_uniform(fringe, fringe, -1.0);
 
                 let idx = pic.uniforms.push(Default::default());
                 let _ = pic.uniforms.push(uniform);
@@ -172,7 +166,7 @@ impl<'a> Canvas<'a> {
                 let quad = quad.start;
                 pic.calls.push(Call::Fill { idx, path, quad })
             } else {
-                let uniform = Uniforms::fill(&raw_paint, fringe, fringe, -1.0);
+                let uniform = raw_paint.to_uniform(fringe, fringe, -1.0);
                 let idx = pic.uniforms.push(uniform);
                 pic.calls.push(Call::Convex { idx, path })
             };

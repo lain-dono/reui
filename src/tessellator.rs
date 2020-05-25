@@ -217,6 +217,8 @@ impl<'a> Iterator for PairIterFan<'a> {
 
 pub struct Tessellator {
     points: Vec<Point>,
+    last_point: Offset,
+
     pub paths: Vec<CPath>,
     pub verts: Vec<Vertex>,
     pub bounds: [f32; 4],
@@ -224,14 +226,14 @@ pub struct Tessellator {
     pub tess_tol: f32,
     pub dist_tol: f32,
     pub fringe_width: f32,
-
-    last_point: Offset,
 }
 
 impl Default for Tessellator {
     fn default() -> Self {
         Self {
             points: Vec::new(),
+            last_point: Offset::zero(),
+
             paths: Vec::new(),
             verts: Vec::new(),
             bounds: [0.0; 4],
@@ -239,8 +241,6 @@ impl Default for Tessellator {
             tess_tol: 0.25,
             dist_tol: 0.01,
             fringe_width: 1.0,
-
-            last_point: Offset::zero(),
         }
     }
 }
@@ -259,6 +259,7 @@ impl Tessellator {
     pub fn clear(&mut self) {
         self.points.clear();
         self.paths.clear();
+        self.verts.clear();
         self.last_point = Offset::zero();
     }
 
@@ -503,12 +504,11 @@ impl Tessellator {
     pub fn expand_stroke(
         &mut self,
         w: f32,
-        fringe: f32,
         line_cap: StrokeCap,
         line_join: StrokeJoin,
         miter_limit: f32,
     ) {
-        let aa = fringe; //self.fringe_width;
+        let aa = self.fringe_width;
         let ncap = curve_divs(w, PI, self.tess_tol); // Calculate divisions per half circle.
 
         let w = w + aa * 0.5;

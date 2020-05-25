@@ -266,6 +266,22 @@ impl RawPaint {
             }
         }
     }
+
+    pub fn to_uniform(&self, width: f32, fringe: f32, stroke_thr: f32) -> Uniforms {
+        Uniforms {
+            paint_mat: self.xform.inverse().into(),
+
+            inner_color: self.inner_color.into(),
+            outer_color: self.outer_color.into(),
+
+            extent: self.extent,
+            radius: self.radius,
+            feather: self.feather,
+
+            stroke_mul: (width * 0.5 + fringe * 0.5) / fringe,
+            stroke_thr,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -281,22 +297,4 @@ pub struct Uniforms {
 
     pub stroke_mul: f32, // scale
     pub stroke_thr: f32, // threshold
-}
-
-impl Uniforms {
-    pub fn fill(paint: &RawPaint, width: f32, fringe: f32, stroke_thr: f32) -> Self {
-        Self {
-            paint_mat: paint.xform.inverse().into(),
-
-            inner_color: paint.inner_color.into(),
-            outer_color: paint.outer_color.into(),
-
-            extent: paint.extent,
-            radius: paint.radius,
-            feather: paint.feather,
-
-            stroke_mul: (width * 0.5 + fringe * 0.5) / fringe,
-            stroke_thr,
-        }
-    }
 }
