@@ -51,35 +51,86 @@ pub struct Target<'a> {
 
 pub(crate) struct ImageBind {
     pub bind_group: wgpu::BindGroup,
-    pub width: u32,
-    pub height: u32,
+    pub size: wgpu::Extent3d,
+}
+
+impl ImageBind {
+    fn new(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        view: &wgpu::TextureView,
+        size: wgpu::Extent3d,
+    ) -> Self {
+        let binding = wgpu::Binding {
+            binding: 0,
+            resource: wgpu::BindingResource::TextureView(view),
+        };
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout,
+            bindings: &[binding],
+        });
+        Self { bind_group, size }
+    }
 }
 
 struct HostImage {
     texture: wgpu::Texture,
-    width: u32,
-    height: u32,
+    size: wgpu::Extent3d,
 }
 
 impl HostImage {
-    fn bind(&self, device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> ImageBind {
-        let view = self.texture.create_default_view();
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("default image binding"),
-            layout,
-            bindings: &[wgpu::Binding {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&view),
-            }],
-        });
+    fn open_rgba(
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        path: impl AsRef<std::path::Path>,
+    ) -> image::ImageResult<Self> {
+        let m = image::open(path)?;
 
-        let (width, height) = (self.width, self.height);
+        let m = m.to_rgba();
+        let width = m.width();
+        let height = m.height();
+        let texels = m.into_raw();
 
-        ImageBind {
-            bind_group,
+        let size = wgpu::Extent3d {
             width,
             height,
-        }
+            depth: 1,
+        };
+
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size,
+            array_layer_count: 1,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsage::COPY_DST | wgpu::TextureUsage::SAMPLED,
+        });
+
+        let buffer = device.create_buffer_with_data(texels.as_slice(), wgpu::BufferUsage::COPY_SRC);
+        encoder.copy_buffer_to_texture(
+            wgpu::BufferCopyView {
+                buffer: &buffer,
+                offset: 0,
+                bytes_per_row: 4 * width,
+                rows_per_image: 0,
+            },
+            wgpu::TextureCopyView {
+                texture: &texture,
+                mip_level: 0,
+                array_layer: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            size,
+        );
+
+        Ok(Self { texture, size })
+    }
+    fn bind(&self, device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> ImageBind {
+        let view = self.texture.create_default_view();
+        ImageBind::new(device, layout, &view, self.size)
     }
 
     fn create_default(device: &wgpu::Device) -> Self {
@@ -102,42 +153,21 @@ impl HostImage {
             usage: wgpu::TextureUsage::SAMPLED,
         });
 
-        Self {
-            texture,
-            width,
-            height,
-        }
+        Self { texture, size }
     }
 }
 
 pub struct Renderer {
     pub(crate) recorder: Path,
     pub(crate) tess: Tessellator,
-    pub(crate) picture: Picture,
     pub(crate) images: HashMap<u32, ImageBind>,
 
-    scale: f32,
-
-    bind_group_layout: wgpu::BindGroupLayout,
-    image_layout: wgpu::BindGroupLayout,
+    pub(crate) scale: f32,
 
     sampler: wgpu::Sampler,
     images_idx: u32,
 
     pipeline: Pipeline,
-}
-
-struct Pipeline {
-    image: wgpu::RenderPipeline,
-
-    convex: wgpu::RenderPipeline,
-    fringes: wgpu::RenderPipeline,
-
-    fill_stencil: wgpu::RenderPipeline,
-    fill_quad: wgpu::RenderPipeline,
-
-    stroke_base: wgpu::RenderPipeline,
-    stroke_stencil: wgpu::RenderPipeline,
 }
 
 impl Renderer {
@@ -154,107 +184,44 @@ impl Renderer {
             compare: wgpu::CompareFunction::Undefined,
         });
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("VG bind group layout"),
-            bindings: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler { comparison: false },
-                },
-            ],
-        });
-
-        let image_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("VG bind group layout"),
-            bindings: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStage::FRAGMENT,
-                ty: wgpu::BindingType::SampledTexture {
-                    dimension: wgpu::TextureViewDimension::D2,
-                    component_type: wgpu::TextureComponentType::Float,
-                    multisampled: false,
-                },
-            }],
-        });
-
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            bind_group_layouts: &[&bind_group_layout, &image_layout],
-        });
-
-        let builder = Builder {
-            format,
-            device,
-            layout,
-
-            base: Shader::base(device).unwrap(),
-            stencil: Shader::stencil(device).unwrap(),
-            image: Shader::image(device).unwrap(),
-        };
-
-        stencil_face!(ALWAYS_ZERO, Always, Zero, Zero);
-        stencil_face!(INCR_WRAP, Always, Keep, IncrementWrap);
-        stencil_face!(DECR_WRAP, Always, Keep, DecrementWrap);
+        let pipeline = Pipeline::new(device, format);
 
         let default_image = HostImage::create_default(&device);
         let mut images = HashMap::default();
-        images.insert(0, default_image.bind(device, &image_layout));
+        images.insert(0, default_image.bind(device, &pipeline.image_layout));
 
         Self {
             tess: Tessellator::new(),
             recorder: Path::new(),
-            picture: Picture::new(),
 
             scale: 1.0,
 
-            bind_group_layout,
             sampler,
             images,
-
-            image_layout,
             images_idx: 1,
 
-            pipeline: Pipeline {
-                image: builder.image(stencil_face!(Always, Keep, Keep)),
-
-                convex: builder.base(stencil_face!(Always, Keep, Keep)),
-                fringes: builder.base(stencil_face!(Equal, Keep, Keep)),
-
-                fill_stencil: builder.stencil(wgpu::CullMode::None, INCR_WRAP, DECR_WRAP),
-                fill_quad: builder.base(stencil_face!(NotEqual, Zero, Zero)),
-
-                stroke_base: builder.base(stencil_face!(Equal, Keep, IncrementClamp)),
-                stroke_stencil: builder.stencil(wgpu::CullMode::Back, ALWAYS_ZERO, ALWAYS_ZERO),
-            },
+            pipeline,
         }
+    }
+
+    pub fn open_image(
+        &mut self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        path: impl AsRef<std::path::Path>,
+    ) -> image::ImageResult<u32> {
+        let image = HostImage::open_rgba(device, encoder, path)?;
+        let texture_view = image.texture.create_default_view();
+        Ok(self.create_image(device, &texture_view, image.size))
     }
 
     pub fn create_image(
         &mut self,
         device: &wgpu::Device,
         texture_view: &wgpu::TextureView,
-        width: u32,
-        height: u32,
+        size: wgpu::Extent3d,
     ) -> u32 {
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("default image binding"),
-            layout: &self.image_layout,
-            bindings: &[wgpu::Binding {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(texture_view),
-            }],
-        });
-
-        let bind = ImageBind {
-            bind_group,
-            width,
-            height,
-        };
+        let bind = ImageBind::new(device, &self.pipeline.image_layout, texture_view, size);
 
         let idx = self.images_idx;
         let _ = self.images.insert(idx, bind);
@@ -262,21 +229,20 @@ impl Renderer {
         idx
     }
 
-    pub fn begin_frame(&mut self, scale: f32) -> Canvas {
-        self.picture.clear();
+    pub fn begin_frame<'a>(&'a mut self, scale: f32, picture: &'a mut Picture) -> Canvas<'a> {
         self.tess.set_scale(scale);
         self.scale = scale;
-        Canvas::new(self)
+        Canvas::new(self, picture)
     }
 
-    pub fn draw(
+    pub fn draw_picture(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         device: &wgpu::Device,
         target: Target,
+        picture: &Picture,
     ) {
         let scale = self.scale;
-        let picture = &self.picture;
 
         const UNIFORM: wgpu::BufferUsage = wgpu::BufferUsage::UNIFORM;
         const VERTEX: wgpu::BufferUsage = wgpu::BufferUsage::VERTEX;
@@ -293,7 +259,7 @@ impl Renderer {
 
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Viewport bind group"),
-                layout: &self.bind_group_layout,
+                layout: &self.pipeline.viewport_layout,
                 bindings: &[
                     wgpu::Binding {
                         binding: 0,
@@ -402,6 +368,89 @@ impl Renderer {
                     rpass.draw(vtx, idx..idx + 1);
                 }
             }
+        }
+    }
+}
+
+struct Pipeline {
+    image: wgpu::RenderPipeline,
+
+    convex: wgpu::RenderPipeline,
+    fringes: wgpu::RenderPipeline,
+
+    fill_stencil: wgpu::RenderPipeline,
+    fill_quad: wgpu::RenderPipeline,
+
+    stroke_base: wgpu::RenderPipeline,
+    stroke_stencil: wgpu::RenderPipeline,
+
+    viewport_layout: wgpu::BindGroupLayout,
+    image_layout: wgpu::BindGroupLayout,
+}
+
+impl Pipeline {
+    fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+        let viewport_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("VG bind group layout"),
+            bindings: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStage::VERTEX,
+                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler { comparison: false },
+                },
+            ],
+        });
+
+        let image_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("VG bind group layout"),
+            bindings: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStage::FRAGMENT,
+                ty: wgpu::BindingType::SampledTexture {
+                    dimension: wgpu::TextureViewDimension::D2,
+                    component_type: wgpu::TextureComponentType::Float,
+                    multisampled: false,
+                },
+            }],
+        });
+
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            bind_group_layouts: &[&viewport_layout, &image_layout],
+        });
+
+        let builder = Builder {
+            format,
+            device,
+            layout,
+
+            base: Shader::base(device).unwrap(),
+            stencil: Shader::stencil(device).unwrap(),
+            image: Shader::image(device).unwrap(),
+        };
+
+        stencil_face!(ALWAYS_ZERO, Always, Zero, Zero);
+        stencil_face!(INCR_WRAP, Always, Keep, IncrementWrap);
+        stencil_face!(DECR_WRAP, Always, Keep, DecrementWrap);
+
+        Self {
+            image: builder.image(stencil_face!(Always, Keep, Keep)),
+
+            convex: builder.base(stencil_face!(Always, Keep, Keep)),
+            fringes: builder.base(stencil_face!(Equal, Keep, Keep)),
+
+            fill_stencil: builder.stencil(wgpu::CullMode::None, INCR_WRAP, DECR_WRAP),
+            fill_quad: builder.base(stencil_face!(NotEqual, Zero, Zero)),
+
+            stroke_base: builder.base(stencil_face!(Equal, Keep, IncrementClamp)),
+            stroke_stencil: builder.stencil(wgpu::CullMode::Back, ALWAYS_ZERO, ALWAYS_ZERO),
+
+            viewport_layout,
+            image_layout,
         }
     }
 }

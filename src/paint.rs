@@ -1,8 +1,17 @@
 pub use crate::math::{Color, Rect, Transform};
 
+#[derive(Clone, PartialEq)]
+pub struct Stroke {
+    pub color: Color,
+    pub line_cap: LineCap,
+    pub line_join: LineJoin,
+    pub miter_limit: f32,
+    pub width: f32,
+}
+
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
-pub enum StrokeCap {
+pub enum LineCap {
     Butt = 0,
     Round = 1,
     Square = 2,
@@ -10,7 +19,7 @@ pub enum StrokeCap {
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
-pub enum StrokeJoin {
+pub enum LineJoin {
     Round = 1,
     Bevel = 3,
     Miter = 4,
@@ -50,8 +59,8 @@ pub enum Gradient {
 #[derive(Clone, Copy)]
 pub struct Paint {
     pub style: PaintingStyle,
-    pub cap: StrokeCap,
-    pub join: StrokeJoin,
+    pub cap: LineCap,
+    pub join: LineJoin,
     pub antialias: bool,
     pub miter: f32,
     pub width: f32,
@@ -64,8 +73,8 @@ impl Default for Paint {
         Self {
             style: PaintingStyle::Fill,
             color: Color::BLACK,
-            cap: StrokeCap::Butt,
-            join: StrokeJoin::Miter,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
             antialias: true,
             miter: 10.0,
             width: 1.0,
@@ -91,11 +100,11 @@ impl Paint {
         }
     }
 
-    pub fn stroke_cap(self, cap: StrokeCap) -> Self {
+    pub fn stroke_cap(self, cap: LineCap) -> Self {
         Self { cap, ..self }
     }
 
-    pub fn stroke_join(self, join: StrokeJoin) -> Self {
+    pub fn stroke_join(self, join: LineJoin) -> Self {
         Self { join, ..self }
     }
 
@@ -297,4 +306,23 @@ pub struct Uniforms {
 
     pub stroke_mul: f32, // scale
     pub stroke_thr: f32, // threshold
+}
+
+impl Uniforms {
+    pub fn from_stroke(stroke: &Stroke, width: f32, fringe: f32, stroke_thr: f32) -> Self {
+        let color = stroke.color.into();
+        Self {
+            paint_mat: Transform::identity().into(),
+
+            inner_color: color,
+            outer_color: color,
+
+            extent: [0.0, 0.0],
+            radius: 0.0,
+            feather: 1.0,
+
+            stroke_mul: (width * 0.5 + fringe * 0.5) / fringe,
+            stroke_thr,
+        }
+    }
 }

@@ -54,6 +54,7 @@ impl Default for RawPath {
     }
 }
 
+#[derive(Default)]
 pub struct Picture {
     pub calls: Vec<Call>,
     pub verts: VecAlloc<Vertex>,
@@ -61,19 +62,6 @@ pub struct Picture {
 
     pub paths: VecAlloc<RawPath>,
     pub strokes: VecAlloc<Range<u32>>,
-}
-
-impl Default for Picture {
-    fn default() -> Self {
-        Self {
-            calls: Vec::new(),
-            verts: VecAlloc::new(),
-            uniforms: VecAlloc::new(),
-
-            paths: VecAlloc::new(),
-            strokes: VecAlloc::new(),
-        }
-    }
 }
 
 impl Picture {

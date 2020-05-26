@@ -1,20 +1,22 @@
 use crate::{
     math::{Offset, PartialClamp, RRect, Rect, Transform},
-    paint::{Paint, PaintingStyle, RawPaint, StrokeJoin, Uniforms},
-    path::PathCmd,
-    picture::{Call, Vertex},
+    paint::{LineJoin, Paint, PaintingStyle, RawPaint, Stroke, Uniforms},
+    path::{Path, PathCmd},
+    picture::{Call, Picture, Vertex},
     renderer::Renderer,
 };
+
+impl Transform {
+    #[inline(always)]
+    fn average_scale(&self) -> f32 {
+        self.re * self.re + self.im * self.im
+    }
+}
 
 #[derive(Default)]
 struct TransformStack(Transform, Vec<Transform>);
 
 impl TransformStack {
-    #[inline]
-    fn save_count(&mut self) -> usize {
-        self.1.len()
-    }
-
     #[inline]
     fn save(&mut self) {
         self.1.push(self.transform())
@@ -38,13 +40,17 @@ impl TransformStack {
 
 pub struct Canvas<'a> {
     ctx: &'a mut Renderer,
+    picture: &'a mut Picture,
     states: TransformStack,
 }
 
 impl<'a> Canvas<'a> {
-    pub fn new(ctx: &'a mut Renderer) -> Self {
-        let states = TransformStack(Transform::default(), Vec::with_capacity(16));
-        Self { ctx, states }
+    pub fn new(ctx: &'a mut Renderer, picture: &'a mut Picture) -> Self {
+        Self {
+            ctx,
+            picture,
+            states: TransformStack(Transform::default(), Vec::with_capacity(16)),
+        }
     }
 
     pub fn draw_image(&mut self, image: u32, offset: Offset) {
@@ -53,8 +59,8 @@ impl<'a> Canvas<'a> {
         if let Some(image_bind) = self.ctx.images.get(&image) {
             let Offset { x: x0, y: y0 } = offset;
             let (x1, y1) = (
-                x0 + image_bind.width as f32 * 100.0,
-                y0 + image_bind.height as f32 * 100.0,
+                x0 + image_bind.size.width as f32 / self.ctx.scale,
+                y0 + image_bind.size.height as f32 / self.ctx.scale,
             );
 
             let vtx = [
@@ -64,7 +70,7 @@ impl<'a> Canvas<'a> {
                 Vertex::new([x0, y1], [0.0, 1.0]),
             ];
 
-            let pic = &mut self.ctx.picture;
+            let pic = &mut self.picture;
 
             let idx = pic.uniforms.push(Uniforms::default());
             let vtx = pic
@@ -74,18 +80,52 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    fn fill_or_stroke(&mut self, paint: &Paint, force_stroke: bool) {
-        impl Transform {
-            #[inline(always)]
-            fn average_scale(&self) -> f32 {
-                self.re * self.re + self.im * self.im
-            }
+    pub fn stroke_path(&mut self, stroke: &Stroke, path: &Path, xform: Transform) {
+        let tess = &mut self.ctx.tess;
+        let mut width = (stroke.width * xform.average_scale()).clamp(0.0, 200.0);
+        let mut color = stroke.color;
+        if width < tess.fringe_width {
+            // If the stroke width is less than pixel size, use alpha to emulate coverage.
+            // Since coverage is area, scale by alpha*alpha.
+            let alpha = (width / tess.fringe_width).clamp(0.0, 1.0);
+            color.alpha *= alpha * alpha;
+            width = tess.fringe_width;
         }
 
+        tess.flatten_paths(path.transform(xform));
+        tess.expand_stroke(
+            width * 0.5,
+            stroke.line_cap,
+            stroke.line_join,
+            stroke.miter_limit,
+        );
+
+        // Allocate vertices for all the paths.
+        let pic = &mut self.picture;
+        let verts = &mut pic.verts;
+        let iter = tess
+            .paths
+            .iter()
+            .filter_map(|path| path.stroke.as_ref().map(|src| verts.extend_with(src)));
+
+        let path = pic.strokes.extend(iter);
+
+        // Fill shader
+        let fringe = tess.fringe_width;
+        let a = Uniforms::from_stroke(&stroke, width, fringe, 1.0 - 0.5 / 255.0);
+        let b = Uniforms::from_stroke(&stroke, width, fringe, -1.0);
+
+        let idx = pic.uniforms.push(a);
+        let _ = pic.uniforms.push(b);
+
+        pic.calls.push(Call::Stroke { idx, path })
+    }
+
+    fn fill_or_stroke(&mut self, paint: &Paint, force_stroke: bool) {
         let cache = &mut self.ctx.tess;
         let xform = self.states.transform();
         let commands = self.ctx.recorder.transform(xform);
-        let pic = &mut self.ctx.picture;
+        let pic = &mut self.picture;
 
         let mut raw_paint = RawPaint::convert(paint, xform);
 
@@ -131,7 +171,7 @@ impl<'a> Canvas<'a> {
             };
 
             cache.flatten_paths(commands);
-            cache.expand_fill(w, StrokeJoin::Miter, 2.4);
+            cache.expand_fill(w, LineJoin::Miter, 2.4);
             let fringe = cache.fringe_width;
             let paths = &cache.paths;
 
@@ -173,24 +213,9 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /// Returns the number of items on the save stack, including the initial state.
-    /// This means it returns 1 for a clean canvas, and that each call to save and saveLayer increments it,
-    /// and that each matching call to restore decrements it. [...]
-    pub fn save_count(&mut self) -> usize {
-        self.states.save_count()
-    }
-
     /// Saves a copy of the current transform and clip on the save stack. [...]
     pub fn save(&mut self) {
         self.states.save();
-    }
-
-    /// Saves a copy of the current transform and clip on the save stack,
-    /// and then creates a new group which subsequent calls will become a part of.
-    /// When the save stack is later popped, the group will be flattened into a layer
-    /// and have the given paint's Paint.colorFilter and Paint.blendMode applied. [...]
-    pub fn _save_layer(&mut self, _bounds: Rect, _paint: Paint) {
-        unimplemented!()
     }
 
     /// Pops the current save stack, if there is anything to pop. Otherwise, does nothing. [...]
@@ -251,7 +276,7 @@ impl<'a> Canvas<'a> {
     pub fn draw_circle(&mut self, c: Offset, radius: f32, paint: Paint) {
         self.ctx.tess.clear();
         self.ctx.recorder.clear();
-        self.ctx.recorder.add_circle(c, radius);
+        self.ctx.recorder.circle(c, radius);
         self.fill_or_stroke(&paint, false);
     }
 
@@ -305,7 +330,7 @@ impl<'a> Canvas<'a> {
     pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
         self.ctx.tess.clear();
         self.ctx.recorder.clear();
-        self.ctx.recorder.add_oval(rect);
+        self.ctx.recorder.oval(rect);
         self.fill_or_stroke(&paint, false);
     }
 
@@ -345,7 +370,7 @@ impl<'a> Canvas<'a> {
     pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
         self.ctx.tess.clear();
         self.ctx.recorder.clear();
-        self.ctx.recorder.add_rect(rect);
+        self.ctx.recorder.rect(rect);
         self.fill_or_stroke(&paint, false);
     }
 
@@ -354,7 +379,7 @@ impl<'a> Canvas<'a> {
     pub fn draw_rrect(&mut self, rrect: RRect, paint: Paint) {
         self.ctx.tess.clear();
         self.ctx.recorder.clear();
-        self.ctx.recorder.add_rrect(rrect);
+        self.ctx.recorder.rrect(rrect);
         self.fill_or_stroke(&paint, false);
     }
 

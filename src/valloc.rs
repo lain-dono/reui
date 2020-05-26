@@ -2,6 +2,13 @@ use std::ops::{Index, IndexMut, Range};
 
 pub struct VecAlloc<T>(Vec<T>);
 
+impl<T> Default for VecAlloc<T> {
+    #[inline]
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
 impl<T> Index<Range<u32>> for VecAlloc<T> {
     type Output = [T];
     #[inline]
@@ -25,11 +32,6 @@ impl<T> AsRef<[T]> for VecAlloc<T> {
 }
 
 impl<T> VecAlloc<T> {
-    #[inline]
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
     #[inline]
     pub fn clear(&mut self) {
         self.0.clear();

@@ -6,7 +6,7 @@ mod time;
 
 use reui::{
     app::{self, ControlFlow, Options, Surface, WindowEvent},
-    wgpu, Offset, Renderer,
+    wgpu, Offset, Picture, Renderer,
 };
 
 pub fn main() {
@@ -21,6 +21,7 @@ pub fn main() {
 
 struct Demo {
     vg: Renderer,
+    picture: Picture,
     mouse: Offset,
     counter: crate::time::Counter,
 }
@@ -31,6 +32,7 @@ impl app::Application for Demo {
     fn init(device: &wgpu::Device, _queue: &wgpu::Queue, surface: &mut Surface) -> Self {
         Self {
             vg: Renderer::new(&device, surface.format()),
+            picture: Picture::new(),
             mouse: Offset::zero(),
             counter: crate::time::Counter::new(),
         }
@@ -67,13 +69,14 @@ impl app::Application for Demo {
         let _ = frame.clear(&mut encoder, [0.3, 0.3, 0.32, 1.0]);
 
         {
+            self.picture.clear();
             {
-                let mut ctx = self.vg.begin_frame(scale);
+                let mut ctx = self.vg.begin_frame(scale, &mut self.picture);
                 canvas::render_demo(&mut ctx, mouse, wsize, time);
                 drop(ctx);
             }
 
-            self.vg.draw(&mut encoder, &device, frame.target());
+            self.vg.draw_picture(&mut encoder, &device, frame.target(), &self.picture);
         }
 
         queue.submit(&[encoder.finish()]);

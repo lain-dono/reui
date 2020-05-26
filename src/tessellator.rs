@@ -1,6 +1,6 @@
 use crate::{
     math::{Offset, PartialClamp},
-    paint::{StrokeCap, StrokeJoin},
+    paint::{LineCap, LineJoin},
     path::{PathCmd, Winding},
     picture::Vertex,
 };
@@ -288,7 +288,7 @@ impl Tessellator {
         self.last_point = point;
     }
 
-    fn calculate_joins(&mut self, w: f32, line_join: StrokeJoin, miter_limit: f32) {
+    fn calculate_joins(&mut self, w: f32, line_join: LineJoin, miter_limit: f32) {
         let iw = if w > 0.0 { 1.0 / w } else { 0.0 };
 
         let miter_limit2 = miter_limit * miter_limit;
@@ -335,7 +335,7 @@ impl Tessellator {
                 }
 
                 // Check to see if the corner needs to be beveled.
-                if p1.is_corner() && (dmr2 * miter_limit2 < 1.0 || line_join != StrokeJoin::Miter) {
+                if p1.is_corner() && (dmr2 * miter_limit2 < 1.0 || line_join != LineJoin::Miter) {
                     p1.flags |= PointFlags::BEVEL;
                 }
 
@@ -367,7 +367,14 @@ impl Tessellator {
                     self.add_point(p, self.dist_tol, PointFlags::CORNER);
                 }
                 PathCmd::LineTo(p) => self.add_point(p, self.dist_tol, PointFlags::CORNER),
-                PathCmd::BezierTo(p1, p2, p3) => {
+                PathCmd::QuadTo(control, p3) => {
+                    const FIX: f32 = 2.0 / 3.0;
+                    let p0 = self.last_point;
+                    let p1 = p0 + (control - p0) * FIX;
+                    let p2 = p3 + (control - p3) * FIX;
+                    self.tesselate_bezier(p0, p1, p2, p3, PointFlags::CORNER)
+                }
+                PathCmd::CubicTo(p1, p2, p3) => {
                     let p0 = self.last_point;
                     self.tesselate_bezier(p0, p1, p2, p3, PointFlags::CORNER);
                 }
@@ -504,8 +511,8 @@ impl Tessellator {
     pub fn expand_stroke(
         &mut self,
         w: f32,
-        line_cap: StrokeCap,
-        line_join: StrokeJoin,
+        line_cap: LineCap,
+        line_join: LineJoin,
         miter_limit: f32,
     ) {
         let aa = self.fringe_width;
@@ -521,7 +528,7 @@ impl Tessellator {
         // Calculate max vertex usage.
         let mut additional = 0;
         for path in &self.paths {
-            let count = if line_join == StrokeJoin::Round {
+            let count = if line_join == LineJoin::Round {
                 ncap + 2
             } else {
                 5
@@ -529,7 +536,7 @@ impl Tessellator {
             additional += (path.len() + path.nbevel * count + 1) * 2; // plus one for loop
             if !path.closed {
                 // space for caps
-                if line_cap == StrokeCap::Round {
+                if line_cap == LineCap::Round {
                     additional += (ncap * 2 + 2) * 2;
                 } else {
                     additional += (3 + 3) * 2;
@@ -563,9 +570,9 @@ impl Tessellator {
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx]);
                 let delta: Offset = (p1.pos - p0.pos).normalize();
                 match line_cap {
-                    StrokeCap::Butt => dst.butt_cap_start(p0, delta, w, -aa * 0.5, aa, u),
-                    StrokeCap::Square => dst.butt_cap_start(p0, delta, w, w - aa, aa, u),
-                    StrokeCap::Round => dst.round_cap_start(p0, delta, w, ncap, aa, u),
+                    LineCap::Butt => dst.butt_cap_start(p0, delta, w, -aa * 0.5, aa, u),
+                    LineCap::Square => dst.butt_cap_start(p0, delta, w, w - aa, aa, u),
+                    LineCap::Round => dst.round_cap_start(p0, delta, w, ncap, aa, u),
                 };
             }
 
@@ -573,7 +580,7 @@ impl Tessellator {
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx]);
 
                 if p1.any_bevel() {
-                    if line_join == StrokeJoin::Round {
+                    if line_join == LineJoin::Round {
                         dst.round_join(p0, p1, [w, w, u.0, u.1], ncap);
                     } else {
                         dst.bevel_join(p0, p1, [w, w, u.0, u.1]);
@@ -597,9 +604,9 @@ impl Tessellator {
                 let (p0, p1) = (&pts[p0_idx], &pts[p1_idx % pts.len()]); // XXX
                 let delta: Offset = (p1.pos - p0.pos).normalize();
                 match line_cap {
-                    StrokeCap::Butt => dst.butt_cap_end(p1, delta, w, -aa * 0.5, aa, u),
-                    StrokeCap::Square => dst.butt_cap_end(p1, delta, w, w - aa, aa, u),
-                    StrokeCap::Round => dst.round_cap_end(p1, delta, w, ncap as i32, aa, u),
+                    LineCap::Butt => dst.butt_cap_end(p1, delta, w, -aa * 0.5, aa, u),
+                    LineCap::Square => dst.butt_cap_end(p1, delta, w, w - aa, aa, u),
+                    LineCap::Round => dst.round_cap_end(p1, delta, w, ncap as i32, aa, u),
                 }
             }
 
@@ -611,7 +618,7 @@ impl Tessellator {
         }
     }
 
-    pub fn expand_fill(&mut self, w: f32, line_join: StrokeJoin, miter_limit: f32) {
+    pub fn expand_fill(&mut self, w: f32, line_join: LineJoin, miter_limit: f32) {
         let woff = 0.5 * self.fringe_width;
         let has_fringe = w > 0.0;
 

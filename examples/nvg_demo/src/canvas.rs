@@ -1,5 +1,5 @@
 use reui::{
-    Canvas, Color, Offset, Paint, PaintingStyle, Path, RRect, Rect, StrokeCap, StrokeJoin, Winding,
+    Canvas, Color, Offset, Paint, PaintingStyle, Path, RRect, Rect, LineCap, LineJoin, Winding,
 };
 use std::f32::consts::PI;
 
@@ -196,8 +196,8 @@ pub fn draw_window(ctx: &mut Canvas, rr: Rect) {
 
     // Drop shadow
     let mut path = Path::new();
-    path.add_rect(Rect::from_ltwh(x - 10.0, y - 10.0, w + 20.0, h + 20.0));
-    path.add_rrect(rrect);
+    path.rect(Rect::from_ltwh(x - 10.0, y - 10.0, w + 20.0, h + 20.0));
+    path.rrect(rrect);
     path.path_winding(Winding::CW);
     ctx.draw_path(
         &path,
@@ -522,7 +522,7 @@ pub fn draw_widths(ctx: &mut Canvas, x: f32, y: f32, width: f32) {
 }
 
 pub fn draw_caps(ctx: &mut Canvas, x: f32, y: f32, width: f32) {
-    let caps = [StrokeCap::Butt, StrokeCap::Round, StrokeCap::Square];
+    let caps = [LineCap::Butt, LineCap::Round, LineCap::Square];
     let line_width = 8.0;
 
     ctx.draw_rect(
@@ -546,8 +546,8 @@ pub fn draw_lines(ctx: &mut Canvas, x: f32, y: f32, w: f32, _h: f32, t: f32) {
     let pad = 5.0;
     let size = w / 9.0 - pad * 2.0;
 
-    let joins = [StrokeJoin::Miter, StrokeJoin::Round, StrokeJoin::Bevel];
-    let caps = [StrokeCap::Butt, StrokeCap::Round, StrokeCap::Square];
+    let joins = [LineJoin::Miter, LineJoin::Round, LineJoin::Bevel];
+    let caps = [LineCap::Butt, LineCap::Round, LineCap::Square];
 
     let pts = [
         -size * 0.25 + (t * 0.3).cos() * size * 0.5,
@@ -584,8 +584,8 @@ pub fn draw_lines(ctx: &mut Canvas, x: f32, y: f32, w: f32, _h: f32, t: f32) {
                 &path,
                 Paint::stroke(Color::hex(0xFF_00C0FF))
                     .stroke_width(1.0)
-                    .stroke_cap(StrokeCap::Butt)
-                    .stroke_join(StrokeJoin::Bevel),
+                    .stroke_cap(LineCap::Butt)
+                    .stroke_join(LineJoin::Bevel),
             );
         }
     }
@@ -648,13 +648,13 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, x: f32, y: f32, w: f32, h: f32) {
 
     // Knob Shadow
     let mut path = Path::new();
-    path.add_rect(Rect::from_ltwh(
+    path.rect(Rect::from_ltwh(
         x + (pos * w).floor() - kr - 5.0,
         cy - kr - 5.0,
         kr * 2.0 + 5.0 + 5.0,
         kr * 2.0 + 5.0 + 5.0 + 3.0,
     ));
-    path.add_circle([x + (pos * w).floor(), cy].into(), kr);
+    path.circle([x + (pos * w).floor(), cy].into(), kr);
     path.path_winding(Winding::CW);
     ctx.draw_path(
         &path,
@@ -701,8 +701,8 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
         let by = cy + a1.sin() * (r0 + r1) * 0.5;
 
         path.clear();
-        path.arc(cx, cy, r0, a0, a1, Winding::CW);
-        path.arc(cx, cy, r1, a1, a0, Winding::CCW);
+        path._arc(cx, cy, r0, a0, a1, Winding::CW);
+        path._arc(cx, cy, r1, a1, a0, Winding::CCW);
         path.close();
 
         let inner_color = Color::hsla(a0 / (PI * 2.0), 1.0, 0.55, 1.0);
@@ -713,8 +713,8 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     }
 
     path.clear();
-    path.add_circle([cx, cy].into(), r0 - 0.5);
-    path.add_circle([cx, cy].into(), r1 + 0.5);
+    path.circle([cx, cy].into(), r0 - 0.5);
+    path.circle([cx, cy].into(), r1 + 0.5);
     ctx.draw_path(&path, Paint::stroke(Color::hex(0x40_000000)));
 
     // Selector
@@ -734,13 +734,13 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
         Color::hex(0x00_000000),
     );
     path.clear();
-    path.add_rect(Rect::from_ltwh(
+    path.rect(Rect::from_ltwh(
         r0 - 2.0 - 10.0,
         -4.0 - 10.0,
         r1 - r0 + 4.0 + 20.0,
         8.0 + 20.0,
     ));
-    path.add_rect(Rect::from_ltwh(r0 - 2.0, -4.0, r1 - r0 + 4.0, 8.0));
+    path.rect(Rect::from_ltwh(r0 - 2.0, -4.0, r1 - r0 + 4.0, 8.0));
     path.path_winding(Winding::CW);
     ctx.draw_path(&path, paint);
 
@@ -783,8 +783,8 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
         Color::hex(0x00_000000),
     );
     path.clear();
-    path.add_rect(Rect::from_ltwh(ax - 20.0, ay - 20.0, 40.0, 40.0));
-    path.add_circle([ax, ay].into(), 7.0);
+    path.rect(Rect::from_ltwh(ax - 20.0, ay - 20.0, 40.0, 40.0));
+    path.circle([ax, ay].into(), 7.0);
     path.path_winding(Winding::CW);
     ctx.draw_path(&path, paint);
 

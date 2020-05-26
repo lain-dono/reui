@@ -18,8 +18,9 @@ mod valloc;
 
 pub use self::{
     canvas::Canvas,
-    math::{Color, Offset, RRect, Rect, Transform},
-    paint::{Gradient, Paint, PaintingStyle, StrokeCap, StrokeJoin},
+    math::{Color, Corners, Offset, RRect, Rect, Transform},
+    paint::{Gradient, LineCap, LineJoin, Paint, PaintingStyle, Stroke},
     path::{Path, Winding},
     renderer::{Renderer, Target},
+    picture::Picture,
 };

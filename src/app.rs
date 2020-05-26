@@ -229,6 +229,7 @@ pub trait Application: 'static {
 
     fn init(device: &wgpu::Device, queue: &wgpu::Queue, surface: &mut Surface) -> Self;
     fn update(&mut self, event: WindowEvent, control_flow: &mut ControlFlow);
+    fn user_event(&mut self, _event: Self::UserEvent) {}
     fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, surface: &mut Surface);
 }
 
@@ -264,7 +265,6 @@ pub async fn run_async<App: Application>(
             Event::NewEvents(StartCause::Poll) => {}
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {}
             Event::NewEvents(StartCause::WaitCancelled { .. }) => {}
-
             Event::WindowEvent { event, window_id } => {
                 if window.id() == window_id {
                     match event {
@@ -280,7 +280,7 @@ pub async fn run_async<App: Application>(
                 }
             }
             Event::DeviceEvent { .. } => {}
-            Event::UserEvent(_event) => {}
+            Event::UserEvent(event) => app.user_event(event),
             Event::Suspended => {}
             Event::Resumed => {}
             Event::MainEventsCleared => window.request_redraw(),
@@ -292,5 +292,5 @@ pub async fn run_async<App: Application>(
             Event::RedrawEventsCleared => {}
             Event::LoopDestroyed => {}
         }
-    });
+    })
 }
