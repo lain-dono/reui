@@ -1,4 +1,5 @@
-pub use crate::math::{Color, Rect, Transform};
+use crate::math::{Color, Rect, Transform};
+use crate::picture::Instance;
 
 #[derive(Clone, PartialEq)]
 pub struct Stroke {
@@ -276,8 +277,8 @@ impl RawPaint {
         }
     }
 
-    pub fn to_uniform(&self, width: f32, fringe: f32, stroke_thr: f32) -> Uniforms {
-        Uniforms {
+    pub fn to_instance(&self, width: f32, fringe: f32, stroke_thr: f32) -> Instance {
+        Instance {
             paint_mat: self.xform.inverse().into(),
 
             inner_color: self.inner_color.into(),
@@ -286,40 +287,6 @@ impl RawPaint {
             extent: self.extent,
             radius: self.radius,
             feather: self.feather,
-
-            stroke_mul: (width * 0.5 + fringe * 0.5) / fringe,
-            stroke_thr,
-        }
-    }
-}
-
-#[derive(Default)]
-#[repr(C, align(4))]
-pub struct Uniforms {
-    pub paint_mat: [f32; 4],
-    pub inner_color: [u8; 4],
-    pub outer_color: [u8; 4],
-
-    pub extent: [f32; 2],
-    pub radius: f32,
-    pub feather: f32,
-
-    pub stroke_mul: f32, // scale
-    pub stroke_thr: f32, // threshold
-}
-
-impl Uniforms {
-    pub fn from_stroke(stroke: &Stroke, width: f32, fringe: f32, stroke_thr: f32) -> Self {
-        let color = stroke.color.into();
-        Self {
-            paint_mat: Transform::identity().into(),
-
-            inner_color: color,
-            outer_color: color,
-
-            extent: [0.0, 0.0],
-            radius: 0.0,
-            feather: 1.0,
 
             stroke_mul: (width * 0.5 + fringe * 0.5) / fringe,
             stroke_thr,

@@ -1,5 +1,16 @@
-use crate::{paint::Uniforms, valloc::VecAlloc};
+use crate::{
+    math::{Offset, Transform},
+    paint::Stroke,
+    valloc::VecAlloc,
+};
 use std::ops::Range;
+
+pub(crate) fn cast_slice<T: Sized>(slice: &[T]) -> &[u8] {
+    use std::{mem::size_of, slice::from_raw_parts};
+    let len = slice.len() * size_of::<T>();
+    let data = slice.as_ptr();
+    unsafe { from_raw_parts(data as *const u8, len) }
+}
 
 #[derive(Clone)]
 pub enum Call {
@@ -16,7 +27,6 @@ pub enum Call {
         idx: u32,
         path: Range<u32>,
     },
-
     Image {
         idx: u32,
         vtx: Range<u32>,
@@ -24,6 +34,7 @@ pub enum Call {
     },
 }
 
+#[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct Vertex {
     pub pos: [f32; 2],
@@ -35,6 +46,12 @@ impl Vertex {
     pub fn new(pos: [f32; 2], uv: [f32; 2]) -> Self {
         let uv = [(uv[0] * 65535.0) as u16, (uv[1] * 65535.0) as u16];
         Self { pos, uv }
+    }
+
+    #[inline(always)]
+    pub fn transform(self, transform: &Transform) -> Self {
+        let pos = transform.apply(Offset::from(self.pos)).into();
+        Self { pos, ..self }
     }
 }
 
@@ -54,26 +71,87 @@ impl Default for RawPath {
     }
 }
 
+#[repr(C, align(4))]
+#[derive(Clone, Copy, Default)]
+pub struct Instance {
+    pub paint_mat: [f32; 4],
+    pub inner_color: [u8; 4],
+    pub outer_color: [u8; 4],
+
+    pub extent: [f32; 2],
+    pub radius: f32,
+    pub feather: f32,
+
+    pub stroke_mul: f32, // scale
+    pub stroke_thr: f32, // threshold
+}
+
+impl Instance {
+    pub fn from_stroke(stroke: &Stroke, width: f32, fringe: f32, stroke_thr: f32) -> Self {
+        let color = stroke.color.into();
+        Self {
+            paint_mat: Transform::identity().into(),
+
+            inner_color: color,
+            outer_color: color,
+
+            extent: [0.0, 0.0],
+            radius: 0.0,
+            feather: 1.0,
+
+            stroke_mul: (width * 0.5 + fringe * 0.5) / fringe,
+            stroke_thr,
+        }
+    }
+}
+
 #[derive(Default)]
-pub struct Picture {
+pub struct PictureRecorder {
     pub calls: Vec<Call>,
-    pub verts: VecAlloc<Vertex>,
-    pub uniforms: VecAlloc<Uniforms>,
+    pub vertices: VecAlloc<Vertex>,
+    pub instances: VecAlloc<Instance>,
 
     pub paths: VecAlloc<RawPath>,
     pub strokes: VecAlloc<Range<u32>>,
 }
 
-impl Picture {
+impl PictureRecorder {
     pub fn new() -> Self {
         Self::default()
     }
 
     pub fn clear(&mut self) {
-        self.verts.clear();
+        self.calls.clear();
+        self.vertices.clear();
+        self.instances.clear();
+
         self.paths.clear();
         self.strokes.clear();
-        self.calls.clear();
-        self.uniforms.clear();
     }
+
+    pub fn build(&mut self, device: &wgpu::Device) -> PictureBundle {
+        use wgpu::util::DeviceExt;
+
+        let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: cast_slice(self.vertices.as_ref()),
+            usage: wgpu::BufferUsage::VERTEX,
+        });
+
+        let instances = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: cast_slice(self.instances.as_ref()),
+            usage: wgpu::BufferUsage::VERTEX,
+        });
+
+        PictureBundle {
+            vertices,
+            instances,
+        }
+    }
+}
+
+pub struct PictureBundle {
+    pub(crate) vertices: wgpu::Buffer,
+    pub(crate) instances: wgpu::Buffer,
 }

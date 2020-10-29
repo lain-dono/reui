@@ -77,20 +77,20 @@ struct Point {
 }
 
 impl Point {
-    pub fn is_left(&self) -> bool {
+    fn is_left(&self) -> bool {
         self.flags.contains(PointFlags::LEFT)
     }
-    pub fn is_corner(&self) -> bool {
+    fn is_corner(&self) -> bool {
         self.flags.contains(PointFlags::CORNER)
     }
-    pub fn is_bevel(&self) -> bool {
+    fn is_bevel(&self) -> bool {
         self.flags.contains(PointFlags::BEVEL)
     }
-    pub fn is_innerbevel(&self) -> bool {
+    fn is_innerbevel(&self) -> bool {
         self.flags.contains(PointFlags::INNERBEVEL)
     }
 
-    pub fn any_bevel(&self) -> bool {
+    fn any_bevel(&self) -> bool {
         self.flags
             .intersects(PointFlags::BEVEL | PointFlags::INNERBEVEL)
     }

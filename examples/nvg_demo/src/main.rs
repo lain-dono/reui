@@ -6,7 +6,7 @@ mod time;
 
 use reui::{
     app::{self, ControlFlow, Options, Surface, WindowEvent},
-    wgpu, Offset, Picture, Renderer,
+    wgpu, Offset, PictureRecorder, Rect, Renderer,
 };
 
 pub fn main() {
@@ -21,20 +21,29 @@ pub fn main() {
 
 struct Demo {
     vg: Renderer,
-    picture: Picture,
+    picture: PictureRecorder,
     mouse: Offset,
     counter: crate::time::Counter,
+    image: u32,
 }
 
 impl app::Application for Demo {
     type UserEvent = ();
 
-    fn init(device: &wgpu::Device, _queue: &wgpu::Queue, surface: &mut Surface) -> Self {
+    fn init(device: &wgpu::Device, queue: &wgpu::Queue, surface: &mut Surface) -> Self {
+        let mut vg = Renderer::new(&device, surface.format());
+        let picture = PictureRecorder::default();
+
+        let image = vg
+            .open_image(device, queue, "examples/rust-jerk.jpg")
+            .unwrap();
+
         Self {
-            vg: Renderer::new(&device, surface.format()),
-            picture: Picture::new(),
+            vg,
+            picture,
             mouse: Offset::zero(),
             counter: crate::time::Counter::new(),
+            image,
         }
     }
 
@@ -60,25 +69,25 @@ impl app::Application for Demo {
         }
 
         let frame = surface
-            .next_frame()
+            .current_frame()
             .expect("Timeout when acquiring next swap chain texture");
 
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        let _ = frame.clear(&mut encoder, [0.3, 0.3, 0.32, 1.0]);
+        self.picture.clear();
+        let mut ctx = self
+            .vg
+            .begin_frame(&queue, width, height, scale, &mut self.picture);
+        ctx.draw_image_rect(self.image, Rect::from_size(wsize.x, wsize.y));
+        canvas::render_demo(&mut ctx, mouse, wsize, time);
 
+        let bundle = self.picture.build(&device);
         {
-            self.picture.clear();
-            {
-                let mut ctx = self.vg.begin_frame(scale, &mut self.picture);
-                canvas::render_demo(&mut ctx, mouse, wsize, time);
-                drop(ctx);
-            }
-
-            self.vg.draw_picture(&mut encoder, &device, frame.target(), &self.picture);
+            let mut rpass = frame.clear(&mut encoder, [0.3, 0.3, 0.32, 1.0]);
+            self.vg.draw_picture(&mut rpass, &self.picture, &bundle);
         }
 
-        queue.submit(&[encoder.finish()]);
+        queue.submit(Some(encoder.finish()));
     }
 }

@@ -1,4 +1,4 @@
-use reui::{Canvas, Color, Offset, Paint, RRect, Rect, Transform};
+use reui::{Canvas, Color, Corners, Offset, Paint, Rect, Transform};
 
 const HOVER_SHADE: i32 = 15;
 
@@ -139,13 +139,13 @@ pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {
     ctx.draw_rect(bounds, Paint::fill(Color::hex(theme.background)));
 
     let rect = bounds.deflate(3.0);
-    let rrect = RRect::from_rect_and_radius(rect, 2.5);
+    let radius = Corners::all_same(2.5);
 
-    let mut left_scroll = rrect;
-    left_scroll.rect.min.x = rrect.rect.max.x - 5.0;
-    left_scroll.rect.max.y = rrect.rect.max.y - 50.0;
+    let mut left_scroll = rect;
+    left_scroll.min.x = rect.max.x - 5.0;
+    left_scroll.max.y = rect.max.y - 50.0;
 
-    ctx.draw_rrect(left_scroll, Paint::fill(Color::hex(0xFF_676767)));
+    ctx.draw_rrect(left_scroll, radius, Paint::fill(Color::hex(0xFF_676767)));
     //ctx.draw_rrect(left_scroll.add(1.0), Paint::stroke(0xFF_424242));
     //ctx.draw_rrect(left_scroll, Paint::stroke(0xFF_373737).stroke_width(0.5));
 }
@@ -157,15 +157,16 @@ pub fn draw_option(ctx: &mut Canvas, bounds: Rect, theme: &WidgetTheme, state: S
         State::Active => Color::hex(theme.active),
     };
 
-    let rrect = RRect::from_rect_and_radius(bounds, theme.radius);
+    let radius = Corners::all_same(theme.radius);
     let a = Offset::new(2.5, 6.0);
     let b = Offset::new(5.5, 9.0);
     let c = Offset::new(10.5, 3.5);
 
-    ctx.draw_rrect(rrect, Paint::fill(bg));
+    ctx.draw_rrect(bounds, radius, Paint::fill(bg));
     ctx.draw_rrect(
-        rrect.inflate(0.5),
-        Paint::stroke(Color::hex(theme.outline)).stroke_width(0.5),
+        bounds.inflate(0.5),
+        radius,
+        Paint::stroke(Color::hex(theme.outline)).stroke_width(1.0),
     );
 
     if state == State::Active {
@@ -189,64 +190,64 @@ pub fn draw_num(
         State::Active => Color::hex(theme.active),
     };
 
-    let mut rrect = RRect::from_rect_and_radius(bounds, theme.radius);
+    let mut radius = Corners::all_same(theme.radius);
     match gropped {
         Gropped::None => (),
         Gropped::StartVertical => {
-            rrect.radius.bl = 0.0;
-            rrect.radius.br = 0.0;
+            radius.bl = 0.0;
+            radius.br = 0.0;
         }
         Gropped::StartHorizontal => {
-            rrect.radius.br = 0.0;
-            rrect.radius.tr = 0.0;
+            radius.br = 0.0;
+            radius.tr = 0.0;
         }
         Gropped::Middle => {
-            rrect.radius.bl = 0.0;
-            rrect.radius.br = 0.0;
-            rrect.radius.tl = 0.0;
-            rrect.radius.tr = 0.0;
+            radius.bl = 0.0;
+            radius.br = 0.0;
+            radius.tl = 0.0;
+            radius.tr = 0.0;
         }
         Gropped::EndVertical => {
-            rrect.radius.tl = 0.0;
-            rrect.radius.tr = 0.0;
+            radius.tl = 0.0;
+            radius.tr = 0.0;
         }
         Gropped::EndHorizontal => {
-            rrect.radius.tl = 0.0;
-            rrect.radius.bl = 0.0;
+            radius.tl = 0.0;
+            radius.bl = 0.0;
         }
-    }
+    };
 
-    ctx.draw_rrect(
-        rrect.inflate(0.5),
-        Paint::stroke(Color::hex(theme.outline)).stroke_width(0.5),
-    );
-    ctx.draw_rrect(rrect, Paint::fill(bg));
+    let paint = Paint::stroke(Color::hex(theme.outline)).stroke_width(1.0);
+    ctx.draw_rrect(bounds.inflate(0.1), radius, paint);
+    ctx.draw_rrect(bounds, radius, Paint::fill(bg));
 
     let arr = 13.0;
-    let mut left = rrect;
-    left.rect.max.x = rrect.rect.min.x + arr;
-    left.radius.tr = 0.0;
-    left.radius.br = 0.0;
-    let mut right = rrect;
-    right.rect.min.x = rrect.rect.max.x - arr;
-    right.radius.tl = 0.0;
-    right.radius.bl = 0.0;
+
+    let (mut left, mut left_radius) = (bounds, radius);
+    left.max.x = bounds.min.x + arr;
+    left_radius.tr = 0.0;
+    left_radius.br = 0.0;
+
+    let (mut right, mut right_radius) = (bounds, radius);
+    right.min.x = bounds.max.x - arr;
+    right_radius.tl = 0.0;
+    right_radius.bl = 0.0;
 
     if state == State::Hovered {
         let paint = Paint::fill(shade(Color::hex(theme.background), HOVER_SHADE));
-        ctx.draw_rrect(left, paint);
-        ctx.draw_rrect(right, paint);
+        ctx.draw_rrect(left, left_radius, paint);
+        ctx.draw_rrect(right, right_radius, paint);
     }
 
-    let left = left.rect().center();
-    let right = right.rect().center();
+    let l_arrow = left.center();
+    let r_arrow = right.center();
 
-    let paint = Paint::fill(Color::hex(0xFF_E6E6E6)).stroke_width(0.5);
+    let paint = Paint::fill(Color::hex(0xFF_E6E6E6)).stroke_width(1.0);
 
-    let cc = Offset::new(1.5, 0.0);
-    let aa = Offset::new(1.5, -3.0);
-    let bb = Offset::new(1.5, 3.0);
+    let a = Offset::new(1.5, -3.0);
+    let b = Offset::new(1.5, 0.0);
+    let c = Offset::new(1.5, 3.0);
 
-    ctx.draw_lines(&[left + aa, left - cc, left + bb], paint);
-    ctx.draw_lines(&[right - aa, right + cc, right - bb], paint);
+    ctx.draw_lines(&[l_arrow + a, l_arrow - b, l_arrow + c], paint);
+    ctx.draw_lines(&[r_arrow - a, r_arrow + b, r_arrow - c], paint);
 }

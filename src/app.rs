@@ -1,4 +1,3 @@
-use crate::renderer::Target;
 pub use futures;
 pub use winit;
 
@@ -14,7 +13,7 @@ pub struct Options {
     pub power_preference: wgpu::PowerPreference,
     pub backends: wgpu::BackendBit,
 
-    pub extensions: wgpu::Extensions,
+    pub features: wgpu::Features,
     pub limits: wgpu::Limits,
 
     pub swapchain_format: wgpu::TextureFormat,
@@ -27,9 +26,7 @@ impl Default for Options {
             power_preference: wgpu::PowerPreference::Default,
             backends: wgpu::BackendBit::PRIMARY,
 
-            extensions: wgpu::Extensions {
-                anisotropic_filtering: false,
-            },
+            features: wgpu::Features::default(),
             limits: wgpu::Limits::default(),
 
             swapchain_format: wgpu::TextureFormat::Bgra8UnormSrgb,
@@ -41,6 +38,7 @@ impl Default for Options {
 impl Options {
     pub async fn create(
         self,
+        instance: &wgpu::Instance,
         surface: wgpu::Surface,
         width: u32,
         height: u32,
@@ -50,14 +48,15 @@ impl Options {
             power_preference: self.power_preference,
             compatible_surface: Some(&surface),
         };
-        let backends = self.backends;
-        let adapter = wgpu::Adapter::request(&options, backends).await?;
+
+        let adapter = instance.request_adapter(&options).await?;
 
         let device = wgpu::DeviceDescriptor {
-            extensions: self.extensions,
+            features: self.features,
             limits: self.limits,
+            shader_validation: true,
         };
-        let (device, queue) = adapter.request_device(&device).await;
+        let (device, queue) = adapter.request_device(&device, None).await.ok()?;
 
         let surface = Surface::new(
             &device,
@@ -74,7 +73,7 @@ impl Options {
 }
 
 pub struct Frame {
-    pub color: wgpu::SwapChainOutput,
+    pub color: wgpu::SwapChainFrame,
     pub stencil: wgpu::TextureView,
     pub width: u32,
     pub height: u32,
@@ -100,31 +99,22 @@ impl Frame {
 
         encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                attachment: &self.color.view,
+                attachment: &self.color.output.view,
                 resolve_target: None,
-                load_op: wgpu::LoadOp::Clear,
-                store_op: wgpu::StoreOp::Store,
-                clear_color,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(clear_color),
+                    store: true,
+                },
             }],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
                 attachment: &self.stencil,
-                depth_load_op: wgpu::LoadOp::Load,
-                depth_store_op: wgpu::StoreOp::Store,
-                clear_depth: 0.0,
-                stencil_load_op: wgpu::LoadOp::Clear,
-                stencil_store_op: wgpu::StoreOp::Store,
-                clear_stencil: 0,
+                depth_ops: None,
+                stencil_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(0),
+                    store: true,
+                }),
             }),
         })
-    }
-
-    pub fn target(&self) -> Target {
-        Target {
-            width: self.width,
-            height: self.height,
-            color: &self.color.view,
-            depth: &self.stencil,
-        }
     }
 }
 
@@ -167,9 +157,6 @@ impl Surface {
     pub fn scale(&self) -> f64 {
         self.scale
     }
-    pub fn set_scale(&mut self, scale: f64) {
-        self.scale = scale;
-    }
 
     pub fn width(&self) -> u32 {
         self.desc.width
@@ -195,10 +182,11 @@ impl Surface {
         self.stencil = Self::create_stencil(device, width, height);
     }
 
-    pub fn next_frame(&mut self) -> Result<Frame, wgpu::TimeOut> {
-        let stencil = self.stencil.create_default_view();
+    pub fn current_frame(&mut self) -> Result<Frame, wgpu::SwapChainError> {
+        let desc = wgpu::TextureViewDescriptor::default();
+        let stencil = self.stencil.create_view(&desc);
         let (width, height) = self.size();
-        self.swap_chain.get_next_texture().map(|color| Frame {
+        self.swap_chain.get_current_frame().map(|color| Frame {
             color,
             stencil,
             width,
@@ -214,7 +202,6 @@ impl Surface {
                 height,
                 depth: 1,
             },
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -246,12 +233,15 @@ pub async fn run_async<App: Application>(
     window: Window,
     options: Options,
 ) {
+    let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
+
     let (_adapter, device, queue, mut surface) = {
         let size = window.inner_size();
         let scale = window.scale_factor();
-        let surface = wgpu::Surface::create(&window);
+        let surface = unsafe { instance.create_surface(&window) };
+
         options
-            .create(surface, size.width, size.height, scale)
+            .create(&instance, surface, size.width, size.height, scale)
             .await
             .unwrap()
     };
@@ -265,6 +255,7 @@ pub async fn run_async<App: Application>(
             Event::NewEvents(StartCause::Poll) => {}
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {}
             Event::NewEvents(StartCause::WaitCancelled { .. }) => {}
+
             Event::WindowEvent { event, window_id } => {
                 if window.id() == window_id {
                     match event {
@@ -272,13 +263,14 @@ pub async fn run_async<App: Application>(
                             surface.resize(&device, size.width, size.height)
                         }
                         WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                            surface.set_scale(scale_factor)
+                            surface.scale = scale_factor
                         }
                         _ => {}
                     }
                     app.update(event, control_flow);
                 }
             }
+
             Event::DeviceEvent { .. } => {}
             Event::UserEvent(event) => app.user_event(event),
             Event::Suspended => {}

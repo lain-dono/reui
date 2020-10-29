@@ -1,4 +1,4 @@
-use crate::math::{Corners, Offset, PartialClamp, RRect, Rect, Transform};
+use crate::math::{Corners, Offset, PartialClamp, Rect, Transform};
 use std::f32::consts::PI;
 
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.
@@ -276,8 +276,8 @@ impl Path {
         self.commands.extend(&PathCmd::rect(rect));
     }
 
-    /// Adds [`RRect`] to the [`Path`].
-    pub fn rrect(&mut self, RRect { rect, radius }: RRect) {
+    /// Adds [`Rect`] with [`Corners`] to the [`Path`].
+    pub fn rrect(&mut self, rect: Rect, radius: Corners) {
         self.commands.extend(&PathCmd::rrect(rect, radius));
     }
 

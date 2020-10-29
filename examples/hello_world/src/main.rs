@@ -2,7 +2,7 @@
 
 use reui::{
     app::{self, ControlFlow, Options, Surface, WindowEvent},
-    wgpu, Offset, Picture, Rect, Renderer,
+    wgpu, Offset, Paint, PictureRecorder, Rect, Renderer,
 };
 
 pub fn main() {
@@ -17,7 +17,7 @@ pub fn main() {
 
 struct Demo {
     vg: Renderer,
-    picture: Picture,
+    picture: PictureRecorder,
     img: u32,
 }
 
@@ -26,16 +26,11 @@ impl app::Application for Demo {
 
     fn init(device: &wgpu::Device, queue: &wgpu::Queue, surface: &mut Surface) -> Self {
         let mut vg = Renderer::new(&device, surface.format());
-        let picture = Picture::default();
-
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let picture = PictureRecorder::default();
 
         let img = vg
-            .open_image(device, &mut encoder, "examples/hello_world/rust-jerk.jpg")
+            .open_image(device, queue, "examples/rust-jerk.jpg")
             .unwrap();
-
-        queue.submit(&[encoder.finish()]);
 
         Self { vg, picture, img }
     }
@@ -51,34 +46,36 @@ impl app::Application for Demo {
         let (width, height) = surface.size();
 
         let frame = surface
-            .next_frame()
+            .current_frame()
             .expect("Timeout when acquiring next swap chain texture");
 
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut encoder = device.create_command_encoder(&Default::default());
 
-        let _ = frame.clear(&mut encoder, [0.3, 0.3, 0.32, 1.0]);
+        self.picture.clear();
 
         {
-            self.picture.clear();
-
-            let mut ctx = self.vg.begin_frame(scale, &mut self.picture);
+            let mut ctx = self
+                .vg
+                .begin_frame(queue, width, height, scale, &mut self.picture);
 
             let (width, height) = (width as f32 / scale, height as f32 / scale);
             let size = width.min(height) / 4.0;
 
             let rect = Rect::from_size(width, height).deflate(size);
-            let paint = Default::default();
+            let paint = Paint::default();
 
             ctx.rotate(f32::to_radians(10.0));
+            ctx.translate(100.0, 100.0);
             ctx.draw_rect(rect, paint);
-
             ctx.draw_image(self.img, Offset::zero());
-
-            self.vg
-                .draw_picture(&mut encoder, &device, frame.target(), &self.picture);
         }
 
-        queue.submit(&[encoder.finish()]);
+        let bundle = self.picture.build(&device);
+        {
+            let mut rpass = frame.clear(&mut encoder, [0.3, 0.3, 0.32, 1.0]);
+            self.vg.draw_picture(&mut rpass, &self.picture, &bundle);
+        }
+
+        queue.submit(Some(encoder.finish()));
     }
 }

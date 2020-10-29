@@ -21,6 +21,6 @@ pub use self::{
     math::{Color, Corners, Offset, RRect, Rect, Transform},
     paint::{Gradient, LineCap, LineJoin, Paint, PaintingStyle, Stroke},
     path::{Path, Winding},
-    renderer::{Renderer, Target},
-    picture::Picture,
+    picture::{PictureBundle, PictureRecorder},
+    renderer::Renderer,
 };

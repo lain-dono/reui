@@ -1,8 +1,7 @@
 use crate::{
     canvas::Canvas,
-    paint::Uniforms,
     path::Path,
-    picture::{Call, Picture, Vertex},
+    picture::{Call, Instance, PictureBundle, PictureRecorder, Vertex},
     shader::Shader,
     tessellator::Tessellator,
 };
@@ -25,53 +24,9 @@ macro_rules! stencil_face {
     };
 }
 
-#[inline(always)]
-fn cast_slice<T>(data: &[T]) -> &[u8] {
-    use std::{mem::size_of, slice::from_raw_parts};
-    unsafe { from_raw_parts(data.as_ptr() as *const u8, data.len() * size_of::<T>()) }
-}
-
-fn create_buffer<T>(
-    device: &wgpu::Device,
-    data: &[T],
-    usage: wgpu::BufferUsage,
-) -> (u64, wgpu::Buffer) {
-    let data = cast_slice(data);
-    let len = data.len() as wgpu::BufferAddress;
-    (len, device.create_buffer_with_data(&data, usage))
-}
-
-pub struct Target<'a> {
-    pub color: &'a wgpu::TextureView,
-    pub depth: &'a wgpu::TextureView,
-
-    pub width: u32,
-    pub height: u32,
-}
-
 pub(crate) struct ImageBind {
     pub bind_group: wgpu::BindGroup,
     pub size: wgpu::Extent3d,
-}
-
-impl ImageBind {
-    fn new(
-        device: &wgpu::Device,
-        layout: &wgpu::BindGroupLayout,
-        view: &wgpu::TextureView,
-        size: wgpu::Extent3d,
-    ) -> Self {
-        let binding = wgpu::Binding {
-            binding: 0,
-            resource: wgpu::BindingResource::TextureView(view),
-        };
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout,
-            bindings: &[binding],
-        });
-        Self { bind_group, size }
-    }
 }
 
 struct HostImage {
@@ -82,7 +37,7 @@ struct HostImage {
 impl HostImage {
     fn open_rgba(
         device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
+        queue: &wgpu::Queue,
         path: impl AsRef<std::path::Path>,
     ) -> image::ImageResult<Self> {
         let m = image::open(path)?;
@@ -101,7 +56,6 @@ impl HostImage {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size,
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -109,94 +63,61 @@ impl HostImage {
             usage: wgpu::TextureUsage::COPY_DST | wgpu::TextureUsage::SAMPLED,
         });
 
-        let buffer = device.create_buffer_with_data(texels.as_slice(), wgpu::BufferUsage::COPY_SRC);
-        encoder.copy_buffer_to_texture(
-            wgpu::BufferCopyView {
-                buffer: &buffer,
-                offset: 0,
-                bytes_per_row: 4 * width,
-                rows_per_image: 0,
-            },
+        queue.write_texture(
             wgpu::TextureCopyView {
                 texture: &texture,
                 mip_level: 0,
-                array_layer: 0,
                 origin: wgpu::Origin3d::ZERO,
+            },
+            &texels,
+            wgpu::TextureDataLayout {
+                offset: 0,
+                bytes_per_row: 4 * width,
+                rows_per_image: 0,
             },
             size,
         );
 
         Ok(Self { texture, size })
     }
+
     fn bind(&self, device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> ImageBind {
-        let view = self.texture.create_default_view();
-        ImageBind::new(device, layout, &view, self.size)
-    }
+        let desc = wgpu::TextureViewDescriptor::default();
+        let view = self.texture.create_view(&desc);
 
-    fn create_default(device: &wgpu::Device) -> Self {
-        let (width, height) = (1, 1);
-
-        let size = wgpu::Extent3d {
-            width,
-            height,
-            depth: 1,
+        let binding = wgpu::BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::TextureView(&view),
         };
-
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("default texture"),
-            size,
-            array_layer_count: 1,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsage::SAMPLED,
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout,
+            entries: &[binding],
         });
 
-        Self { texture, size }
+        let size = self.size;
+        ImageBind { bind_group, size }
     }
 }
 
 pub struct Renderer {
-    pub(crate) recorder: Path,
+    pub(crate) path: Path,
     pub(crate) tess: Tessellator,
     pub(crate) images: HashMap<u32, ImageBind>,
-
-    pub(crate) scale: f32,
-
-    sampler: wgpu::Sampler,
     images_idx: u32,
-
     pipeline: Pipeline,
 }
 
 impl Renderer {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
-            lod_min_clamp: 0.0,
-            lod_max_clamp: 100.0,
-            compare: wgpu::CompareFunction::Undefined,
-        });
-
         let pipeline = Pipeline::new(device, format);
 
-        let default_image = HostImage::create_default(&device);
-        let mut images = HashMap::default();
-        images.insert(0, default_image.bind(device, &pipeline.image_layout));
+        let images = HashMap::default();
 
         Self {
             tess: Tessellator::new(),
-            recorder: Path::new(),
+            path: Path::new(),
 
-            scale: 1.0,
-
-            sampler,
             images,
             images_idx: 1,
 
@@ -207,99 +128,53 @@ impl Renderer {
     pub fn open_image(
         &mut self,
         device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
+        queue: &wgpu::Queue,
         path: impl AsRef<std::path::Path>,
     ) -> image::ImageResult<u32> {
-        let image = HostImage::open_rgba(device, encoder, path)?;
-        let texture_view = image.texture.create_default_view();
-        Ok(self.create_image(device, &texture_view, image.size))
+        let image = HostImage::open_rgba(device, queue, path)?;
+        let bind = image.bind(device, &self.pipeline.image_layout);
+        Ok(self.create_image(bind))
     }
 
-    pub fn create_image(
-        &mut self,
-        device: &wgpu::Device,
-        texture_view: &wgpu::TextureView,
-        size: wgpu::Extent3d,
-    ) -> u32 {
-        let bind = ImageBind::new(device, &self.pipeline.image_layout, texture_view, size);
-
+    fn create_image(&mut self, bind: ImageBind) -> u32 {
         let idx = self.images_idx;
         let _ = self.images.insert(idx, bind);
         self.images_idx += 1;
         idx
     }
 
-    pub fn begin_frame<'a>(&'a mut self, scale: f32, picture: &'a mut Picture) -> Canvas<'a> {
+    pub fn begin_frame<'a>(
+        &'a mut self,
+        queue: &wgpu::Queue,
+        width: u32,
+        height: u32,
+        scale: f32,
+        picture: &'a mut PictureRecorder,
+    ) -> Canvas<'a> {
+        let w = scale / width as f32;
+        let h = scale / height as f32;
+        let viewport = [w, h, 0.0, 0.0];
+
+        queue.write_buffer(
+            &self.pipeline.buffer,
+            0,
+            crate::picture::cast_slice(&viewport),
+        );
+
         self.tess.set_scale(scale);
-        self.scale = scale;
-        Canvas::new(self, picture)
+        Canvas::new(self, picture, scale)
     }
 
-    pub fn draw_picture(
-        &mut self,
-        encoder: &mut wgpu::CommandEncoder,
-        device: &wgpu::Device,
-        target: Target,
-        picture: &Picture,
+    pub fn draw_picture<'rpass>(
+        &'rpass self,
+        rpass: &mut wgpu::RenderPass<'rpass>,
+        picture: &'rpass PictureRecorder,
+        bundle: &'rpass PictureBundle,
     ) {
-        let scale = self.scale;
-
-        const UNIFORM: wgpu::BufferUsage = wgpu::BufferUsage::UNIFORM;
-        const VERTEX: wgpu::BufferUsage = wgpu::BufferUsage::VERTEX;
-
-        let (_, vertices) = create_buffer(device, picture.verts.as_ref(), VERTEX);
-        let (_, instances) = create_buffer(device, picture.uniforms.as_ref(), VERTEX);
-
-        let bind_group = {
-            let w = target.width as f32 / scale;
-            let h = target.height as f32 / scale;
-            let viewport = [w, h, 0.0, 0.0];
-
-            let (len, buffer) = create_buffer(device, &viewport, UNIFORM);
-
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Viewport bind group"),
-                layout: &self.pipeline.viewport_layout,
-                bindings: &[
-                    wgpu::Binding {
-                        binding: 0,
-                        resource: wgpu::BindingResource::Buffer {
-                            buffer: &buffer,
-                            range: 0..len,
-                        },
-                    },
-                    wgpu::Binding {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                ],
-            })
-        };
-
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                attachment: &target.color,
-                resolve_target: None,
-                load_op: wgpu::LoadOp::Load,
-                store_op: wgpu::StoreOp::Store,
-                clear_color: wgpu::Color::TRANSPARENT,
-            }],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
-                attachment: &target.depth,
-                depth_load_op: wgpu::LoadOp::Load,
-                depth_store_op: wgpu::StoreOp::Store,
-                clear_depth: 0.0,
-                stencil_load_op: wgpu::LoadOp::Load,
-                stencil_store_op: wgpu::StoreOp::Store,
-                clear_stencil: 0,
-            }),
-        });
-
         rpass.set_stencil_reference(0);
-        rpass.set_bind_group(0, &bind_group, &[]);
-        rpass.set_bind_group(1, &self.images[&0].bind_group, &[]);
-        rpass.set_vertex_buffer(0, &vertices, 0, 0);
-        rpass.set_vertex_buffer(1, &instances, 0, 0);
+        rpass.set_bind_group(0, &self.pipeline.bind_group, &[]);
+        rpass.set_vertex_buffer(0, bundle.vertices.slice(..));
+        rpass.set_vertex_buffer(1, bundle.instances.slice(..));
 
         for call in picture.calls.iter().cloned() {
             match call {
@@ -363,9 +238,9 @@ impl Renderer {
                 Call::Image { idx, vtx, image } => {
                     if let Some(image) = self.images.get(&image) {
                         rpass.set_bind_group(1, &image.bind_group, &[]);
+                        rpass.set_pipeline(&self.pipeline.image);
+                        rpass.draw(vtx, idx..idx + 1);
                     }
-                    rpass.set_pipeline(&self.pipeline.image);
-                    rpass.draw(vtx, idx..idx + 1);
                 }
             }
         }
@@ -384,31 +259,78 @@ struct Pipeline {
     stroke_base: wgpu::RenderPipeline,
     stroke_stencil: wgpu::RenderPipeline,
 
-    viewport_layout: wgpu::BindGroupLayout,
     image_layout: wgpu::BindGroupLayout,
+
+    buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
 }
 
 impl Pipeline {
     fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let viewport_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("VG bind group layout"),
-            bindings: &[
+            entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    ty: wgpu::BindingType::UniformBuffer {
+                        dynamic: false,
+                        min_binding_size: wgpu::BufferSize::new(
+                            std::mem::size_of::<f32>() as u64 * 4,
+                        ),
+                    },
+                    count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::Sampler { comparison: false },
+                    count: None,
                 },
             ],
         });
 
+        let (buffer, bind_group) = {
+            let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::FilterMode::Linear,
+                lod_min_clamp: 0.0,
+                lod_max_clamp: 100.0,
+                ..Default::default()
+            });
+
+            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Viewport buffer"),
+                usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+                size: std::mem::size_of::<[f32; 4]>() as u64,
+                mapped_at_creation: false,
+            });
+
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Viewport bind group"),
+                layout: &viewport_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&sampler),
+                    },
+                ],
+            });
+
+            (buffer, bind_group)
+        };
+
         let image_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("VG bind group layout"),
-            bindings: &[wgpu::BindGroupLayoutEntry {
+            entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStage::FRAGMENT,
                 ty: wgpu::BindingType::SampledTexture {
@@ -416,11 +338,14 @@ impl Pipeline {
                     component_type: wgpu::TextureComponentType::Float,
                     multisampled: false,
                 },
+                count: None,
             }],
         });
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
             bind_group_layouts: &[&viewport_layout, &image_layout],
+            push_constant_ranges: &[],
         });
 
         let builder = Builder {
@@ -428,9 +353,9 @@ impl Pipeline {
             device,
             layout,
 
-            base: Shader::base(device).unwrap(),
-            stencil: Shader::stencil(device).unwrap(),
-            image: Shader::image(device).unwrap(),
+            base: Shader::base(device),
+            stencil: Shader::stencil(device),
+            image: Shader::image(device),
         };
 
         stencil_face!(ALWAYS_ZERO, Always, Zero, Zero);
@@ -449,8 +374,10 @@ impl Pipeline {
             stroke_base: builder.base(stencil_face!(Equal, Keep, IncrementClamp)),
             stroke_stencil: builder.stencil(wgpu::CullMode::Back, ALWAYS_ZERO, ALWAYS_ZERO),
 
-            viewport_layout,
             image_layout,
+
+            buffer,
+            bind_group,
         }
     }
 }
@@ -495,8 +422,8 @@ impl<'a> Builder<'a> {
         shader: &Shader,
         write_mask: wgpu::ColorWrite,
         cull_mode: wgpu::CullMode,
-        stencil_front: wgpu::StencilStateFaceDescriptor,
-        stencil_back: wgpu::StencilStateFaceDescriptor,
+        front: wgpu::StencilStateFaceDescriptor,
+        back: wgpu::StencilStateFaceDescriptor,
         primitive_topology: wgpu::PrimitiveTopology,
     ) -> wgpu::RenderPipeline {
         let straight_alpha_blend = wgpu::ColorStateDescriptor {
@@ -515,21 +442,14 @@ impl<'a> Builder<'a> {
         };
 
         let desc = wgpu::RenderPipelineDescriptor {
-            layout: &self.layout,
-            vertex_stage: wgpu::ProgrammableStageDescriptor {
-                module: &shader.vs,
-                entry_point: "main",
-            },
-            fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-                module: &shader.fs,
-                entry_point: "main",
-            }),
+            label: None,
+            layout: Some(&self.layout),
+            vertex_stage: shader.vertex_stage(),
+            fragment_stage: shader.fragment_stage(),
             rasterization_state: Some(wgpu::RasterizationStateDescriptor {
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode,
-                depth_bias: 0,
-                depth_bias_slope_scale: 0.0,
-                depth_bias_clamp: 0.0,
+                ..Default::default()
             }),
             primitive_topology,
             color_states: &[straight_alpha_blend],
@@ -537,10 +457,12 @@ impl<'a> Builder<'a> {
                 format: DEPTH,
                 depth_write_enabled: false,
                 depth_compare: wgpu::CompareFunction::Always,
-                stencil_front,
-                stencil_back,
-                stencil_read_mask: 0xFF,
-                stencil_write_mask: 0xFF,
+                stencil: wgpu::StencilStateDescriptor {
+                    front,
+                    back,
+                    read_mask: 0xFF,
+                    write_mask: 0xFF,
+                },
             }),
             vertex_state: wgpu::VertexStateDescriptor {
                 index_format: wgpu::IndexFormat::Uint16,
@@ -551,7 +473,7 @@ impl<'a> Builder<'a> {
                         attributes: &wgpu::vertex_attr_array![0 => Float2, 1 => Ushort2Norm],
                     },
                     wgpu::VertexBufferDescriptor {
-                        stride: std::mem::size_of::<Uniforms>() as wgpu::BufferAddress,
+                        stride: std::mem::size_of::<Instance>() as wgpu::BufferAddress,
                         step_mode: wgpu::InputStepMode::Instance,
                         attributes: &wgpu::vertex_attr_array![
                             2 => Float4,

@@ -1,8 +1,8 @@
 use crate::{
-    math::{Offset, PartialClamp, RRect, Rect, Transform},
-    paint::{LineJoin, Paint, PaintingStyle, RawPaint, Stroke, Uniforms},
+    math::{Corners, Offset, PartialClamp, Rect, Transform},
+    paint::{LineJoin, Paint, PaintingStyle, RawPaint, Stroke},
     path::{Path, PathCmd},
-    picture::{Call, Picture, Vertex},
+    picture::{Call, Instance, PictureRecorder, Vertex},
     renderer::Renderer,
 };
 
@@ -40,16 +40,42 @@ impl TransformStack {
 
 pub struct Canvas<'a> {
     ctx: &'a mut Renderer,
-    picture: &'a mut Picture,
+    picture: &'a mut PictureRecorder,
     states: TransformStack,
+    scale: f32,
 }
 
 impl<'a> Canvas<'a> {
-    pub fn new(ctx: &'a mut Renderer, picture: &'a mut Picture) -> Self {
+    pub fn new(ctx: &'a mut Renderer, picture: &'a mut PictureRecorder, scale: f32) -> Self {
+        let transform = Transform::default();
         Self {
             ctx,
             picture,
-            states: TransformStack(Transform::default(), Vec::with_capacity(16)),
+            states: TransformStack(transform, Vec::with_capacity(16)),
+            scale,
+        }
+    }
+
+    pub fn draw_image_rect(&mut self, image: u32, rect: Rect) {
+        if self.ctx.images.get(&image).is_some() {
+            let Offset { x: x0, y: y0 } = rect.min;
+            let Offset { x: x1, y: y1 } = rect.max;
+
+            let xform = self.states.transform();
+            let vtx = [
+                Vertex::new([x1, y1], [1.0, 1.0]).transform(&xform),
+                Vertex::new([x1, y0], [1.0, 0.0]).transform(&xform),
+                Vertex::new([x0, y0], [0.0, 0.0]).transform(&xform),
+                Vertex::new([x0, y1], [0.0, 1.0]).transform(&xform),
+            ];
+
+            let pic = &mut self.picture;
+
+            let idx = pic.instances.push(Instance::default());
+            let vtx = pic
+                .vertices
+                .extend_with(&[vtx[0], vtx[1], vtx[2], vtx[0], vtx[2], vtx[3]]);
+            pic.calls.push(Call::Image { idx, vtx, image });
         }
     }
 
@@ -59,28 +85,31 @@ impl<'a> Canvas<'a> {
         if let Some(image_bind) = self.ctx.images.get(&image) {
             let Offset { x: x0, y: y0 } = offset;
             let (x1, y1) = (
-                x0 + image_bind.size.width as f32 / self.ctx.scale,
-                y0 + image_bind.size.height as f32 / self.ctx.scale,
+                x0 + image_bind.size.width as f32 / self.scale,
+                y0 + image_bind.size.height as f32 / self.scale,
             );
 
+            let xform = self.states.transform();
             let vtx = [
-                Vertex::new([x1, y1], [1.0, 1.0]),
-                Vertex::new([x1, y0], [1.0, 0.0]),
-                Vertex::new([x0, y0], [0.0, 0.0]),
-                Vertex::new([x0, y1], [0.0, 1.0]),
+                Vertex::new([x1, y1], [1.0, 1.0]).transform(&xform),
+                Vertex::new([x1, y0], [1.0, 0.0]).transform(&xform),
+                Vertex::new([x0, y0], [0.0, 0.0]).transform(&xform),
+                Vertex::new([x0, y1], [0.0, 1.0]).transform(&xform),
             ];
 
             let pic = &mut self.picture;
 
-            let idx = pic.uniforms.push(Uniforms::default());
+            let idx = pic.instances.push(Instance::default());
             let vtx = pic
-                .verts
+                .vertices
                 .extend_with(&[vtx[0], vtx[1], vtx[2], vtx[0], vtx[2], vtx[3]]);
             pic.calls.push(Call::Image { idx, vtx, image });
         }
     }
 
-    pub fn stroke_path(&mut self, stroke: &Stroke, path: &Path, xform: Transform) {
+    pub fn stroke_path(&mut self, path: &Path, stroke: &Stroke) {
+        let xform = self.states.transform();
+
         let tess = &mut self.ctx.tess;
         let mut width = (stroke.width * xform.average_scale()).clamp(0.0, 200.0);
         let mut color = stroke.color;
@@ -102,7 +131,7 @@ impl<'a> Canvas<'a> {
 
         // Allocate vertices for all the paths.
         let pic = &mut self.picture;
-        let verts = &mut pic.verts;
+        let verts = &mut pic.vertices;
         let iter = tess
             .paths
             .iter()
@@ -112,11 +141,11 @@ impl<'a> Canvas<'a> {
 
         // Fill shader
         let fringe = tess.fringe_width;
-        let a = Uniforms::from_stroke(&stroke, width, fringe, 1.0 - 0.5 / 255.0);
-        let b = Uniforms::from_stroke(&stroke, width, fringe, -1.0);
+        let a = Instance::from_stroke(&stroke, width, fringe, 1.0 - 0.5 / 255.0);
+        let b = Instance::from_stroke(&stroke, width, fringe, -1.0);
 
-        let idx = pic.uniforms.push(a);
-        let _ = pic.uniforms.push(b);
+        let idx = pic.instances.push(a);
+        let _ = pic.instances.push(b);
 
         pic.calls.push(Call::Stroke { idx, path })
     }
@@ -124,7 +153,7 @@ impl<'a> Canvas<'a> {
     fn fill_or_stroke(&mut self, paint: &Paint, force_stroke: bool) {
         let cache = &mut self.ctx.tess;
         let xform = self.states.transform();
-        let commands = self.ctx.recorder.transform(xform);
+        let commands = self.ctx.path.transform(xform);
         let pic = &mut self.picture;
 
         let mut raw_paint = RawPaint::convert(paint, xform);
@@ -137,8 +166,9 @@ impl<'a> Canvas<'a> {
                 // If the stroke width is less than pixel size, use alpha to emulate coverage.
                 // Since coverage is area, scale by alpha*alpha.
                 let alpha = (stroke_width / cache.fringe_width).clamp(0.0, 1.0);
-                raw_paint.inner_color.alpha *= alpha * alpha;
-                raw_paint.outer_color.alpha *= alpha * alpha;
+                let coverage = alpha * alpha;
+                raw_paint.inner_color.alpha *= coverage;
+                raw_paint.outer_color.alpha *= coverage;
                 stroke_width = cache.fringe_width;
             }
 
@@ -146,7 +176,7 @@ impl<'a> Canvas<'a> {
             cache.expand_stroke(stroke_width * 0.5, paint.cap, paint.join, paint.miter);
 
             // Allocate vertices for all the paths.
-            let verts = &mut pic.verts;
+            let verts = &mut pic.vertices;
             let iter = cache
                 .paths
                 .iter()
@@ -156,11 +186,11 @@ impl<'a> Canvas<'a> {
 
             // Fill shader
             let fringe = cache.fringe_width;
-            let a = raw_paint.to_uniform(stroke_width, fringe, 1.0 - 0.5 / 255.0);
-            let b = raw_paint.to_uniform(stroke_width, fringe, -1.0);
+            let a = raw_paint.to_instance(stroke_width, fringe, 1.0 - 0.5 / 255.0);
+            let b = raw_paint.to_instance(stroke_width, fringe, -1.0);
 
-            let idx = pic.uniforms.push(a);
-            let _ = pic.uniforms.push(b);
+            let idx = pic.instances.push(a);
+            let _ = pic.instances.push(b);
 
             pic.calls.push(Call::Stroke { idx, path })
         } else {
@@ -182,32 +212,32 @@ impl<'a> Canvas<'a> {
             let (path, path_dst) = pic.paths.alloc_with(paths.len(), Default::default);
             for (src, dst) in paths.iter().zip(path_dst.iter_mut()) {
                 if let Some(src) = &src.fill {
-                    dst.fill = pic.verts.extend_with(src);
+                    dst.fill = pic.vertices.extend_with(src);
                 }
                 if let Some(src) = &src.stroke {
-                    dst.stroke = pic.verts.extend_with(src);
+                    dst.stroke = pic.vertices.extend_with(src);
                 }
             }
 
             // Setup uniforms for draw calls
             if kind {
-                let quad = pic.verts.extend_with(&[
+                let quad = pic.vertices.extend_with(&[
                     Vertex::new([cache.bounds[2], cache.bounds[3]], [0.5, 1.0]),
                     Vertex::new([cache.bounds[2], cache.bounds[1]], [0.5, 1.0]),
                     Vertex::new([cache.bounds[0], cache.bounds[3]], [0.5, 1.0]),
                     Vertex::new([cache.bounds[0], cache.bounds[1]], [0.5, 1.0]),
                 ]);
 
-                let uniform = raw_paint.to_uniform(fringe, fringe, -1.0);
+                let uniform = raw_paint.to_instance(fringe, fringe, -1.0);
 
-                let idx = pic.uniforms.push(Default::default());
-                let _ = pic.uniforms.push(uniform);
+                let idx = pic.instances.push(Default::default());
+                let _ = pic.instances.push(uniform);
 
                 let quad = quad.start;
                 pic.calls.push(Call::Fill { idx, path, quad })
             } else {
-                let uniform = raw_paint.to_uniform(fringe, fringe, -1.0);
-                let idx = pic.uniforms.push(uniform);
+                let uniform = raw_paint.to_instance(fringe, fringe, -1.0);
+                let idx = pic.instances.push(uniform);
                 pic.calls.push(Call::Convex { idx, path })
             };
         }
@@ -273,10 +303,10 @@ impl<'a> Canvas<'a> {
     /// Draws a circle centered at the point given by the first argument
     /// and that has the radius given by the second argument, with the Paint given in the third argument.
     /// Whether the circle is filled or stroked (or both) is controlled by Paint.style.
-    pub fn draw_circle(&mut self, c: Offset, radius: f32, paint: Paint) {
+    pub fn draw_circle(&mut self, center: Offset, radius: f32, paint: Paint) {
         self.ctx.tess.clear();
-        self.ctx.recorder.clear();
-        self.ctx.recorder.circle(c, radius);
+        self.ctx.path.clear();
+        self.ctx.path.circle(center, radius);
         self.fill_or_stroke(&paint, false);
     }
 
@@ -302,12 +332,13 @@ impl<'a> Canvas<'a> {
 
     /// Draws a line between the given points using the given paint.
     /// The line is stroked, the value of the Paint.style is ignored for this call. [...]
-    pub fn draw_line(&mut self, p1: Offset, p2: Offset, paint: Paint) {
+    pub fn draw_line(&mut self, p0: Offset, p1: Offset, paint: Paint) {
         self.ctx.tess.clear();
-        self.ctx.recorder.clear();
+        self.ctx.path.clear();
         let xform = self.states.transform();
-        self.ctx.recorder.move_to(xform.apply(p1));
-        self.ctx.recorder.line_to(xform.apply(p2));
+        let (p0, p1) = (xform.apply(p0), xform.apply(p1));
+        self.ctx.path.move_to(p0);
+        self.ctx.path.line_to(p1);
         self.fill_or_stroke(&paint, true);
     }
 
@@ -317,10 +348,10 @@ impl<'a> Canvas<'a> {
         }
         self.ctx.tess.clear();
 
-        self.ctx.recorder.clear();
-        self.ctx.recorder.move_to(points[0]);
+        self.ctx.path.clear();
+        self.ctx.path.move_to(points[0]);
         for &p in &points[1..] {
-            self.ctx.recorder.line_to(p);
+            self.ctx.path.line_to(p);
         }
         self.fill_or_stroke(&paint, true);
     }
@@ -329,8 +360,8 @@ impl<'a> Canvas<'a> {
     /// Whether the oval is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
         self.ctx.tess.clear();
-        self.ctx.recorder.clear();
-        self.ctx.recorder.oval(rect);
+        self.ctx.path.clear();
+        self.ctx.path.oval(rect);
         self.fill_or_stroke(&paint, false);
     }
 
@@ -348,8 +379,8 @@ impl<'a> Canvas<'a> {
     pub fn draw_path(&mut self, path: impl AsRef<[PathCmd]>, paint: Paint) {
         let path = path.as_ref();
         self.ctx.tess.clear();
-        self.ctx.recorder.clear();
-        self.ctx.recorder.extend(path.iter().copied());
+        self.ctx.path.clear();
+        self.ctx.path.extend(path.iter().copied());
         self.fill_or_stroke(&paint, false);
     }
 
@@ -369,17 +400,17 @@ impl<'a> Canvas<'a> {
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
         self.ctx.tess.clear();
-        self.ctx.recorder.clear();
-        self.ctx.recorder.rect(rect);
+        self.ctx.path.clear();
+        self.ctx.path.rect(rect);
         self.fill_or_stroke(&paint, false);
     }
 
     /// Draws a rounded rectangle with the given Paint.
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
-    pub fn draw_rrect(&mut self, rrect: RRect, paint: Paint) {
+    pub fn draw_rrect(&mut self, rect: Rect, radius: Corners, paint: Paint) {
         self.ctx.tess.clear();
-        self.ctx.recorder.clear();
-        self.ctx.recorder.rrect(rrect);
+        self.ctx.path.clear();
+        self.ctx.path.rrect(rect, radius);
         self.fill_or_stroke(&paint, false);
     }
 

@@ -1,20 +1,23 @@
 use palette::{LinSrgba, Pixel, Srgb, Srgba};
 
+fn clamp<T: std::cmp::PartialOrd>(mut x: T, min: T, max: T) -> T {
+    assert!(min <= max);
+    if x < min {
+        x = min;
+    }
+    if x > max {
+        x = max;
+    }
+    x
+}
+
 pub trait PartialClamp {
     fn clamp(self, min: Self, max: Self) -> Self;
 }
 
 impl<T: std::cmp::PartialOrd> PartialClamp for T {
     fn clamp(self, min: Self, max: Self) -> Self {
-        assert!(min <= max);
-        let mut x = self;
-        if x < min {
-            x = min;
-        }
-        if x > max {
-            x = max;
-        }
-        x
+        clamp(self, min, max)
     }
 }
 
@@ -257,7 +260,31 @@ pub struct Corners {
 }
 
 impl Corners {
-    pub fn all_same(radius: f32) -> Self {
+    pub const fn new(tl: f32, tr: f32, br: f32, bl: f32) -> Self {
+        Self { tl, tr, br, bl }
+    }
+
+    pub const fn zero() -> Self {
+        Self::new(0.0, 0.0, 0.0, 0.0)
+    }
+
+    pub const fn top(radius: f32) -> Self {
+        Self::new(radius, radius, 0.0, 0.0)
+    }
+
+    pub const fn bottom(radius: f32) -> Self {
+        Self::new(0.0, 0.0, radius, radius)
+    }
+
+    pub const fn left(radius: f32) -> Self {
+        Self::new(0.0, radius, 0.0, radius)
+    }
+
+    pub const fn right(radius: f32) -> Self {
+        Self::new(radius, 0.0, radius, 0.0)
+    }
+
+    pub const fn all_same(radius: f32) -> Self {
         Self {
             tr: radius,
             tl: radius,
@@ -348,8 +375,14 @@ impl Rect {
     }
 
     #[inline]
-    pub fn translate(&self, v: Offset) -> Self {
-        Self::new(self.min + v, self.max + v)
+    pub fn translate(&self, offset: Offset) -> Self {
+        Self::new(self.min + offset, self.max + offset)
+    }
+
+    #[inline]
+    pub fn shift(&self, x: f32, y: f32) -> Self {
+        let offset = Offset::new(x, y);
+        Self::new(self.min + offset, self.max + offset)
     }
 
     #[inline]

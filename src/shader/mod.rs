@@ -1,36 +1,41 @@
 pub struct Shader {
     pub vs: wgpu::ShaderModule,
-    pub fs: wgpu::ShaderModule,
+    pub fs: Option<wgpu::ShaderModule>,
 }
 
 impl Shader {
-    fn new(device: &wgpu::Device, vs: &[u8], fs: &[u8]) -> std::io::Result<Self> {
-        use std::io::Cursor;
-
-        let vs = wgpu::read_spirv(Cursor::new(&vs[..]))?;
-        let vs = device.create_shader_module(&vs);
-
-        let fs = wgpu::read_spirv(Cursor::new(&fs[..]))?;
-        let fs = device.create_shader_module(&fs);
-
-        Ok(Self { vs, fs })
+    pub fn vertex_stage(&self) -> wgpu::ProgrammableStageDescriptor {
+        wgpu::ProgrammableStageDescriptor {
+            module: &self.vs,
+            entry_point: "main",
+        }
     }
 
-    pub fn base(device: &wgpu::Device) -> std::io::Result<Self> {
-        let vs = include_bytes!("shader.vert.spv");
-        let fs = include_bytes!("shader.frag.spv");
-        Self::new(device, vs, fs)
+    pub fn fragment_stage(&self) -> Option<wgpu::ProgrammableStageDescriptor> {
+        self.fs
+            .as_ref()
+            .map(|module| wgpu::ProgrammableStageDescriptor {
+                module,
+                entry_point: "main",
+            })
     }
 
-    pub fn stencil(device: &wgpu::Device) -> std::io::Result<Self> {
-        let vs = include_bytes!("stencil.vert.spv");
-        let fs = include_bytes!("stencil.frag.spv");
-        Self::new(device, vs, fs)
+    pub fn base(device: &wgpu::Device) -> Self {
+        Self {
+            vs: device.create_shader_module(wgpu::include_spirv!("shader.vert.spv")),
+            fs: Some(device.create_shader_module(wgpu::include_spirv!("shader.frag.spv"))),
+        }
     }
 
-    pub fn image(device: &wgpu::Device) -> std::io::Result<Self> {
-        let vs = include_bytes!("image.vert.spv");
-        let fs = include_bytes!("image.frag.spv");
-        Self::new(device, vs, fs)
+    pub fn stencil(device: &wgpu::Device) -> Self {
+        let vs = device.create_shader_module(wgpu::include_spirv!("stencil.vert.spv"));
+        Self { vs, fs: None }
+    }
+
+    pub fn image(device: &wgpu::Device) -> Self {
+        Self {
+            vs: device.create_shader_module(wgpu::include_spirv!("image.vert.spv")),
+            fs: Some(device.create_shader_module(wgpu::include_spirv!("image.frag.spv"))),
+        }
     }
 }

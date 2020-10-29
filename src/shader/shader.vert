@@ -21,7 +21,7 @@ layout(location = 4) out vec4 v_OuterColor;
 layout(location = 5) out vec4 v_ERF;
 layout(location = 6) out vec2 v_Stroke;
 
-layout(set = 0, binding = 0) uniform Viewport { vec2 u_ViewportSize; };
+layout(set = 0, binding = 0) uniform Viewport { vec2 u_ViewportInvSize; };
 
 void main() {
   v_TexCoord = a_TexCoord;
@@ -33,6 +33,6 @@ void main() {
   v_ERF = a_ERF;
   v_Stroke = a_Stroke;
 
-  vec2 position = 2.0 * a_Position / u_ViewportSize;
+  vec2 position = 2.0 * a_Position * u_ViewportInvSize;
   gl_Position = vec4(position.x - 1.0, 1.0 - position.y, 0.0, 1.0);
 }
