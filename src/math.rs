@@ -1,25 +1,4 @@
-use palette::{LinSrgba, Pixel, Srgb, Srgba};
-
-fn clamp<T: std::cmp::PartialOrd>(mut x: T, min: T, max: T) -> T {
-    assert!(min <= max);
-    if x < min {
-        x = min;
-    }
-    if x > max {
-        x = max;
-    }
-    x
-}
-
-pub trait PartialClamp {
-    fn clamp(self, min: Self, max: Self) -> Self;
-}
-
-impl<T: std::cmp::PartialOrd> PartialClamp for T {
-    fn clamp(self, min: Self, max: Self) -> Self {
-        clamp(self, min, max)
-    }
-}
+use palette::{LinSrgb, LinSrgba, Pixel, Srgb, Srgba};
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Color {
@@ -29,19 +8,19 @@ pub struct Color {
     pub alpha: f32,
 }
 
-impl Into<[f32; 4]> for Color {
-    fn into(self) -> [f32; 4] {
-        [self.red, self.green, self.blue, self.alpha]
+impl From<Color> for [f32; 4] {
+    fn from(c: Color) -> [f32; 4] {
+        [c.red, c.green, c.blue, c.alpha]
     }
 }
 
-impl Into<[u8; 4]> for Color {
-    fn into(self) -> [u8; 4] {
+impl From<Color> for [u8; 4] {
+    fn from(c: Color) -> [u8; 4] {
         [
-            (self.red.clamp(0.0, 1.0) * 255.0) as u8,
-            (self.green.clamp(0.0, 1.0) * 255.0) as u8,
-            (self.blue.clamp(0.0, 1.0) * 255.0) as u8,
-            (self.alpha.clamp(0.0, 1.0) * 255.0) as u8,
+            (c.red.clamp(0.0, 1.0) * 255.0) as u8,
+            (c.green.clamp(0.0, 1.0) * 255.0) as u8,
+            (c.blue.clamp(0.0, 1.0) * 255.0) as u8,
+            (c.alpha.clamp(0.0, 1.0) * 255.0) as u8,
         ]
     }
 }
@@ -126,7 +105,7 @@ impl Color {
 
         //let color = Srgb::new(red, green, blue);
         //Self::from_srgba(Srgba { color, alpha })
-        let color = palette::LinSrgb::new(red, green, blue);
+        let color = LinSrgb::new(red, green, blue);
         Self::from_linear(LinSrgba { color, alpha })
     }
 }
@@ -175,17 +154,15 @@ impl_op!(Sub::sub(-) SubAssign::sub_assign(-=) for Offset);
 impl_op!(f32 => Mul::mul(*) MulAssign::mul_assign(*=) for Offset);
 impl_op!(f32 => Div::div(/) DivAssign::div_assign(/=) for Offset);
 
-impl Into<[f32; 2]> for Offset {
-    #[inline]
-    fn into(self) -> [f32; 2] {
-        [self.x, self.y]
+impl From<Offset> for [f32; 2] {
+    fn from(Offset { x, y }: Offset) -> [f32; 2] {
+        [x, y]
     }
 }
 
-impl Into<(f32, f32)> for Offset {
-    #[inline]
-    fn into(self) -> (f32, f32) {
-        (self.x, self.y)
+impl From<Offset> for (f32, f32) {
+    fn from(Offset { x, y }: Offset) -> (f32, f32) {
+        (x, y)
     }
 }
 
@@ -471,10 +448,9 @@ impl Default for Transform {
     }
 }
 
-impl Into<[f32; 4]> for Transform {
-    #[inline]
-    fn into(self) -> [f32; 4] {
-        [self.re, self.im, self.tx, self.ty]
+impl From<Transform> for [f32; 4] {
+    fn from(Transform { re, im, tx, ty }: Transform) -> [f32; 4] {
+        [re, im, tx, ty]
     }
 }
 

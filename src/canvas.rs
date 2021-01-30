@@ -1,5 +1,5 @@
 use crate::{
-    math::{Corners, Offset, PartialClamp, Rect, Transform},
+    math::{Corners, Offset, Rect, Transform},
     paint::{LineJoin, Paint, PaintingStyle, RawPaint, Stroke},
     path::{Path, PathCmd},
     picture::{Call, Instance, PictureRecorder, Vertex},

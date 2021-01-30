@@ -1,4 +1,4 @@
-use crate::math::{Corners, Offset, PartialClamp, Rect, Transform};
+use crate::math::{Corners, Offset, Rect, Transform};
 use std::f32::consts::PI;
 
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.

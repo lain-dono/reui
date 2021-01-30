@@ -23,7 +23,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            power_preference: wgpu::PowerPreference::Default,
+            power_preference: wgpu::PowerPreference::default(),
             backends: wgpu::BackendBit::PRIMARY,
 
             features: wgpu::Features::default(),
@@ -52,9 +52,9 @@ impl Options {
         let adapter = instance.request_adapter(&options).await?;
 
         let device = wgpu::DeviceDescriptor {
+            label: None,
             features: self.features,
             limits: self.limits,
-            shader_validation: true,
         };
         let (device, queue) = adapter.request_device(&device, None).await.ok()?;
 
@@ -98,6 +98,7 @@ impl Frame {
         };
 
         encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("frame clear"),
             color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                 attachment: &self.color.output.view,
                 resolve_target: None,
@@ -138,7 +139,7 @@ impl Surface {
         scale: f64,
     ) -> Self {
         let desc = wgpu::SwapChainDescriptor {
-            usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+            usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
             format,
             width,
             height,
@@ -206,7 +207,7 @@ impl Surface {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Depth24PlusStencil8,
-            usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+            usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
         })
     }
 }

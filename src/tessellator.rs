@@ -1,5 +1,5 @@
 use crate::{
-    math::{Offset, PartialClamp},
+    math::Offset,
     paint::{LineCap, LineJoin},
     path::{PathCmd, Winding},
     picture::Vertex,

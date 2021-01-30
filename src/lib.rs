@@ -1,5 +1,4 @@
 #![warn(clippy::all)]
-#![allow(unstable_name_collisions)] // TODO: clamp
 
 pub use wgpu;
 
@@ -12,7 +11,6 @@ mod paint;
 mod path;
 mod picture;
 mod renderer;
-mod shader;
 mod tessellator;
 mod valloc;
 

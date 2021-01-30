@@ -1,4 +1,6 @@
 #![warn(clippy::all)]
+#![allow(clippy::unusual_byte_groupings)]
+
 mod blendish;
 mod canvas;
 
@@ -72,8 +74,7 @@ impl app::Application for Demo {
             .current_frame()
             .expect("Timeout when acquiring next swap chain texture");
 
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut encoder = device.create_command_encoder(&Default::default());
 
         self.picture.clear();
         let mut ctx = self
