@@ -119,7 +119,7 @@ impl Default for CPath {
 
             closed: false,
             nbevel: 0,
-            winding: Winding::CCW,
+            winding: Winding::Positive,
             convex: false,
         }
     }
@@ -411,10 +411,10 @@ impl Tessellator {
             // Enforce winding.
             if path.len() > 2 {
                 let area = poly_area(&pts[..path.len()]);
-                if path.winding == Winding::CCW && area < 0.0 {
+                if path.winding == Winding::Positive && area < 0.0 {
                     pts.reverse();
                 }
-                if path.winding == Winding::CW && area > 0.0 {
+                if path.winding == Winding::Negative && area > 0.0 {
                     pts.reverse();
                 }
             }

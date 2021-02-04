@@ -86,7 +86,7 @@ fn main() {
 fn stencil() {}
 
 [[location(1)]] var<in> in_tex_coord_fs: vec2<f32>;
-[[location(2)]] var<in> in_color_fs: vec4<f32>;
+[[location(3)]] var<in> in_inner_color_fs: vec4<f32>;
 
 [[location(0)]] var<out> out_color_fs: vec4<f32>;
 
@@ -95,6 +95,6 @@ fn stencil() {}
 
 [[stage(fragment)]]
 fn image() {
-    var tex: vec4<f32> = textureSample(t_color, s_color, in_tex_coord_fs); //  * in_color_fs
-    out_color_fs = tex;
+    var tex: vec4<f32> = textureSample(t_color, s_color, in_tex_coord_fs);
+    out_color_fs = tex * in_inner_color_fs;
 }

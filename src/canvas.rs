@@ -71,7 +71,7 @@ impl<'a> Canvas<'a> {
 
             let pic = &mut self.picture;
 
-            let idx = pic.instances.push(Instance::default());
+            let idx = pic.instances.push(Instance::image([255; 4]));
             let vtx = pic
                 .vertices
                 .extend_with(&[vtx[0], vtx[1], vtx[2], vtx[0], vtx[2], vtx[3]]);
@@ -99,7 +99,7 @@ impl<'a> Canvas<'a> {
 
             let pic = &mut self.picture;
 
-            let idx = pic.instances.push(Instance::default());
+            let idx = pic.instances.push(Instance::image([255; 4]));
             let vtx = pic
                 .vertices
                 .extend_with(&[vtx[0], vtx[1], vtx[2], vtx[0], vtx[2], vtx[3]]);
@@ -220,6 +220,7 @@ impl<'a> Canvas<'a> {
             }
 
             // Setup uniforms for draw calls
+            let uniform = raw_paint.to_instance(fringe, fringe, -1.0);
             if kind {
                 let quad = pic.vertices.extend_with(&[
                     Vertex::new([cache.bounds[2], cache.bounds[3]], [0.5, 1.0]),
@@ -228,15 +229,12 @@ impl<'a> Canvas<'a> {
                     Vertex::new([cache.bounds[0], cache.bounds[1]], [0.5, 1.0]),
                 ]);
 
-                let uniform = raw_paint.to_instance(fringe, fringe, -1.0);
-
                 let idx = pic.instances.push(Default::default());
                 let _ = pic.instances.push(uniform);
 
                 let quad = quad.start;
                 pic.calls.push(Call::Fill { idx, path, quad })
             } else {
-                let uniform = raw_paint.to_instance(fringe, fringe, -1.0);
                 let idx = pic.instances.push(uniform);
                 pic.calls.push(Call::Convex { idx, path })
             };

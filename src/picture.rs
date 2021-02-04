@@ -7,9 +7,7 @@ use std::ops::Range;
 
 pub(crate) fn cast_slice<T: Sized>(slice: &[T]) -> &[u8] {
     use std::{mem::size_of, slice::from_raw_parts};
-    let len = slice.len() * size_of::<T>();
-    let data = slice.as_ptr();
-    unsafe { from_raw_parts(data as *const u8, len) }
+    unsafe { from_raw_parts(slice.as_ptr() as *const u8, slice.len() * size_of::<T>()) }
 }
 
 #[derive(Clone)]
@@ -87,6 +85,13 @@ pub struct Instance {
 }
 
 impl Instance {
+    pub fn image(color: [u8; 4]) -> Self {
+        Self {
+            inner_color: color,
+            ..Default::default()
+        }
+    }
+
     pub fn from_stroke(stroke: &Stroke, width: f32, fringe: f32, stroke_thr: f32) -> Self {
         let color = stroke.color.into();
         Self {
@@ -133,13 +138,13 @@ impl PictureRecorder {
         use wgpu::util::DeviceExt;
 
         let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
+            label: Some("vertex buffer"),
             contents: cast_slice(self.vertices.as_ref()),
             usage: wgpu::BufferUsage::VERTEX,
         });
 
         let instances = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
+            label: Some("instance buffer"),
             contents: cast_slice(self.instances.as_ref()),
             usage: wgpu::BufferUsage::VERTEX,
         });

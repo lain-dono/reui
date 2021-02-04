@@ -52,7 +52,7 @@ impl Options {
         let adapter = instance.request_adapter(&options).await?;
 
         let device = wgpu::DeviceDescriptor {
-            label: None,
+            label: Some("reui device"),
             features: self.features,
             limits: self.limits,
         };

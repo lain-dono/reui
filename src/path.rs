@@ -173,8 +173,8 @@ impl PathCmd {
 #[repr(u32)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Winding {
-    CCW = 1, // Winding for solid shapes
-    CW = 2,  // Winding for holes
+    Positive = 1, // Winding for solid shapes
+    Negative = 2, // Winding for holes
 }
 
 /// Collection of drawing commands.
@@ -349,7 +349,7 @@ impl Path {
     pub fn _arc(&mut self, cx: f32, cy: f32, r: f32, a0: f32, a1: f32, dir: Winding) {
         // Clamp angles
         let mut da = a1 - a0;
-        if dir == Winding::CW {
+        if dir == Winding::Negative {
             if da.abs() >= PI * 2.0 {
                 da = PI * 2.0;
             } else {
@@ -369,7 +369,11 @@ impl Path {
         let ndivs = ((da.abs() / (PI * 0.5) + 0.5) as i32).clamp(1, 5);
         let (sin, cos) = ((da / ndivs as f32) / 2.0).sin_cos();
         let kappa = (4.0 / 3.0 * (1.0 - cos) / sin).abs();
-        let kappa = if dir == Winding::CCW { -kappa } else { kappa };
+        let kappa = if dir == Winding::Positive {
+            -kappa
+        } else {
+            kappa
+        };
 
         let (mut last, mut ptan) = (Offset::zero(), Offset::zero());
         for i in 0..ndivs + 1 {

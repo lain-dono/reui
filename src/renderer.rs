@@ -39,6 +39,7 @@ impl HostImage {
         queue: &wgpu::Queue,
         path: impl AsRef<std::path::Path>,
     ) -> image::ImageResult<Self> {
+        let path = path.as_ref();
         let m = image::open(path)?;
 
         let m = m.to_rgba8();
@@ -53,7 +54,7 @@ impl HostImage {
         };
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: None,
+            label: path.to_str(),
             size,
             mip_level_count: 1,
             sample_count: 1,
@@ -90,7 +91,7 @@ impl HostImage {
         let view = self.texture.create_view(&desc);
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
+            label: Some("image bind group"),
             layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -349,7 +350,7 @@ impl Pipeline {
         });
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: None,
+            label: Some("reui layout"),
             bind_group_layouts: &[&viewport_layout, &image_layout],
             push_constant_ranges: &[],
         });
@@ -400,8 +401,6 @@ struct Builder<'a> {
 
 impl<'a> Builder<'a> {
     fn base(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
-        println!("pipeline base");
-
         let topology = wgpu::PrimitiveTopology::TriangleStrip;
         let (front, back) = (stencil.clone(), stencil);
         let (write_mask, cull_mode) = (wgpu::ColorWrite::ALL, wgpu::CullMode::Back);
@@ -414,16 +413,12 @@ impl<'a> Builder<'a> {
         front: wgpu::StencilFaceState,
         back: wgpu::StencilFaceState,
     ) -> wgpu::RenderPipeline {
-        println!("pipeline stencil");
-
         let topology = wgpu::PrimitiveTopology::TriangleStrip;
         let write_mask = wgpu::ColorWrite::empty();
         self.pipeline("stencil", write_mask, cull_mode, front, back, topology)
     }
 
     fn image(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
-        println!("pipeline image");
-
         let topology = wgpu::PrimitiveTopology::TriangleList;
         let (front, back) = (stencil.clone(), stencil);
         let (write_mask, cull_mode) = (wgpu::ColorWrite::ALL, wgpu::CullMode::Back);
