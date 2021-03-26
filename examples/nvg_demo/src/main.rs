@@ -70,9 +70,13 @@ impl app::Application for Demo {
             println!("average wgpu: {}ms", self.counter.average_ms());
         }
 
-        let frame = surface
-            .current_frame()
-            .expect("Timeout when acquiring next swap chain texture");
+        let frame = match surface.current_frame() {
+            Ok(frame) => frame,
+            Err(_) => {
+                println!("Timeout when acquiring next swap chain texture");
+                return;
+            }
+        };
 
         let mut encoder = device.create_command_encoder(&Default::default());
 

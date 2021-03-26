@@ -14,7 +14,7 @@ impl Offset {
         x && y
     }
 
-    #[inline(always)]
+    #[inline]
     fn normalize_mut(&mut self) -> f32 {
         let xx = self.x * self.x;
         let yy = self.y * self.y;
@@ -192,12 +192,12 @@ impl<'a> PairIterFan<'a> {
 impl<'a> Iterator for PairIterFan<'a> {
     type Item = (&'a Point, &'a Point);
     fn next(&mut self) -> Option<Self::Item> {
-        #[inline(always)]
+        #[inline]
         fn fan2strip(i: usize, len: usize) -> usize {
-            if i % 2 != 0 {
-                i / 2
-            } else {
+            if 0 == i % 2 {
                 len - 1 - i / 2
+            } else {
+                i / 2
             }
         }
 
@@ -281,7 +281,7 @@ impl Tessellator {
         self.points.push(Point {
             pos: point,
             flags,
-            ..Default::default()
+            ..Point::default()
         });
         path.end += 1;
 
@@ -362,7 +362,7 @@ impl Tessellator {
                     self.paths.push(CPath {
                         start,
                         end: start,
-                        ..Default::default()
+                        ..CPath::default()
                     });
                     self.add_point(p, self.dist_tol, PointFlags::CORNER);
                 }
@@ -424,13 +424,13 @@ impl Tessellator {
                 // Calculate segment direction and length
                 pts[p0].dir = pts[p1].pos - pts[p0].pos;
                 pts[p0].len = pts[p0].dir.normalize_mut();
-                let pos = pts[p0].pos;
+                let position = pts[p0].pos;
                 // Update bounds
                 self.bounds = [
-                    self.bounds[0].min(pos.x),
-                    self.bounds[1].min(pos.y),
-                    self.bounds[2].max(pos.x),
-                    self.bounds[3].max(pos.y),
+                    self.bounds[0].min(position.x),
+                    self.bounds[1].min(position.y),
+                    self.bounds[2].max(position.x),
+                    self.bounds[3].max(position.y),
                 ];
                 // Advance
                 p0 = p1;
@@ -895,7 +895,7 @@ trait Tess {
 }
 
 impl Tess for Vec<Vertex> {
-    #[inline(always)]
+    #[inline]
     fn add(&mut self, pos: Offset, uv: [f32; 2]) {
         Vec::push(self, Vertex::new(pos.into(), uv))
     }

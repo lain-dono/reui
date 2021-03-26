@@ -194,8 +194,16 @@ pub struct RawPaint {
 
 impl RawPaint {
     pub fn convert(paint: &Paint, xform: Transform) -> Self {
-        if let Some(gradient) = paint.gradient {
-            match gradient {
+        paint.gradient.map_or_else(
+            || Self {
+                xform: Transform::identity(),
+                extent: [0.0, 0.0],
+                radius: 0.0,
+                feather: 1.0,
+                inner_color: paint.color,
+                outer_color: paint.color,
+            },
+            |gradient| match gradient {
                 Gradient::Linear {
                     from,
                     to,
@@ -264,17 +272,8 @@ impl RawPaint {
                         outer_color,
                     }
                 }
-            }
-        } else {
-            Self {
-                xform: Transform::identity(),
-                extent: [0.0, 0.0],
-                radius: 0.0,
-                feather: 1.0,
-                inner_color: paint.color,
-                outer_color: paint.color,
-            }
-        }
+            },
+        )
     }
 
     pub fn to_instance(&self, width: f32, fringe: f32, stroke_thr: f32) -> Instance {

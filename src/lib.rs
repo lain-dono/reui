@@ -1,4 +1,13 @@
-#![warn(clippy::all)]
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::must_use_candidate,
+    clippy::range_plus_one,
+    clippy::module_name_repetitions,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::items_after_statements
+)]
 
 pub use wgpu;
 

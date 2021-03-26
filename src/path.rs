@@ -79,51 +79,51 @@ impl PathCmd {
     pub fn rrect(rect: Rect, radius: Corners) -> [Self; 10] {
         let (w, h) = rect.size().into();
         let Rect { min, max } = rect;
-        let halfw = w.abs() * 0.5;
-        let halfh = h.abs() * 0.5;
+        let half_w = w.abs() * 0.5;
+        let half_h = h.abs() * 0.5;
         let sign = w.signum();
-        let (rx_bl, ry_bl) = (sign * halfw.min(radius.bl), sign * halfh.min(radius.bl));
-        let (rx_br, ry_br) = (sign * halfw.min(radius.br), sign * halfh.min(radius.br));
-        let (rx_tr, ry_tr) = (sign * halfw.min(radius.tr), sign * halfh.min(radius.tr));
-        let (rx_tl, ry_tl) = (sign * halfw.min(radius.tl), sign * halfh.min(radius.tl));
+        let bl = Offset::new(half_w.min(radius.bl), half_h.min(radius.bl)) * sign;
+        let br = Offset::new(half_w.min(radius.br), half_h.min(radius.br)) * sign;
+        let tr = Offset::new(half_w.min(radius.tr), half_h.min(radius.tr)) * sign;
+        let tl = Offset::new(half_w.min(radius.tl), half_h.min(radius.tl)) * sign;
         let kappa = 1.0 - KAPPA90;
         [
-            Self::move_to(min.x, min.y + ry_tl),
-            Self::line_to(min.x, max.y - ry_bl),
+            Self::move_to(min.x, min.y + tl.y),
+            Self::line_to(min.x, max.y - bl.y),
             Self::cubic_to(
                 min.x,
-                max.y - ry_bl * kappa,
-                min.x + rx_bl * kappa,
+                max.y - bl.y * kappa,
+                min.x + bl.x * kappa,
                 max.y,
-                min.x + rx_bl,
+                min.x + bl.x,
                 max.y,
             ),
-            Self::line_to(max.x - rx_br, max.y),
+            Self::line_to(max.x - br.x, max.y),
             Self::cubic_to(
-                max.x - rx_br * kappa,
+                max.x - br.x * kappa,
                 max.y,
                 max.x,
-                max.y - ry_br * kappa,
+                max.y - br.y * kappa,
                 max.x,
-                max.y - ry_br,
+                max.y - br.y,
             ),
-            Self::line_to(max.x, min.y + ry_tr),
+            Self::line_to(max.x, min.y + tr.y),
             Self::cubic_to(
                 max.x,
-                min.y + ry_tr * kappa,
-                max.x - rx_tr * kappa,
+                min.y + tr.y * kappa,
+                max.x - tr.x * kappa,
                 min.y,
-                max.x - rx_tr,
+                max.x - tr.x,
                 min.y,
             ),
-            Self::line_to(min.x + rx_tl, min.y),
+            Self::line_to(min.x + tl.x, min.y),
             Self::cubic_to(
-                min.x + rx_tl * kappa,
+                min.x + tl.x * kappa,
                 min.y,
                 min.x,
-                min.y + ry_tl * kappa,
+                min.y + tl.y * kappa,
                 min.x,
-                min.y + ry_tl,
+                min.y + tl.y,
             ),
             Self::Close,
         ]
@@ -383,10 +383,10 @@ impl Path {
             let tan = Offset::new(-dy * r * kappa, dx * r * kappa);
 
             self.commands.push(if i == 0 {
-                if !self.commands.is_empty() {
-                    PathCmd::LineTo(pt)
-                } else {
+                if self.commands.is_empty() {
                     PathCmd::MoveTo(pt)
+                } else {
+                    PathCmd::LineTo(pt)
                 }
             } else {
                 PathCmd::CubicTo(last + ptan, pt - tan, pt)

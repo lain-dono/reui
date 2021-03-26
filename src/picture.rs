@@ -7,24 +7,42 @@ use std::ops::Range;
 
 pub(crate) fn cast_slice<T: Sized>(slice: &[T]) -> &[u8] {
     use std::{mem::size_of, slice::from_raw_parts};
-    unsafe { from_raw_parts(slice.as_ptr() as *const u8, slice.len() * size_of::<T>()) }
+    unsafe { from_raw_parts(slice.as_ptr().cast(), slice.len() * size_of::<T>()) }
 }
 
 #[derive(Clone)]
-pub enum Call {
+pub enum DrawCall {
     Convex {
-        idx: u32,
+        start: u32,
         path: Range<u32>,
     },
-    Fill {
-        idx: u32,
-        path: Range<u32>,
-        quad: u32,
-    },
-    Stroke {
-        idx: u32,
+
+    FillStencil {
+        start: u32,
         path: Range<u32>,
     },
+    FillFringes {
+        start: u32,
+        path: Range<u32>,
+    },
+    FillQuad {
+        start: u32,
+        quad: Range<u32>,
+    },
+
+    StrokeBase {
+        start: u32,
+        path: Range<u32>,
+    },
+    StrokeFringes {
+        start: u32,
+        path: Range<u32>,
+    },
+    StrokeStencil {
+        start: u32,
+        path: Range<u32>,
+    },
+
     Image {
         idx: u32,
         vtx: Range<u32>,
@@ -40,13 +58,13 @@ pub struct Vertex {
 }
 
 impl Vertex {
-    #[inline(always)]
+    #[inline]
     pub fn new(pos: [f32; 2], uv: [f32; 2]) -> Self {
         let uv = [(uv[0] * 65535.0) as u16, (uv[1] * 65535.0) as u16];
         Self { pos, uv }
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn transform(self, transform: &Transform) -> Self {
         let pos = transform.apply(Offset::from(self.pos)).into();
         Self { pos, ..self }
@@ -88,7 +106,7 @@ impl Instance {
     pub fn image(color: [u8; 4]) -> Self {
         Self {
             inner_color: color,
-            ..Default::default()
+            ..Self::default()
         }
     }
 
@@ -112,9 +130,9 @@ impl Instance {
 
 #[derive(Default)]
 pub struct PictureRecorder {
-    pub calls: Vec<Call>,
+    pub(crate) calls: Vec<DrawCall>,
     pub vertices: VecAlloc<Vertex>,
-    pub instances: VecAlloc<Instance>,
+    instances: VecAlloc<Instance>,
 
     pub paths: VecAlloc<RawPath>,
     pub strokes: VecAlloc<Range<u32>>,
@@ -132,6 +150,14 @@ impl PictureRecorder {
 
         self.paths.clear();
         self.strokes.clear();
+    }
+
+    pub fn call(&mut self, call: DrawCall) {
+        self.calls.push(call);
+    }
+
+    pub fn push_instance(&mut self, instance: Instance) -> u32 {
+        self.instances.push(instance)
     }
 
     pub fn build(&mut self, device: &wgpu::Device) -> PictureBundle {

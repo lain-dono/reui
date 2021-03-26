@@ -35,46 +35,10 @@ impl Default for Options {
     }
 }
 
-impl Options {
-    pub async fn create(
-        self,
-        instance: &wgpu::Instance,
-        surface: wgpu::Surface,
-        width: u32,
-        height: u32,
-        scale: f64,
-    ) -> Option<(wgpu::Adapter, wgpu::Device, wgpu::Queue, Surface)> {
-        let options = wgpu::RequestAdapterOptions {
-            power_preference: self.power_preference,
-            compatible_surface: Some(&surface),
-        };
-
-        let adapter = instance.request_adapter(&options).await?;
-
-        let device = wgpu::DeviceDescriptor {
-            label: Some("reui device"),
-            features: self.features,
-            limits: self.limits,
-        };
-        let (device, queue) = adapter.request_device(&device, None).await.ok()?;
-
-        let surface = Surface::new(
-            &device,
-            surface,
-            self.swapchain_format,
-            width,
-            height,
-            self.present_mode,
-            scale,
-        );
-
-        Some((adapter, device, queue, surface))
-    }
-}
-
 pub struct Frame {
     pub color: wgpu::SwapChainFrame,
     pub stencil: wgpu::TextureView,
+    pub resolve_target: Option<wgpu::TextureView>,
     pub width: u32,
     pub height: u32,
 }
@@ -97,18 +61,23 @@ impl Frame {
             a: lin.alpha,
         };
 
+        let (view, resolve_target) = match self.resolve_target.as_ref() {
+            Some(resolve_target) => (resolve_target, Some(&self.color.output.view)),
+            None => (&self.color.output.view, None),
+        };
+
         encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("frame clear"),
-            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                attachment: &self.color.output.view,
-                resolve_target: None,
+            color_attachments: &[wgpu::RenderPassColorAttachment {
+                view,
+                resolve_target,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(clear_color),
                     store: true,
                 },
             }],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
-                attachment: &self.stencil,
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &self.stencil,
                 depth_ops: None,
                 stencil_ops: Some(wgpu::Operations {
                     load: wgpu::LoadOp::Clear(0),
@@ -183,13 +152,17 @@ impl Surface {
         self.stencil = Self::create_stencil(device, width, height);
     }
 
+    /// # Errors
     pub fn current_frame(&mut self) -> Result<Frame, wgpu::SwapChainError> {
         let desc = wgpu::TextureViewDescriptor::default();
         let stencil = self.stencil.create_view(&desc);
+        //let resolve_target = Some(self.resolve_target.create_view(&desc));
+        let resolve_target = None;
         let (width, height) = self.size();
         self.swap_chain.get_current_frame().map(|color| Frame {
             color,
             stencil,
+            resolve_target,
             width,
             height,
         })
@@ -201,12 +174,33 @@ impl Surface {
             size: wgpu::Extent3d {
                 width,
                 height,
-                depth: 1,
+                depth_or_array_layers: 1,
             },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Depth24PlusStencil8,
+            usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
+        })
+    }
+
+    fn _create_resolve_target(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
+    ) -> wgpu::Texture {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("RESOLVE"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 4,
+            dimension: wgpu::TextureDimension::D2,
+            format,
             usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
         })
     }
@@ -229,33 +223,86 @@ pub fn run<App: Application>(
     futures::executor::block_on(run_async::<App>(event_loop, window, options));
 }
 
+/// # Panics
 pub async fn run_async<App: Application>(
     event_loop: EventLoop<App::UserEvent>,
     window: Window,
     options: Options,
 ) {
-    let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
-
-    let (_adapter, device, queue, mut surface) = {
-        let size = window.inner_size();
+    let (_instance, _adapter, device, queue, mut surface) = {
+        let (width, height) = window.inner_size().into();
         let scale = window.scale_factor();
+
+        let backends = if let Ok(backend) = std::env::var("WGPU_BACKEND") {
+            match backend.to_lowercase().as_str() {
+                "vulkan" => wgpu::BackendBit::VULKAN,
+                "metal" => wgpu::BackendBit::METAL,
+                "dx12" => wgpu::BackendBit::DX12,
+                "dx11" => wgpu::BackendBit::DX11,
+                "gl" => wgpu::BackendBit::GL,
+                "webgpu" => wgpu::BackendBit::BROWSER_WEBGPU,
+                other => panic!("Unknown backend: {}", other),
+            }
+        } else {
+            wgpu::BackendBit::PRIMARY
+        };
+        let power_preference = if let Ok(power_preference) = std::env::var("WGPU_POWER_PREF") {
+            match power_preference.to_lowercase().as_str() {
+                "low" => wgpu::PowerPreference::LowPower,
+                "high" => wgpu::PowerPreference::HighPerformance,
+                other => panic!("Unknown power preference: {}", other),
+            }
+        } else {
+            wgpu::PowerPreference::default()
+        };
+
+        let instance = wgpu::Instance::new(backends);
         let surface = unsafe { instance.create_surface(&window) };
 
-        options
-            .create(&instance, surface, size.width, size.height, scale)
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference,
+                compatible_surface: Some(&surface),
+            })
             .await
-            .unwrap()
+            .expect("No suitable GPU adapters found on the system!");
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let adapter_info = adapter.get_info();
+            println!("Using {} ({:?})", adapter_info.name, adapter_info.backend);
+        }
+
+        let device = wgpu::DeviceDescriptor {
+            label: Some("reui device"),
+            features: options.features,
+            limits: options.limits,
+        };
+        let (device, queue) = adapter
+            .request_device(&device, None)
+            .await
+            .expect("Unable to find a suitable GPU adapter!");
+
+        let surface = Surface::new(
+            &device,
+            surface,
+            options.swapchain_format,
+            width,
+            height,
+            options.present_mode,
+            scale,
+        );
+
+        (instance, adapter, device, queue, surface)
     };
 
     let mut app = App::init(&device, &queue, &mut surface);
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
+        #[allow(clippy::match_same_arms)]
         match event {
-            Event::NewEvents(StartCause::Init) => {}
-            Event::NewEvents(StartCause::Poll) => {}
-            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {}
-            Event::NewEvents(StartCause::WaitCancelled { .. }) => {}
+            Event::NewEvents(_) => {}
 
             Event::WindowEvent { event, window_id } => {
                 if window.id() == window_id {

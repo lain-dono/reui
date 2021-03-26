@@ -17,10 +17,10 @@ impl From<Color> for [f32; 4] {
 impl From<Color> for [u8; 4] {
     fn from(c: Color) -> [u8; 4] {
         [
-            (c.red.clamp(0.0, 1.0) * 255.0) as u8,
-            (c.green.clamp(0.0, 1.0) * 255.0) as u8,
-            (c.blue.clamp(0.0, 1.0) * 255.0) as u8,
-            (c.alpha.clamp(0.0, 1.0) * 255.0) as u8,
+            (c.red * 255.0) as u8,
+            (c.green * 255.0) as u8,
+            (c.blue * 255.0) as u8,
+            (c.alpha * 255.0) as u8,
         ]
     }
 }
@@ -72,7 +72,7 @@ impl Color {
     /// Returns color value specified by hue, saturation and lightness and alpha.
     /// HSL values are all in range [0..1], alpha in range [0..1]
     pub fn hsla(hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Self {
-        #[inline(always)]
+        #[inline]
         fn channel(h: f32, m1: f32, m2: f32) -> f32 {
             let h = h.rem_euclid(1.0);
 
