@@ -8,21 +8,6 @@ use std::collections::HashMap;
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
 
-macro_rules! stencil_face {
-    ($name:ident, $comp:ident, $fail:ident, $pass:ident) => {
-        const $name: wgpu::StencilFaceState = stencil_face!($comp, $fail, $pass);
-    };
-
-    ($comp:ident, $fail:ident, $pass:ident) => {
-        wgpu::StencilFaceState {
-            compare: wgpu::CompareFunction::$comp,
-            fail_op: wgpu::StencilOperation::$fail,
-            depth_fail_op: wgpu::StencilOperation::$fail,
-            pass_op: wgpu::StencilOperation::$pass,
-        }
-    };
-}
-
 pub(crate) struct ImageBind {
     pub bind_group: wgpu::BindGroup,
     pub size: wgpu::Extent3d,
@@ -185,28 +170,18 @@ impl Renderer {
         for call in picture.calls.iter().cloned() {
             match call {
                 DrawCall::Convex { start, path } => {
-                    let paths = &picture.paths[path];
                     let end = start + 1;
-
                     rpass.set_pipeline(&self.pipeline.convex);
-                    for path in paths {
-                        rpass.draw(path.fill.clone(), start..end);
-                        rpass.draw(path.stroke.clone(), start..end); // fringes
+                    for path in &picture.ranges[path] {
+                        rpass.draw(path.clone(), start..end);
                     }
                 }
 
                 DrawCall::FillStencil { start, path } => {
                     let end = start + 1;
                     rpass.set_pipeline(&self.pipeline.fill_stencil);
-                    for path in &picture.paths[path] {
-                        rpass.draw(path.fill.clone(), start..end);
-                    }
-                }
-                DrawCall::FillFringes { start, path } => {
-                    let end = start + 1;
-                    rpass.set_pipeline(&self.pipeline.fringes);
-                    for path in &picture.paths[path] {
-                        rpass.draw(path.stroke.clone(), start..end);
+                    for path in &picture.ranges[path] {
+                        rpass.draw(path.clone(), start..end);
                     }
                 }
                 DrawCall::FillQuad { start, quad } => {
@@ -217,28 +192,26 @@ impl Renderer {
 
                 // Fill the stroke base without overlap
                 DrawCall::StrokeBase { start, path } => {
-                    let stroke = &picture.strokes[path];
                     let end = start + 1;
                     rpass.set_pipeline(&self.pipeline.stroke_base);
-                    for path in stroke {
-                        rpass.draw(path.clone(), start..end);
-                    }
-                }
-                // Draw anti-aliased pixels.
-                DrawCall::StrokeFringes { start, path } => {
-                    let stroke = &picture.strokes[path];
-                    let end = start + 1;
-                    rpass.set_pipeline(&self.pipeline.fringes);
-                    for path in stroke {
+                    for path in &picture.ranges[path] {
                         rpass.draw(path.clone(), start..end);
                     }
                 }
                 // Clear stencil buffer
                 DrawCall::StrokeStencil { start, path } => {
-                    let stroke = &picture.strokes[path];
                     let end = start + 1;
                     rpass.set_pipeline(&self.pipeline.stroke_stencil);
-                    for path in stroke {
+                    for path in &picture.ranges[path] {
+                        rpass.draw(path.clone(), start..end);
+                    }
+                }
+
+                // Draw anti-aliased pixels.
+                DrawCall::Fringes { start, path } => {
+                    let end = start + 1;
+                    rpass.set_pipeline(&self.pipeline.fringes);
+                    for path in &picture.ranges[path] {
                         rpass.draw(path.clone(), start..end);
                     }
                 }
@@ -384,20 +357,33 @@ impl Pipeline {
             }),
         };
 
-        stencil_face!(ALWAYS_ZERO, Always, Zero, Zero);
-        stencil_face!(INCR_WRAP, Always, Keep, IncrementWrap);
-        stencil_face!(DECR_WRAP, Always, Keep, DecrementWrap);
+        macro_rules! stencil_face {
+            ($comp:ident, Fail::$fail:ident, Pass::$pass:ident) => {
+                wgpu::StencilFaceState {
+                    compare: wgpu::CompareFunction::$comp,
+                    fail_op: wgpu::StencilOperation::$fail,
+                    depth_fail_op: wgpu::StencilOperation::$fail,
+                    pass_op: wgpu::StencilOperation::$pass,
+                }
+            };
+        }
+
+        const ALWAYS_ZERO: wgpu::StencilFaceState = stencil_face!(Always, Fail::Zero, Pass::Zero);
+        const INCR_WRAP: wgpu::StencilFaceState =
+            stencil_face!(Always, Fail::Keep, Pass::IncrementWrap);
+        const DECR_WRAP: wgpu::StencilFaceState =
+            stencil_face!(Always, Fail::Keep, Pass::DecrementWrap);
 
         Self {
-            image: builder.image(stencil_face!(Always, Keep, Keep)),
+            image: builder.image(stencil_face!(Always, Fail::Keep, Pass::Keep)),
 
-            convex: builder.base(stencil_face!(Always, Keep, Keep)),
-            fringes: builder.base(stencil_face!(Equal, Keep, Keep)),
+            convex: builder.base(stencil_face!(Always, Fail::Keep, Pass::Keep)),
+            fringes: builder.base(stencil_face!(Equal, Fail::Keep, Pass::Keep)),
 
             fill_stencil: builder.stencil(None, INCR_WRAP, DECR_WRAP),
-            fill_quad: builder.base(stencil_face!(NotEqual, Zero, Zero)),
+            fill_quad: builder.base(stencil_face!(NotEqual, Fail::Zero, Pass::Zero)),
 
-            stroke_base: builder.base(stencil_face!(Equal, Keep, IncrementClamp)),
+            stroke_base: builder.base(stencil_face!(Equal, Fail::Keep, Pass::IncrementClamp)),
             stroke_stencil: builder.stencil(Some(wgpu::Face::Back), ALWAYS_ZERO, ALWAYS_ZERO),
 
             image_layout,

@@ -21,10 +21,6 @@ pub enum DrawCall {
         start: u32,
         path: Range<u32>,
     },
-    FillFringes {
-        start: u32,
-        path: Range<u32>,
-    },
     FillQuad {
         start: u32,
         quad: Range<u32>,
@@ -34,11 +30,12 @@ pub enum DrawCall {
         start: u32,
         path: Range<u32>,
     },
-    StrokeFringes {
+    StrokeStencil {
         start: u32,
         path: Range<u32>,
     },
-    StrokeStencil {
+
+    Fringes {
         start: u32,
         path: Range<u32>,
     },
@@ -131,11 +128,9 @@ impl Instance {
 #[derive(Default)]
 pub struct PictureRecorder {
     pub(crate) calls: Vec<DrawCall>,
-    pub vertices: VecAlloc<Vertex>,
+    pub(crate) vertices: VecAlloc<Vertex>,
     instances: VecAlloc<Instance>,
-
-    pub paths: VecAlloc<RawPath>,
-    pub strokes: VecAlloc<Range<u32>>,
+    pub(crate) ranges: VecAlloc<Range<u32>>,
 }
 
 impl PictureRecorder {
@@ -147,9 +142,7 @@ impl PictureRecorder {
         self.calls.clear();
         self.vertices.clear();
         self.instances.clear();
-
-        self.paths.clear();
-        self.strokes.clear();
+        self.ranges.clear();
     }
 
     pub fn call(&mut self, call: DrawCall) {
@@ -158,6 +151,10 @@ impl PictureRecorder {
 
     pub fn push_instance(&mut self, instance: Instance) -> u32 {
         self.instances.push(instance)
+    }
+
+    pub fn alloc_ranges(&mut self, count: usize) -> (Range<u32>, &mut [Range<u32>]) {
+        self.ranges.alloc_with(count, Default::default)
     }
 
     pub fn build(&mut self, device: &wgpu::Device) -> PictureBundle {

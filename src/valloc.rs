@@ -45,6 +45,11 @@ impl<T> VecAlloc<T> {
     }
 
     #[inline]
+    pub fn reserve(&mut self, additional: usize) {
+        self.0.reserve(additional)
+    }
+
+    #[inline]
     pub fn alloc_with<F: FnMut() -> T>(&mut self, count: usize, f: F) -> (Range<u32>, &mut [T]) {
         let start = self.0.len();
         self.0.resize_with(start + count as usize, f);
@@ -52,6 +57,14 @@ impl<T> VecAlloc<T> {
             start as u32..start as u32 + count as u32,
             &mut self.0[start..start + count],
         )
+    }
+
+    #[inline]
+    pub fn alloc_default(&mut self, count: usize) -> (Range<u32>, &mut [T])
+    where
+        T: Default,
+    {
+        self.alloc_with(count, T::default)
     }
 
     #[inline]
