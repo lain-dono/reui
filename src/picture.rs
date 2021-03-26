@@ -12,39 +12,19 @@ pub(crate) fn cast_slice<T: Sized>(slice: &[T]) -> &[u8] {
 
 #[derive(Clone)]
 pub enum DrawCall {
-    Convex {
-        start: u32,
-        path: Range<u32>,
-    },
+    Convex { start: u32, path: Range<u32> },
 
-    FillStencil {
-        start: u32,
-        path: Range<u32>,
-    },
-    FillQuad {
-        start: u32,
-        quad: Range<u32>,
-    },
+    FillStencil { start: u32, path: Range<u32> },
+    FillQuad { start: u32, quad: Range<u32> },
 
-    StrokeBase {
-        start: u32,
-        path: Range<u32>,
-    },
-    StrokeStencil {
-        start: u32,
-        path: Range<u32>,
-    },
+    StrokeBase { start: u32, path: Range<u32> },
+    StrokeStencil { start: u32, path: Range<u32> },
 
-    Fringes {
-        start: u32,
-        path: Range<u32>,
-    },
+    Fringes { start: u32, path: Range<u32> },
 
-    Image {
-        idx: u32,
-        vtx: Range<u32>,
-        image: u32,
-    },
+    SelectImage { image: u32 },
+
+    Image { start: u32, vertices: Range<u32> },
 }
 
 #[repr(C)]

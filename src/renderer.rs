@@ -216,12 +216,13 @@ impl Renderer {
                     }
                 }
 
-                DrawCall::Image { idx, vtx, image } => {
-                    if let Some(image) = self.images.get(&image) {
-                        rpass.set_pipeline(&self.pipeline.image);
-                        rpass.set_bind_group(1, &image.bind_group, &[]);
-                        rpass.draw(vtx, idx..idx + 1);
-                    }
+                DrawCall::SelectImage { image } => {
+                    rpass.set_bind_group(1, &self.images[&image].bind_group, &[]);
+                }
+
+                DrawCall::Image { start, vertices } => {
+                    rpass.set_pipeline(&self.pipeline.image);
+                    rpass.draw(vertices, start..start + 1);
                 }
             }
         }

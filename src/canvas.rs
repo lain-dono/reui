@@ -69,12 +69,13 @@ impl<'a> Canvas<'a> {
                 Vertex::new([x0, y1], [0.0, 1.0]).transform(&xform),
             ];
 
-            let idx = self.picture.push_instance(Instance::image([255; 4]));
-            let vtx = self
+            let start = self.picture.push_instance(Instance::image([255; 4]));
+            let vertices = self
                 .picture
                 .vertices
                 .extend_with(&[vtx[0], vtx[1], vtx[2], vtx[0], vtx[2], vtx[3]]);
-            self.picture.call(DrawCall::Image { idx, vtx, image });
+            self.picture.call(DrawCall::SelectImage { image });
+            self.picture.call(DrawCall::Image { start, vertices });
         }
     }
 
@@ -96,12 +97,13 @@ impl<'a> Canvas<'a> {
                 Vertex::new([x0, y1], [0.0, 1.0]).transform(&xform),
             ];
 
-            let idx = self.picture.push_instance(Instance::image([255; 4]));
-            let vtx = self
+            let start = self.picture.push_instance(Instance::image([255; 4]));
+            let vertices = self
                 .picture
                 .vertices
                 .extend_with(&[vtx[0], vtx[1], vtx[2], vtx[0], vtx[2], vtx[3]]);
-            self.picture.call(DrawCall::Image { idx, vtx, image });
+            self.picture.call(DrawCall::SelectImage { image });
+            self.picture.call(DrawCall::Image { start, vertices });
         }
     }
 

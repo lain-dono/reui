@@ -96,7 +96,7 @@ impl Point {
     }
 }
 
-pub struct CPath {
+pub struct Contour {
     start: usize,
     end: usize,
 
@@ -109,7 +109,7 @@ pub struct CPath {
     pub convex: bool,
 }
 
-impl Default for CPath {
+impl Default for Contour {
     fn default() -> Self {
         Self {
             start: 0,
@@ -125,7 +125,7 @@ impl Default for CPath {
     }
 }
 
-impl CPath {
+impl Contour {
     #[inline]
     fn len(&self) -> usize {
         self.end - self.start
@@ -219,7 +219,7 @@ pub struct Tessellator {
     points: Vec<Point>,
     last_point: Offset,
 
-    pub paths: Vec<CPath>,
+    pub paths: Vec<Contour>,
     pub verts: Vec<Vertex>,
     pub bounds: [f32; 4],
 
@@ -359,10 +359,10 @@ impl Tessellator {
             match cmd {
                 PathCmd::MoveTo(p) => {
                     let start = self.points.len();
-                    self.paths.push(CPath {
+                    self.paths.push(Contour {
                         start,
                         end: start,
-                        ..CPath::default()
+                        ..Contour::default()
                     });
                     self.add_point(p, self.dist_tol, PointFlags::CORNER);
                 }
