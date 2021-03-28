@@ -110,7 +110,7 @@ impl Color {
     }
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct Offset {
     pub x: f32,
     pub y: f32,
@@ -271,7 +271,7 @@ impl Corners {
     }
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct Rect {
     pub min: Offset,
     pub max: Offset,

@@ -1,172 +1,113 @@
 use crate::math::{Corners, Offset, Rect, Transform};
-use std::f32::consts::PI;
 
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.
 const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
 
-#[derive(Clone, Copy)]
-pub enum PathCmd {
-    MoveTo(Offset),
-    LineTo(Offset),
-    QuadTo(Offset, Offset),
-    CubicTo(Offset, Offset, Offset),
-    Winding(Winding),
+/// The fill rule used when filling paths: `EvenOdd`, `NonZero` (default).
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum FillRule {
+    NonZero,
+    EvenOdd,
+}
+
+impl Default for FillRule {
+    fn default() -> Self {
+        Self::NonZero
+    }
+}
+
+/// Used to specify Solid/Hole when adding shapes to a path.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+pub enum Solidity {
+    Solid,
+    Hole,
+}
+
+impl Default for Solidity {
+    fn default() -> Self {
+        Self::Solid
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u8)]
+enum Raw {
+    MoveTo,
+    LineTo,
+    BezierTo,
+    Solid,
+    Hole,
     Close,
 }
 
-impl PathCmd {
-    #[inline]
-    pub fn shift(self, offset: Offset) -> Self {
+impl Raw {
+    fn num_points(self) -> usize {
         match self {
-            Self::MoveTo(p) => Self::MoveTo(p + offset),
-            Self::LineTo(p) => Self::LineTo(p + offset),
-            Self::QuadTo(p1, p2) => Self::QuadTo(p1 + offset, p2 + offset),
-            Self::CubicTo(p1, p2, p3) => Self::CubicTo(p1 + offset, p2 + offset, p3 + offset),
-            Self::Winding(dir) => Self::Winding(dir),
-            Self::Close => Self::Close,
+            Self::MoveTo | Self::LineTo => 1,
+            Self::BezierTo => 3,
+            Self::Solid | Self::Hole | Self::Close => 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum Command {
+    MoveTo(Offset),
+    LineTo(Offset),
+    BezierTo(Offset, Offset, Offset),
+    Solid,
+    Hole,
+    Close,
+}
+
+impl Command {
+    #[inline]
+    fn from_raw(raw: Raw, coords: &[Offset]) -> Self {
+        match raw {
+            Raw::MoveTo => Self::MoveTo(coords[0]),
+            Raw::LineTo => Self::LineTo(coords[0]),
+            Raw::BezierTo => Self::BezierTo(coords[0], coords[1], coords[2]),
+            Raw::Solid => Self::Solid,
+            Raw::Hole => Self::Hole,
+            Raw::Close => Self::Close,
         }
     }
 
     #[inline]
-    pub fn transform(self, t: Transform) -> Self {
-        match self {
-            Self::MoveTo(p) => Self::MoveTo(t.apply(p)),
-            Self::LineTo(p) => Self::LineTo(t.apply(p)),
-            Self::QuadTo(p1, p2) => Self::QuadTo(t.apply(p1), t.apply(p2)),
-            Self::CubicTo(p1, p2, p3) => Self::CubicTo(t.apply(p1), t.apply(p2), t.apply(p3)),
-            Self::Winding(dir) => Self::Winding(dir),
-            Self::Close => Self::Close,
+    fn from_raw_transformed(raw: Raw, coords: &[Offset], t: Transform) -> Self {
+        match raw {
+            Raw::MoveTo => Self::MoveTo(t.apply(coords[0])),
+            Raw::LineTo => Self::LineTo(t.apply(coords[0])),
+            Raw::BezierTo => {
+                Self::BezierTo(t.apply(coords[0]), t.apply(coords[1]), t.apply(coords[2]))
+            }
+            Raw::Solid => Self::Solid,
+            Raw::Hole => Self::Hole,
+            Raw::Close => Self::Close,
         }
     }
 
-    #[inline]
-    pub fn move_to(x: f32, y: f32) -> Self {
-        Self::MoveTo(Offset { x, y })
-    }
+    fn to_raw(self, array: &mut [Offset; 3]) -> (Raw, &[Offset]) {
+        match self {
+            Command::MoveTo(p) => (Raw::MoveTo, {
+                array[0] = p;
+                &array[..1]
+            }),
+            Command::LineTo(p) => (Raw::LineTo, {
+                array[0] = p;
+                &array[..1]
+            }),
+            Command::BezierTo(p1, p2, p3) => (Raw::BezierTo, {
+                array[0] = p1;
+                array[1] = p2;
+                array[2] = p3;
+                &array[..]
+            }),
 
-    #[inline]
-    pub fn line_to(x: f32, y: f32) -> Self {
-        Self::LineTo(Offset { x, y })
-    }
-
-    #[inline]
-    pub fn cubic_to(x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) -> Self {
-        Self::CubicTo(
-            Offset { x: x1, y: y1 },
-            Offset { x: x2, y: y2 },
-            Offset { x: x3, y: y3 },
-        )
-    }
-
-    #[inline]
-    pub fn quad_to(p0: Offset, c: Offset, p1: Offset) -> Self {
-        const FIX: f32 = 2.0 / 3.0;
-        Self::CubicTo(p0 + (c - p0) * FIX, p1 + (c - p1) * FIX, p1)
-    }
-
-    #[inline]
-    pub fn rect(Rect { min, max }: Rect) -> [Self; 5] {
-        [
-            Self::move_to(min.x, min.y),
-            Self::line_to(min.x, max.y),
-            Self::line_to(max.x, max.y),
-            Self::line_to(max.x, min.y),
-            Self::Close,
-        ]
-    }
-
-    #[inline]
-    pub fn rrect(rect: Rect, radius: Corners) -> [Self; 10] {
-        let (w, h) = rect.size().into();
-        let Rect { min, max } = rect;
-        let half_w = w.abs() * 0.5;
-        let half_h = h.abs() * 0.5;
-        let sign = w.signum();
-        let bl = Offset::new(half_w.min(radius.bl), half_h.min(radius.bl)) * sign;
-        let br = Offset::new(half_w.min(radius.br), half_h.min(radius.br)) * sign;
-        let tr = Offset::new(half_w.min(radius.tr), half_h.min(radius.tr)) * sign;
-        let tl = Offset::new(half_w.min(radius.tl), half_h.min(radius.tl)) * sign;
-        let kappa = 1.0 - KAPPA90;
-        [
-            Self::move_to(min.x, min.y + tl.y),
-            Self::line_to(min.x, max.y - bl.y),
-            Self::cubic_to(
-                min.x,
-                max.y - bl.y * kappa,
-                min.x + bl.x * kappa,
-                max.y,
-                min.x + bl.x,
-                max.y,
-            ),
-            Self::line_to(max.x - br.x, max.y),
-            Self::cubic_to(
-                max.x - br.x * kappa,
-                max.y,
-                max.x,
-                max.y - br.y * kappa,
-                max.x,
-                max.y - br.y,
-            ),
-            Self::line_to(max.x, min.y + tr.y),
-            Self::cubic_to(
-                max.x,
-                min.y + tr.y * kappa,
-                max.x - tr.x * kappa,
-                min.y,
-                max.x - tr.x,
-                min.y,
-            ),
-            Self::line_to(min.x + tl.x, min.y),
-            Self::cubic_to(
-                min.x + tl.x * kappa,
-                min.y,
-                min.x,
-                min.y + tl.y * kappa,
-                min.x,
-                min.y + tl.y,
-            ),
-            Self::Close,
-        ]
-    }
-
-    #[inline]
-    pub fn ellipse(cx: f32, cy: f32, rx: f32, ry: f32) -> [Self; 6] {
-        [
-            Self::move_to(cx - rx, cy),
-            Self::cubic_to(
-                cx - rx,
-                cy + ry * KAPPA90,
-                cx - rx * KAPPA90,
-                cy + ry,
-                cx,
-                cy + ry,
-            ),
-            Self::cubic_to(
-                cx + rx * KAPPA90,
-                cy + ry,
-                cx + rx,
-                cy + ry * KAPPA90,
-                cx + rx,
-                cy,
-            ),
-            Self::cubic_to(
-                cx + rx,
-                cy - ry * KAPPA90,
-                cx + rx * KAPPA90,
-                cy - ry,
-                cx,
-                cy - ry,
-            ),
-            Self::cubic_to(
-                cx - rx * KAPPA90,
-                cy - ry,
-                cx - rx,
-                cy - ry * KAPPA90,
-                cx - rx,
-                cy,
-            ),
-            Self::Close,
-        ]
+            Command::Solid => (Raw::Solid, &array[0..0]),
+            Command::Hole => (Raw::Hole, &array[0..0]),
+            Command::Close => (Raw::Close, &array[0..0]),
+        }
     }
 }
 
@@ -177,64 +118,173 @@ pub enum Winding {
     Negative = 2, // Winding for holes
 }
 
-/// Collection of drawing commands.
-#[derive(Default)]
-pub struct Path {
-    commands: Vec<PathCmd>,
+pub struct PathIter<'a> {
+    index: std::slice::Iter<'a, Raw>,
+    coord: &'a [Offset],
 }
 
-impl AsRef<[PathCmd]> for Path {
-    fn as_ref(&self) -> &[PathCmd] {
-        &self.commands
+impl<'a> Iterator for PathIter<'a> {
+    type Item = Command;
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.index.size_hint()
+    }
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(&raw) = self.index.next() {
+            let (coords, next) = self.coord.split_at(raw.num_points());
+            let cmd = Command::from_raw(raw, coords);
+            self.coord = next;
+            Some(cmd)
+        } else {
+            None
+        }
     }
 }
 
-impl std::iter::Extend<PathCmd> for Path {
-    fn extend<T: IntoIterator<Item = PathCmd>>(&mut self, iter: T) {
-        self.commands.extend(iter)
+pub struct PathTransform<'a> {
+    transform: Transform,
+    index: std::slice::Iter<'a, Raw>,
+    coord: &'a [Offset],
+}
+
+impl<'a> Iterator for PathTransform<'a> {
+    type Item = Command;
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.index.size_hint()
+    }
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(&raw) = self.index.next() {
+            let (coords, next) = self.coord.split_at(raw.num_points());
+            let cmd = Command::from_raw_transformed(raw, coords, self.transform);
+            self.coord = next;
+            Some(cmd)
+        } else {
+            None
+        }
+    }
+}
+
+/// Collection of drawing commands.
+#[derive(Default, Clone)]
+pub struct Path {
+    index: Vec<Raw>,
+    coord: Vec<Offset>,
+    distance_tolerance: f32,
+}
+
+impl<'a> IntoIterator for &'a Path {
+    type Item = Command;
+    type IntoIter = PathIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        PathIter {
+            index: self.index.iter(),
+            coord: &self.coord,
+        }
+    }
+}
+
+impl std::iter::Extend<Command> for Path {
+    fn extend<T: IntoIterator<Item = Command>>(&mut self, iter: T) {
+        let mut tmp = [Offset::zero(); 3];
+        for cmd in iter {
+            let (cmd, coord) = cmd.to_raw(&mut tmp);
+            self.append(&[cmd], coord);
+        }
+    }
+}
+
+impl<'a> std::iter::Extend<&'a Command> for Path {
+    fn extend<T: IntoIterator<Item = &'a Command>>(&mut self, iter: T) {
+        let mut tmp = [Offset::zero(); 3];
+        for cmd in iter {
+            let (cmd, coord) = cmd.to_raw(&mut tmp);
+            self.append(&[cmd], coord);
+        }
     }
 }
 
 impl Path {
     /// Creates a new [`Path`].
-    pub fn new() -> Self {
-        let commands = Vec::new();
-        Self { commands }
-    }
-
-    /// Creates a new [`Path`] with the specified capacity.
-    pub fn with_capacity(capacity: usize) -> Self {
-        let commands = Vec::with_capacity(capacity);
-        Self { commands }
+    pub const fn new() -> Self {
+        Self {
+            index: Vec::new(),
+            coord: Vec::new(),
+            distance_tolerance: 0.01,
+        }
     }
 
     /// Clears the [`Path`], removing all drawing commands.
     pub fn clear(&mut self) {
-        self.commands.clear();
+        self.index.clear();
+        self.coord.clear();
     }
-}
 
-impl Path {
+    fn is_empty(&self) -> bool {
+        self.index.is_empty()
+    }
+
+    /// Returns a copy of the [`Path`] with all the segments of every sub-path transformed by the given matrix.
+    pub fn transform(&self, t: Transform) -> PathTransform {
+        PathTransform {
+            transform: t,
+            index: self.index.iter(),
+            coord: &self.coord,
+        }
+    }
+
+    pub fn extend_with_path(&mut self, other: &Self) {
+        self.index.extend_from_slice(&other.index);
+        self.coord.extend_from_slice(&other.coord);
+    }
+
     /// Moves the starting point of a new sub-path to the given [`Offset`].
     pub fn move_to(&mut self, p0: Offset) {
-        self.commands.push(PathCmd::MoveTo(p0));
+        self.index.push(Raw::MoveTo);
+        self.coord.push(p0);
     }
 
     /// Connects the last point in the [`Offset`] to the given Point with a straight line.
     pub fn line_to(&mut self, p1: Offset) {
-        self.commands.push(PathCmd::LineTo(p1));
+        self.index.push(Raw::LineTo);
+        self.coord.push(p1);
     }
 
     /// Adds a quadratic Bézier curve to the [`Path`] given its control point and its end point.
     pub fn quad_to(&mut self, p1: Offset, p2: Offset) {
-        self.commands.push(PathCmd::QuadTo(p1, p2));
+        if let Some(&p0) = self.coord.last() {
+            self.cubic_to(
+                p0 + (p1 - p0) * (2.0 / 3.0),
+                p2 + (p1 - p2) * (2.0 / 3.0),
+                p2,
+            );
+        }
     }
 
     /// Adds a cubic Bézier curve to the [`Path`] given its two control points and its end point.
     pub fn cubic_to(&mut self, p1: Offset, p2: Offset, p3: Offset) {
-        self.commands.push(PathCmd::CubicTo(p1, p2, p3));
+        self.index.push(Raw::BezierTo);
+        self.coord.extend(std::array::IntoIter::new([p1, p2, p3]));
     }
 
+    /// Closes the current sub-path in the [`Path`] with a straight line to the starting point.
+    pub fn close(&mut self) {
+        self.index.push(Raw::Close);
+    }
+
+    /// Sets the current sub-path winding, see [`Solidity`]
+    pub fn solidity(&mut self, solidity: Solidity) {
+        match solidity {
+            Solidity::Solid => self.index.push(Raw::Solid),
+            Solidity::Hole => self.index.push(Raw::Hole),
+        }
+    }
+}
+
+impl Path {
     /*
     /// Adds a new sub-path with one arc segment that consists of the arc that follows the edge of the oval
     /// bounded by the given rectangle,
@@ -248,84 +298,122 @@ impl Path {
     pub fn oval(&mut self, rect: Rect) {
         let Offset { x: cx, y: cy } = rect.center();
         let Offset { x: rx, y: ry } = rect.size() / 2.0;
-        self.commands.extend(&PathCmd::ellipse(cx, cy, rx, ry));
+        self.ellipse(cx, cy, rx, ry);
     }
 
     /// Adds a circle to the [`Path`] given its center coordinate and its radius.
     pub fn circle(&mut self, center: Offset, radius: f32) {
         let Offset { x: cx, y: cy } = center;
         let (rx, ry) = (radius, radius);
-        self.commands.extend(&PathCmd::ellipse(cx, cy, rx, ry));
+        self.ellipse(cx, cy, rx, ry);
     }
-
-    /*
-    /// Adds a new sub-path that consists of the given path offset by the given offset. [...]
-    pub fn add_path(&mut self, path: Self, offset: Offset) {
-        let iter = path.commands.iter().map(|cmd| cmd.shift(offset));
-        self.commands.extend(iter)
-    }
-    */
-
-    /*
-    /// Adds a new sub-path with a sequence of line segments that connect the given points. [...]
-    pub fn add_polygon(List<Offset> points, bool close) -> void
-    */
 
     /// Adds [`Rect`] to the [`Path`].
     pub fn rect(&mut self, rect: Rect) {
-        self.commands.extend(&PathCmd::rect(rect));
+        let Rect { min, max } = rect;
+        self.append(
+            &[
+                Raw::MoveTo,
+                Raw::LineTo,
+                Raw::LineTo,
+                Raw::LineTo,
+                Raw::Close,
+            ],
+            &[
+                Offset::new(min.x, min.y),
+                Offset::new(min.x, max.y),
+                Offset::new(max.x, max.y),
+                Offset::new(max.x, min.y),
+            ],
+        );
     }
 
     /// Adds [`Rect`] with [`Corners`] to the [`Path`].
     pub fn rrect(&mut self, rect: Rect, radius: Corners) {
-        self.commands.extend(&PathCmd::rrect(rect, radius));
+        let (w, h) = rect.size().into();
+        let Rect { min, max } = rect;
+        let half_w = w.abs() * 0.5;
+        let half_h = h.abs() * 0.5;
+        let sign = w.signum();
+        let bl = Offset::new(half_w.min(radius.bl), half_h.min(radius.bl)) * sign;
+        let br = Offset::new(half_w.min(radius.br), half_h.min(radius.br)) * sign;
+        let tr = Offset::new(half_w.min(radius.tr), half_h.min(radius.tr)) * sign;
+        let tl = Offset::new(half_w.min(radius.tl), half_h.min(radius.tl)) * sign;
+        let kappa = 1.0 - KAPPA90;
+
+        self.append(
+            &[
+                Raw::MoveTo,
+                Raw::LineTo,
+                Raw::BezierTo,
+                Raw::LineTo,
+                Raw::BezierTo,
+                Raw::LineTo,
+                Raw::BezierTo,
+                Raw::LineTo,
+                Raw::BezierTo,
+                Raw::Close,
+            ],
+            &[
+                Offset::new(min.x, min.y + tl.y),
+                Offset::new(min.x, max.y - bl.y),
+                Offset::new(min.x, max.y - bl.y * kappa),
+                Offset::new(min.x + bl.x * kappa, max.y),
+                Offset::new(min.x + bl.x, max.y),
+                Offset::new(max.x - br.x, max.y),
+                Offset::new(max.x - br.x * kappa, max.y),
+                Offset::new(max.x, max.y - br.y * kappa),
+                Offset::new(max.x, max.y - br.y),
+                Offset::new(max.x, min.y + tr.y),
+                Offset::new(max.x, min.y + tr.y * kappa),
+                Offset::new(max.x - tr.x * kappa, min.y),
+                Offset::new(max.x - tr.x, min.y),
+                Offset::new(min.x + tl.x, min.y),
+                Offset::new(min.x + tl.x * kappa, min.y),
+                Offset::new(min.x, min.y + tl.y * kappa),
+                Offset::new(min.x, min.y + tl.y),
+            ],
+        );
     }
 
-    /// Closes the current sub-path in the [`Path`] with a straight line to the starting point.
-    pub fn close(&mut self) {
-        self.commands.push(PathCmd::Close);
+    #[inline]
+    fn ellipse(&mut self, cx: f32, cy: f32, rx: f32, ry: f32) {
+        self.append(
+            &[
+                Raw::MoveTo,
+                Raw::BezierTo,
+                Raw::BezierTo,
+                Raw::BezierTo,
+                Raw::BezierTo,
+                Raw::Close,
+            ],
+            &[
+                Offset::new(cx - rx, cy),
+                Offset::new(cx - rx, cy + ry * KAPPA90),
+                Offset::new(cx - rx * KAPPA90, cy + ry),
+                Offset::new(cx, cy + ry),
+                Offset::new(cx + rx * KAPPA90, cy + ry),
+                Offset::new(cx + rx, cy + ry * KAPPA90),
+                Offset::new(cx + rx, cy),
+                Offset::new(cx + rx, cy - ry * KAPPA90),
+                Offset::new(cx + rx * KAPPA90, cy - ry),
+                Offset::new(cx, cy - ry),
+                Offset::new(cx - rx * KAPPA90, cy - ry),
+                Offset::new(cx - rx, cy - ry * KAPPA90),
+                Offset::new(cx - rx, cy),
+            ],
+        )
+    }
+
+    fn append(&mut self, cmd: &[Raw], coord: &[Offset]) {
+        self.index.extend_from_slice(cmd);
+        self.coord.extend_from_slice(coord);
     }
 }
 
 #[doc(hidden)]
 impl Path {
-    pub fn path_winding(&mut self, dir: Winding) {
-        self.commands.push(PathCmd::Winding(dir));
-    }
     /*
-    /// If the forceMoveTo argument is false, adds a straight line segment and an arc segment. [...]
-    pub fn arc_to(Rect rect, double startAngle, double sweepAngle, bool forceMoveTo) -> void
-    /// Appends up to four conic curves weighted to describe an oval of radius and rotated by rotation. [...]
-    pub fn arc_to_point(Offset arcEnd, {
-        Radius radius: Radius.zero, double rotation: 0.0, bool largeArc: false, bool clockwise: true }) -> void
-    /// Creates a PathMetrics object for this path. [...]
-    pub fn compute_metrics({bool forceClosed: false }) -> PathMetrics
-    /// Adds a bezier segment that curves from the current point to the given point (x2,y2),
-    /// using the control points (x1,y1) and the weight w.
-    /// If the weight is greater than 1, then the curve is a hyperbola;
-    /// if the weight equals 1, it's a parabola; and if it is less than 1, it is an ellipse.
-    pub fn conic_to(double x1, double y1, double x2, double y2, double w) -> void
-    /// Tests to see if the given point is within the path.
-    /// (That is, whether the point would be in the visible portion of the path if the path was used with Canvas.clipPath.)
-    /// [...]
-    pub fn contains(Offset point) -> bool
-    */
-
-    /// Adds the given path to this path by extending the current segment of this path with the the first segment of the given path. [...]
-    //pub fn extend_with_path(Path path, Offset offset, { Float64List matrix4 }) -> void
-
-    pub fn extend_with_path(&mut self, other: &Self) {
-        self.commands.extend(&other.commands)
-    }
-
-    /*
-    /// Computes the bounding rectangle for this path. [...]
-    pub fn bounds() -> Rect
-    */
-
-    /*
-    /// Adds a quadratic bezier segment that curves from the current point to the given point (x2,y2), using the control point (x1,y1).
-    pub fn quadratic_bezier_to(double x1, double y1, double x2, double y2) -> void
     /// Appends up to four conic curves weighted to describe an oval of radius and rotated by rotation. [...]
     pub fn relative_arc_to_point(Offset arcEndDelta, { Radius radius: Radius.zero, double rotation: 0.0, bool largeArc: false, bool clockwise: true }) -> void
     /// Adds a bezier segment that curves from the current point to the point at the offset (x2,y2) from the current point, using the control point at the offset (x1,y1) from the current point and the weight w. If the weight is greater than 1, then the curve is a hyperbola; if the weight equals 1, it's a parabola; and if it is less than 1, it is an ellipse.
@@ -336,63 +424,62 @@ impl Path {
     pub fn relative_quadratic_bezier_to(double x1, double y1, double x2, double y2) -> void
     */
 
-    /// Returns a copy of the path with all the segments of every sub-path translated by the given offset.
-    pub fn shift(&self, offset: Offset) -> impl Iterator<Item = PathCmd> + '_ {
-        self.commands.iter().map(move |c| c.shift(offset))
-    }
+    /// Creates new circle arc shaped sub-path. The arc center is at cx,cy, the arc radius is r,
+    /// and the arc is drawn from angle a0 to a1, and swept in direction dir (Winding)
+    /// Angles are specified in radians.
+    pub fn arc(&mut self, center: Offset, radius: f32, a0: f32, a1: f32, dir: Solidity) {
+        use std::f32::consts::{FRAC_PI_2, TAU};
 
-    /// Returns a copy of the path with all the segments of every sub-path transformed by the given matrix.
-    pub fn transform(&self, t: Transform) -> impl Iterator<Item = PathCmd> + '_ {
-        self.commands.iter().map(move |c| c.transform(t))
-    }
-
-    pub fn _arc(&mut self, cx: f32, cy: f32, r: f32, a0: f32, a1: f32, dir: Winding) {
         // Clamp angles
         let mut da = a1 - a0;
-        if dir == Winding::Negative {
-            if da.abs() >= PI * 2.0 {
-                da = PI * 2.0;
+        if let Solidity::Hole = dir {
+            if da.abs() >= TAU {
+                da = TAU;
             } else {
                 while da < 0.0 {
-                    da += PI * 2.0;
+                    da += TAU;
                 }
             }
-        } else if da.abs() >= PI * 2.0 {
-            da = -PI * 2.0;
+        } else if da.abs() >= TAU {
+            da = -TAU;
         } else {
             while da > 0.0 {
-                da -= PI * 2.0;
+                da -= TAU;
             }
         }
 
         // Split arc into max 90 degree segments.
-        let ndivs = ((da.abs() / (PI * 0.5) + 0.5) as i32).clamp(1, 5);
+        let ndivs = ((da.abs() / FRAC_PI_2 + 0.5) as i32).clamp(1, 5);
         let (sin, cos) = ((da / ndivs as f32) / 2.0).sin_cos();
         let kappa = (4.0 / 3.0 * (1.0 - cos) / sin).abs();
-        let kappa = if dir == Winding::Positive {
+        let kappa = if let Solidity::Solid = dir {
             -kappa
         } else {
             kappa
         };
 
-        let (mut last, mut ptan) = (Offset::zero(), Offset::zero());
-        for i in 0..ndivs + 1 {
+        let (mut last_point, mut last_tan) = {
+            let (dy, dx) = a0.sin_cos();
+            let point = Offset::new(center.x + dx * radius, center.y + dy * radius);
+            let tan = Offset::new(-dy * radius * kappa, dx * radius * kappa);
+            if self.is_empty() {
+                self.move_to(point);
+            } else {
+                self.line_to(point);
+            }
+            (point, tan)
+        };
+
+        for i in 1..ndivs + 1 {
             let a = a0 + da * (i as f32 / ndivs as f32);
             let (dy, dx) = a.sin_cos();
-            let pt = Offset::new(cx + dx * r, cy + dy * r);
-            let tan = Offset::new(-dy * r * kappa, dx * r * kappa);
+            let point = Offset::new(center.x + dx * radius, center.y + dy * radius);
+            let tan = Offset::new(-dy * radius * kappa, dx * radius * kappa);
 
-            self.commands.push(if i == 0 {
-                if self.commands.is_empty() {
-                    PathCmd::MoveTo(pt)
-                } else {
-                    PathCmd::LineTo(pt)
-                }
-            } else {
-                PathCmd::CubicTo(last + ptan, pt - tan, pt)
-            });
-            last = pt;
-            ptan = tan;
+            self.cubic_to(last_point + last_tan, point - tan, point);
+
+            last_point = point;
+            last_tan = tan;
         }
     }
 }

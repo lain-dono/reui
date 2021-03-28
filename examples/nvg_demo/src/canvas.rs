@@ -1,4 +1,4 @@
-use reui::{Canvas, Color, Corners, LineCap, LineJoin, Offset, Paint, Path, Rect, Winding};
+use reui::{Canvas, Color, Corners, LineCap, LineJoin, Offset, Paint, Path, Rect, Solidity};
 use std::f32::consts::PI;
 
 pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32) {
@@ -248,7 +248,7 @@ pub fn draw_window(ctx: &mut Canvas, bounds: Rect, content: impl FnOnce(&mut Can
         let mut path = Path::new();
         path.rect(bounds.inflate(10.0));
         path.rrect(bounds, Corners::all_same(corner_radius));
-        path.path_winding(Winding::Negative);
+        path.solidity(Solidity::Hole);
         let shadow_paint = Paint::box_gradient(
             bounds,
             corner_radius,
@@ -647,7 +647,7 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, rect: Rect) {
         kr * 2.0 + 5.0 + 5.0 + 3.0,
     ));
     path.circle([x + (pos * w).floor(), cy].into(), kr);
-    path.path_winding(Winding::Negative);
+    path.solidity(Solidity::Hole);
     ctx.draw_path(
         &path,
         Paint::radial_gradient(
@@ -692,9 +692,11 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
         let bx = cx + a1.cos() * (r0 + r1) * 0.5;
         let by = cy + a1.sin() * (r0 + r1) * 0.5;
 
+        let center = Offset::new(cx, cy);
+
         path.clear();
-        path._arc(cx, cy, r0, a0, a1, Winding::Negative);
-        path._arc(cx, cy, r1, a1, a0, Winding::Positive);
+        path.arc(center, r0, a0, a1, Solidity::Hole);
+        path.arc(center, r1, a1, a0, Solidity::Solid);
         path.close();
 
         let inner_color = Color::hsla(a0 / (PI * 2.0), 1.0, 0.55, 1.0);
@@ -733,7 +735,7 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
         8.0 + 20.0,
     ));
     path.rect(Rect::from_ltwh(r0 - 2.0, -4.0, r1 - r0 + 4.0, 8.0));
-    path.path_winding(Winding::Negative);
+    path.solidity(Solidity::Hole);
     ctx.draw_path(&path, paint);
 
     // Center triangle
@@ -777,7 +779,7 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     path.clear();
     path.rect(Rect::from_ltwh(ax - 20.0, ay - 20.0, 40.0, 40.0));
     path.circle([ax, ay].into(), 7.0);
-    path.path_winding(Winding::Positive);
+    path.solidity(Solidity::Solid);
     ctx.draw_path(&path, paint);
 
     ctx.restore();

@@ -151,8 +151,6 @@ impl Renderer {
         picture: &'a mut PictureRecorder,
     ) -> Canvas<'a> {
         self.viewport.upload(queue, width, height, scale);
-
-        self.tess.set_scale(scale);
         Canvas::new(self, picture, scale)
     }
 

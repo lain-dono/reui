@@ -1,9 +1,10 @@
 use crate::{
     math::{Corners, Offset, Rect, Transform},
     paint::{LineJoin, Paint, PaintingStyle, RawPaint, Stroke},
-    path::{Path, PathCmd},
+    path::{Command, Path},
     picture::{DrawCall, Instance, PictureRecorder, Vertex},
     renderer::Renderer,
+    tessellator::Convexity,
 };
 
 impl Transform {
@@ -113,43 +114,47 @@ impl<'a> Canvas<'a> {
         let tess = &mut self.ctx.tess;
         let mut width = (stroke.width * xform.average_scale()).clamp(0.0, 200.0);
         let mut color = stroke.color;
-        if width < tess.fringe_width {
+        let fringe_width = 1.0 / self.scale;
+        if width < fringe_width {
             // If the stroke width is less than pixel size, use alpha to emulate coverage.
             // Since coverage is area, scale by alpha*alpha.
-            let alpha = (width / tess.fringe_width).clamp(0.0, 1.0);
+            let alpha = (width / fringe_width).clamp(0.0, 1.0);
             color.alpha *= alpha * alpha;
-            width = tess.fringe_width;
+            width = fringe_width;
         }
 
-        tess.flatten_paths(path.transform(xform));
+        let tess_tol = 0.25 / self.scale;
+        tess.flatten(path.transform(xform), 0.25 / self.scale, 0.01 / self.scale);
         tess.expand_stroke(
             width * 0.5,
+            fringe_width,
+            stroke.line_cap,
             stroke.line_cap,
             stroke.line_join,
             stroke.miter_limit,
+            tess_tol,
         );
 
         // Allocate vertices for all the paths.
         let verts = &mut self.picture.vertices;
         let iter = tess
-            .paths
+            .contours
             .iter()
-            .filter_map(|path| path.stroke.as_ref().map(|src| verts.extend_with(src)));
+            .filter(|p| !p.stroke.is_empty())
+            .map(|path| verts.extend_with(&path.stroke));
 
         let path = self.picture.ranges.extend(iter);
 
         // Fill shader
-        let fringe = tess.fringe_width;
-
         let first = self.picture.push_instance(Instance::from_stroke(
             &stroke,
             width,
-            fringe,
+            fringe_width,
             1.0 - 0.5 / 255.0,
         ));
-        let second = self
-            .picture
-            .push_instance(Instance::from_stroke(&stroke, width, fringe, -1.0));
+        let second =
+            self.picture
+                .push_instance(Instance::from_stroke(&stroke, width, fringe_width, -1.0));
 
         self.picture.call(DrawCall::StrokeBase {
             start: first,
@@ -176,39 +181,49 @@ impl<'a> Canvas<'a> {
             let scale = xform.average_scale();
             let mut stroke_width = (paint.width * scale).clamp(0.0, 200.0);
 
-            if stroke_width < cache.fringe_width {
+            let fringe_width = 1.0 / self.scale;
+
+            if stroke_width < fringe_width {
                 // If the stroke width is less than pixel size, use alpha to emulate coverage.
                 // Since coverage is area, scale by alpha*alpha.
-                let alpha = (stroke_width / cache.fringe_width).clamp(0.0, 1.0);
+                let alpha = (stroke_width / fringe_width).clamp(0.0, 1.0);
                 let coverage = alpha * alpha;
                 raw_paint.inner_color.alpha *= coverage;
                 raw_paint.outer_color.alpha *= coverage;
-                stroke_width = cache.fringe_width;
+                stroke_width = fringe_width;
             }
 
-            cache.flatten_paths(commands);
-            cache.expand_stroke(stroke_width * 0.5, paint.cap, paint.join, paint.miter);
+            let tess_tol = 0.25 / self.scale;
+            cache.flatten(commands, tess_tol, 0.01 / self.scale);
+            cache.expand_stroke(
+                stroke_width * 0.5,
+                fringe_width,
+                paint.cap,
+                paint.cap,
+                paint.join,
+                paint.miter,
+                tess_tol,
+            );
 
             // Allocate vertices for all the paths.
             let verts = &mut self.picture.vertices;
             let iter = cache
-                .paths
+                .contours
                 .iter()
-                .filter_map(|path| path.stroke.as_ref().map(|src| verts.extend_with(src)));
+                .filter(|p| !p.stroke.is_empty())
+                .map(|path| verts.extend_with(&path.stroke));
 
             let path = self.picture.ranges.extend(iter);
 
             // Fill shader
-            let fringe = cache.fringe_width;
-
             let first = self.picture.push_instance(raw_paint.to_instance(
                 stroke_width,
-                fringe,
+                fringe_width,
                 1.0 - 0.5 / 255.0,
             ));
             let second =
                 self.picture
-                    .push_instance(raw_paint.to_instance(stroke_width, fringe, -1.0));
+                    .push_instance(raw_paint.to_instance(stroke_width, fringe_width, -1.0));
 
             self.picture.call(DrawCall::StrokeBase {
                 start: first,
@@ -224,23 +239,23 @@ impl<'a> Canvas<'a> {
             });
         } else {
             let w = if paint.antialias {
-                cache.fringe_width
+                1.0 / self.scale
             } else {
                 0.0
             };
 
-            cache.flatten_paths(commands);
-            cache.expand_fill(w, LineJoin::Miter, 2.4);
-            let fringe = cache.fringe_width;
-            let paths = &cache.paths;
+            let fringe_width = 1.0 / self.scale;
+            cache.flatten(commands, 0.25 / self.scale, 0.01 / self.scale);
+            cache.expand_fill(fringe_width, LineJoin::Miter, 2.4);
+            let paths = &cache.contours;
 
             // Bounding box fill quad not needed for convex fill
-            let kind = !(paths.len() == 1 && paths[0].convex);
+            let kind = !(paths.len() == 1 && paths[0].convexity == Convexity::Convex);
 
             // Allocate vertices for all the paths.
 
-            let fills = paths.iter().filter(|p| p.fill.is_some()).count();
-            let strokes = paths.iter().filter(|p| p.stroke.is_some()).count();
+            let fills = paths.iter().filter(|p| !p.fill.is_empty()).count();
+            let strokes = paths.iter().filter(|p| !p.stroke.is_empty()).count();
 
             self.picture.ranges.reserve(fills + strokes + 4);
 
@@ -248,25 +263,27 @@ impl<'a> Canvas<'a> {
             let vertices = &mut self.picture.vertices;
             paths
                 .iter()
-                .filter_map(|p| p.fill.as_deref())
+                .filter(|p| !p.fill.is_empty())
+                .map(|p| &p.fill)
                 .zip(fills_dst.iter_mut())
                 .for_each(|(src, dst)| *dst = vertices.extend_with(src));
 
             let (strokes, strokes_dst) = self.picture.ranges.alloc_default(strokes);
             paths
                 .iter()
-                .filter_map(|p| p.stroke.as_deref())
+                .filter(|p| !p.stroke.is_empty())
+                .map(|p| &p.stroke)
                 .zip(strokes_dst.iter_mut())
                 .for_each(|(src, dst)| *dst = vertices.extend_with(src));
 
             // Setup uniforms for draw calls
-            let uniform = raw_paint.to_instance(fringe, fringe, -1.0);
+            let uniform = raw_paint.to_instance(fringe_width, fringe_width, -1.0);
             if kind {
                 let quad = self.picture.vertices.extend_with(&[
-                    Vertex::new([cache.bounds[2], cache.bounds[3]], [0.5, 1.0]),
-                    Vertex::new([cache.bounds[2], cache.bounds[1]], [0.5, 1.0]),
-                    Vertex::new([cache.bounds[0], cache.bounds[3]], [0.5, 1.0]),
-                    Vertex::new([cache.bounds[0], cache.bounds[1]], [0.5, 1.0]),
+                    Vertex::new([cache.bounds.max.x, cache.bounds.max.y], [0.5, 1.0]),
+                    Vertex::new([cache.bounds.max.x, cache.bounds.min.y], [0.5, 1.0]),
+                    Vertex::new([cache.bounds.min.x, cache.bounds.max.y], [0.5, 1.0]),
+                    Vertex::new([cache.bounds.min.x, cache.bounds.min.y], [0.5, 1.0]),
                 ]);
 
                 let first = self.picture.push_instance(Instance::default());
@@ -425,11 +442,10 @@ impl<'a> Canvas<'a> {
     /// Draws the given Path with the given Paint.
     /// Whether this shape is filled or stroked (or both) is controlled by Paint.style.
     /// If the path is filled, then sub-paths within it are implicitly closed (see Path.close).
-    pub fn draw_path(&mut self, path: impl AsRef<[PathCmd]>, paint: Paint) {
-        let path = path.as_ref();
+    pub fn draw_path(&mut self, path: impl IntoIterator<Item = Command>, paint: Paint) {
         self.ctx.tess.clear();
         self.ctx.path.clear();
-        self.ctx.path.extend(path.iter().copied());
+        self.ctx.path.extend(path);
         self.fill_or_stroke(&paint, false);
     }
 

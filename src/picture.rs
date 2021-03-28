@@ -36,7 +36,8 @@ pub struct Vertex {
 
 impl Vertex {
     #[inline]
-    pub fn new(pos: [f32; 2], uv: [f32; 2]) -> Self {
+    pub fn new(pos: impl Into<[f32; 2]>, uv: [f32; 2]) -> Self {
+        let pos = pos.into();
         let uv = [(uv[0] * 65535.0) as u16, (uv[1] * 65535.0) as u16];
         Self { pos, uv }
     }

@@ -6,7 +6,9 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
-    clippy::items_after_statements
+    clippy::items_after_statements,
+    clippy::too_many_lines,
+    clippy::too_many_arguments
 )]
 
 pub use wgpu;
@@ -27,7 +29,7 @@ pub use self::{
     canvas::Canvas,
     math::{Color, Corners, Offset, RRect, Rect, Transform},
     paint::{Gradient, LineCap, LineJoin, Paint, PaintingStyle, Stroke},
-    path::{Path, Winding},
+    path::{Path, Solidity, Winding},
     picture::{PictureBundle, PictureRecorder},
     renderer::Renderer,
 };

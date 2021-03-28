@@ -139,7 +139,7 @@ pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {
     ctx.draw_rect(bounds, Paint::fill(Color::hex(theme.background)));
 
     let rect = bounds.deflate(3.0);
-    let radius = Corners::all_same(2.5);
+    let radius = Corners::all_same(3.0);
 
     let mut left_scroll = rect;
     left_scroll.min.x = rect.max.x - 5.0;
