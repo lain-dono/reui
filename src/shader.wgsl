@@ -5,7 +5,7 @@
 struct Input {
     [[location(0)]] position: vec2<f32>;
     [[location(1)]] texcoord: vec2<f32>;
-    [[location(2)]] paint_matrix: vec4<f32>;
+    [[location(2)]] transform: vec4<f32>;
     [[location(3)]] inner_color: vec4<f32>;
     [[location(4)]] outer_color: vec4<f32>;
     [[location(5)]] erf: vec4<f32>;
@@ -17,7 +17,7 @@ struct Variable {
 
     [[location(0)]] position: vec2<f32>;
     [[location(1)]] texcoord: vec2<f32>;
-    [[location(2)]] paint_matrix: vec4<f32>;
+    [[location(2)]] transform: vec4<f32>;
     [[location(3)]] inner_color: vec4<f32>;
     [[location(4)]] outer_color: vec4<f32>;
     [[location(5)]] erf: vec4<f32>;
@@ -35,7 +35,7 @@ fn vertex(in: Input) -> Variable {
     out.position = in.position;
     out.texcoord = in.texcoord;
 
-    out.paint_matrix = in.paint_matrix;
+    out.transform = in.transform;
     out.inner_color = in.inner_color;
     out.outer_color = in.outer_color;
     out.erf = in.erf;
@@ -64,9 +64,9 @@ fn main(in: Input) -> [[location(0)]] vec4<f32> {
     }
 
     var pos: vec2<f32> = in.position.xy;
-    var re: f32 = in.paint_matrix.x;
-    var im: f32 = in.paint_matrix.y;
-    var pt: vec2<f32> = in.paint_matrix.zw + vec2<f32>(pos.x * re - pos.y * im, pos.x * im + pos.y * re);
+    var re: f32 = in.transform.x;
+    var im: f32 = in.transform.y;
+    var pt: vec2<f32> = in.transform.zw + vec2<f32>(pos.x * re - pos.y * im, pos.x * im + pos.y * re);
 
     var extent: vec2<f32> = in.erf.xy;
     var radius: f32 = in.erf.z;

@@ -1,5 +1,5 @@
 use crate::{
-    math::Offset,
+    math::{Offset, Rect},
     paint::{LineCap, LineJoin},
     path::{Command, FillRule, Solidity},
     picture::Vertex,
@@ -10,12 +10,14 @@ use std::{
     ops::Range,
 };
 
+const DEFAULT_BOUNDS: Rect = Rect {
+    min: Offset::new(1e6, 1e6),
+    max: Offset::new(-1e6, -1e6),
+};
+
 // Adapted from libcollections/vec.rs in Rust
 // Primary author in Rust: Michael Darakananda
-fn retain_mut<T, F>(vec: &mut Vec<T>, mut f: F)
-where
-    F: FnMut(&mut T) -> bool,
-{
+fn retain_mut<T>(vec: &mut Vec<T>, mut f: impl FnMut(&mut T) -> bool) {
     let len = vec.len();
     let mut del = 0;
     {
@@ -68,7 +70,20 @@ fn normalize(pt: &mut Offset) -> f32 {
 }
 
 #[inline]
-fn polygon_area(pts: &[Point]) -> f32 {
+fn polygon_area(points: &[Point]) -> f32 {
+    fn triarea2(a: Offset, b: Offset, c: Offset) -> f32 {
+        let (ba, ca) = (b - a, c - a);
+        ca.x * ba.y - ba.x * ca.y
+    }
+
+    0.5 * points
+        .windows(3)
+        .map(|w| triarea2(w[0].pos, w[1].pos, w[2].pos))
+        .sum::<f32>()
+}
+
+#[inline]
+fn _polygon_area(pts: &[Point]) -> f32 {
     let mut area = 0.0;
     let a = &pts[0];
     for i in 2..pts.len() {
@@ -88,27 +103,6 @@ bitflags::bitflags!(
         const INNERBEVEL = 0x08;
     }
 );
-
-pub struct Bounds {
-    pub min: Offset,
-    pub max: Offset,
-}
-
-impl Bounds {
-    #[inline]
-    fn contains(&self, p: Offset) -> bool {
-        p.x >= self.min.x && p.x <= self.max.x && p.y >= self.min.y && p.y <= self.max.y
-    }
-}
-
-impl Default for Bounds {
-    fn default() -> Self {
-        Self {
-            min: Offset::new(1e6, 1e6),
-            max: Offset::new(-1e6, -1e6),
-        }
-    }
-}
 
 #[derive(Clone, Default)]
 struct Point {
@@ -130,22 +124,20 @@ impl Point {
 }
 
 pub struct Contour {
-    range: Range<usize>,
-
-    pub fill: Vec<Vertex>,
-    pub stroke: Vec<Vertex>,
-
+    point_range: Range<usize>,
     bevel: usize,
     closed: bool,
-
     solidity: Solidity,
-    pub convexity: Convexity,
+
+    pub(crate) fill: Vec<Vertex>,
+    pub(crate) stroke: Vec<Vertex>,
+    convexity: Convexity,
 }
 
 impl Default for Contour {
     fn default() -> Self {
         Self {
-            range: 0..0,
+            point_range: 0..0,
             fill: Vec::new(),
             stroke: Vec::new(),
 
@@ -161,14 +153,19 @@ impl Default for Contour {
 impl Contour {
     fn point_pairs<'a>(&self, points: &'a [Point]) -> PointPairsIter<'a> {
         PointPairsIter {
-            points: &points[self.range.clone()],
+            points: &points[self.point_range.clone()],
             current: 0,
         }
     }
 
     #[inline]
     fn len(&self) -> usize {
-        self.range.end.saturating_sub(self.range.start)
+        self.point_range.end.saturating_sub(self.point_range.start)
+    }
+
+    #[inline]
+    pub fn is_convex(&self) -> bool {
+        self.convexity == Convexity::Convex
     }
 }
 
@@ -225,18 +222,15 @@ impl<'a> Iterator for FanIter<'a> {
 pub struct Tessellator {
     points: Vec<Point>,
     pub contours: Vec<Contour>,
-    pub vertices: Vec<Vertex>,
-    pub bounds: Bounds,
+    bounds: Rect,
 }
 
 impl Default for Tessellator {
     fn default() -> Self {
         Self {
             points: Vec::new(),
-
             contours: Vec::new(),
-            vertices: Vec::new(),
-            bounds: Bounds::default(),
+            bounds: DEFAULT_BOUNDS,
         }
     }
 }
@@ -246,32 +240,18 @@ impl Tessellator {
         Self::default()
     }
 
+    pub fn bounds(&self) -> Rect {
+        self.bounds
+    }
+
     pub fn clear(&mut self) {
         self.points.clear();
         self.contours.clear();
-        self.vertices.clear();
+        self.bounds = DEFAULT_BOUNDS;
     }
 
-    fn add_point(&mut self, point: Offset, dist_tol: f32, flags: PointFlags) {
-        if let Some(contour) = self.contours.last_mut() {
-            // If last point equals this new point just OR the flags and ignore the new point
-            if let Some(last_point) = self.points.get_mut(contour.range.end) {
-                if approx_eq(last_point.pos, point, dist_tol) {
-                    last_point.flags |= flags;
-                    return;
-                }
-            }
-
-            self.points.push(Point::new(point, flags));
-            contour.range.end += 1;
-        }
-    }
-
-    fn add_contour(&mut self) {
-        self.contours.push(Contour {
-            range: self.points.len()..self.points.len(),
-            ..Contour::default()
-        });
+    pub fn is_convex(&self) -> bool {
+        self.contours.len() == 1 && self.contours[0].convexity == Convexity::Convex
     }
 
     pub fn contains(&self, p2: Offset, fill_rule: FillRule) -> bool {
@@ -321,135 +301,18 @@ impl Tessellator {
         }
     }
 
-    fn calculate_joins(&mut self, width: f32, line_join: LineJoin, miter_limit: f32) {
-        let inv_width = if width > 0.0 { 1.0 / width } else { 0.0 };
-
-        for contour in &mut self.contours {
-            let points = &mut self.points[contour.range.clone()];
-            let mut nleft = 0;
-
-            contour.bevel = 0;
-
-            let mut x_sign = 0;
-            let mut y_sign = 0;
-            let mut x_first_sign = 0; // Sign of first nonzero edge vector x
-            let mut y_first_sign = 0; // Sign of first nonzero edge vector y
-            let mut x_flips = 0; // Number of sign changes in x
-            let mut y_flips = 0; // Number of sign changes in y
-
-            for i in 0..points.len() {
-                let p0 = if i == 0 {
-                    points.get(points.len() - 1).cloned().unwrap()
-                } else {
-                    points.get(i - 1).cloned().unwrap()
-                };
-
-                let p1 = points.get_mut(i).unwrap();
-
-                let dl0 = Offset::new(p0.dir.y, -p0.dir.x);
-                let dl1 = Offset::new(p1.dir.y, -p1.dir.x);
-
-                // Calculate extrusions
-                p1.ext = (dl0 + dl1) * 0.5;
-
-                let dmr2 = p1.ext.x * p1.ext.x + p1.ext.y * p1.ext.y;
-                if dmr2 > 0.000_001 {
-                    p1.ext *= (1.0 / dmr2).min(600.0);
-                }
-
-                // Clear flags, but keep the corner.
-                p1.flags &= PointFlags::CORNER;
-
-                // Keep track of left turns.
-                let cross = p1.dir.x * p0.dir.y - p0.dir.x * p1.dir.y;
-                if cross > 0.0 {
-                    nleft += 1;
-                    p1.flags |= PointFlags::LEFT;
-                }
-
-                // Determine sign for convexity
-                match p1.dir.x.partial_cmp(&0.0) {
-                    Some(Ordering::Greater) => {
-                        match x_sign.cmp(&0) {
-                            Ordering::Less => x_flips += 1,
-                            Ordering::Equal => x_first_sign = 1,
-                            Ordering::Greater => (),
-                        }
-                        x_sign = 1;
-                    }
-                    Some(Ordering::Less) => {
-                        match x_sign.cmp(&0) {
-                            Ordering::Less => (),
-                            Ordering::Equal => x_first_sign = -1,
-                            Ordering::Greater => x_flips += 1,
-                        }
-                        x_sign = -1;
-                    }
-                    _ => (),
-                }
-
-                match p1.dir.y.partial_cmp(&0.0) {
-                    Some(Ordering::Greater) => {
-                        match y_sign.cmp(&0) {
-                            Ordering::Less => y_flips += 1,
-                            Ordering::Equal => y_first_sign = 1,
-                            Ordering::Greater => (),
-                        }
-                        y_sign = 1;
-                    }
-                    Some(Ordering::Less) => {
-                        match y_sign.cmp(&0) {
-                            Ordering::Less => (),
-                            Ordering::Equal => y_first_sign = -1,
-                            Ordering::Greater => y_flips += 1,
-                        }
-                        y_sign = -1;
-                    }
-                    _ => (),
-                }
-
-                // Calculate if we should use bevel or miter for inner join.
-                let limit = (p0.len.min(p1.len) * inv_width).max(1.01);
-
-                if (dmr2 * limit * limit) < 1.0 {
-                    p1.flags |= PointFlags::INNERBEVEL;
-                }
-
-                // Check to see if the corner needs to be beveled.
-                if p1.flags.contains(PointFlags::CORNER)
-                    && ((dmr2 * miter_limit * miter_limit) < 1.0
-                        || line_join == LineJoin::Bevel
-                        || line_join == LineJoin::Round)
-                {
-                    p1.flags |= PointFlags::BEVEL;
-                }
-
-                contour.bevel += p1
-                    .flags
-                    .contains(PointFlags::BEVEL | PointFlags::INNERBEVEL)
-                    as usize;
-            }
-
-            x_flips += (x_sign != 0 && x_first_sign != 0 && x_sign != x_first_sign) as i32;
-            y_flips += (y_sign != 0 && y_first_sign != 0 && y_sign != y_first_sign) as i32;
-
-            let convex = x_flips == 2 && y_flips == 2;
-
-            contour.convexity = if nleft == points.len() && convex {
-                Convexity::Convex
-            } else {
-                Convexity::Concave
-            };
-        }
-    }
-    pub fn flatten(&mut self, cmds: impl Iterator<Item = Command>, tess_tol: f32, dist_tol: f32) {
+    /// # Panics
+    pub fn flatten(
+        &mut self,
+        commands: impl Iterator<Item = Command>,
+        tess_tol: f32,
+        dist_tol: f32,
+    ) {
         // clear all
-        self.points.clear();
-        self.contours.clear();
-        self.bounds = Bounds::default();
+        self.clear();
 
         // Convert path commands to a set of contours
-        for cmd in cmds {
+        for cmd in commands {
             match cmd {
                 Command::MoveTo(p) => {
                     self.add_contour();
@@ -485,14 +348,14 @@ impl Tessellator {
         let bounds = &mut self.bounds;
 
         retain_mut(&mut self.contours, |contour| {
-            let mut points = &mut all_points[contour.range.clone()];
+            let mut points = &mut all_points[contour.point_range.clone()];
 
             // If the first and last points are the same, remove the last, mark as closed contour.
             if let (Some(p0), Some(p1)) = (points.last(), points.first()) {
                 if approx_eq(p0.pos, p1.pos, dist_tol) {
-                    contour.range.end -= 1;
+                    contour.point_range.end -= 1;
                     contour.closed = true;
-                    points = &mut all_points[contour.range.clone()];
+                    points = &mut all_points[contour.point_range.clone()];
                 }
             }
 
@@ -531,83 +394,6 @@ impl Tessellator {
         });
     }
 
-    // Adaptive forward differencing for bezier tesselation.
-    // See Lien, Sheue-Ling, Michael Shantz, and Vaughan Pratt.
-    // "Adaptive forward differencing for rendering curves and surfaces."
-    // ACM SIGGRAPH Computer Graphics. Vol. 21. No. 4. ACM, 1987.
-    fn tesselate_bezier(&mut self, [p0, p1, p2, p3]: [Offset; 4], tess_tol: f32, dist_tol: f32) {
-        const AFD_ONE: i32 = 1 << 10;
-
-        // Power basis.
-        let a = p1 * 3.0 - p0 - p2 * 3.0 + p3;
-        let b = p0 * 3.0 - p1 * 6.0 + p2 * 3.0;
-        let c = p1 * 3.0 - p0 * 3.0;
-
-        // Transform to forward difference basis (stepsize 1)
-        let mut d0 = p0;
-        let mut d1 = a + b + c;
-        let mut d2 = a * 6.0 + b * 2.0;
-        let mut d3 = a * 6.0;
-        let mut times: i32 = 0;
-        let mut stepsize: i32 = AFD_ONE;
-        let tol = tess_tol * 4.0;
-        while times < AFD_ONE {
-            // Flatness measure.
-            let mut flatness = d2.magnitude_sq() + d3.magnitude_sq();
-
-            // Go to higher resolution if we're moving a lot
-            // or overshooting the end.
-            while flatness > tol && stepsize > 1 || times + stepsize > AFD_ONE {
-                // Apply L to the curve. Increase curve resolution.
-                d1 = d1 * 0.50 - d2 * 0.125 + d3 * 0.0625;
-                d2 = d2 * 0.25 - d3 * 0.125;
-                d3 *= 0.125;
-
-                stepsize /= 2;
-                flatness = d2.magnitude_sq() + d3.magnitude_sq();
-            }
-
-            // Go to lower resolution if we're really flat
-            // and we aren't going to overshoot the end.
-            // XXX: tol/32 is just a guess for when we are too flat.
-            while flatness > 0.0
-                && flatness < tol / 32.0
-                && stepsize < AFD_ONE
-                && times + 2 * stepsize <= AFD_ONE
-            {
-                // Apply L^(-1) to the curve. Decrease curve resolution.
-                d1 = d1 * 2.0 + d2;
-                d2 = d2 * 4.0 + d3 * 4.0;
-                d3 *= 8.0;
-
-                stepsize *= 2;
-                flatness = d2.magnitude_sq() + d3.magnitude_sq();
-            }
-
-            // Forward differencing.
-            d0 += d1;
-            d1 += d2;
-            d2 += d3;
-
-            // Output a point.
-            self.add_point(
-                d0,
-                dist_tol,
-                if times > 0 {
-                    PointFlags::CORNER
-                } else {
-                    PointFlags::empty()
-                },
-            );
-
-            // Advance along the curve.
-            times += stepsize;
-
-            // Ensure we don't overshoot.
-            debug_assert!(times <= AFD_ONE);
-        }
-    }
-
     pub(crate) fn expand_fill(&mut self, fringe_width: f32, line_join: LineJoin, miter_limit: f32) {
         let has_fringe = fringe_width > 0.0;
 
@@ -626,7 +412,7 @@ impl Tessellator {
             contour.fill.reserve(vertex_count);
         }
 
-        let convex = self.contours.len() == 1 && self.contours[0].convexity == Convexity::Convex;
+        let convex = self.is_convex();
 
         for contour in &mut self.contours {
             contour.stroke.clear();
@@ -638,47 +424,26 @@ impl Tessellator {
 
             if has_fringe {
                 for (p0, p1) in contour.point_pairs(&self.points) {
+                    let uv = [0.5, 1.0];
                     if p1.flags.contains(PointFlags::BEVEL) {
                         if p1.flags.contains(PointFlags::LEFT) {
-                            contour
-                                .fill
-                                .push(Vertex::new(p1.pos + p1.ext * woff, [0.5, 1.0]));
+                            contour.fill.push(Vertex::new(p1.pos + p1.ext * woff, uv));
                         } else {
                             contour.fill.push(Vertex::new(
                                 p1.pos + Offset::new(p0.dir.y, -p0.dir.x) * woff,
-                                [0.5, 1.0],
+                                uv,
                             ));
                             contour.fill.push(Vertex::new(
                                 p1.pos + Offset::new(p1.dir.y, -p1.dir.x) * woff,
-                                [0.5, 1.0],
+                                uv,
                             ));
                         }
                     } else {
-                        contour
-                            .fill
-                            .push(Vertex::new(p1.pos + (p1.ext * woff), [0.5, 1.0]));
+                        contour.fill.push(Vertex::new(p1.pos + p1.ext * woff, uv));
                     }
                 }
-            } else {
-                let points = &self.points[contour.range.clone()];
 
-                for point in points {
-                    contour.fill.push(Vertex::new(point.pos, [0.5, 1.0]));
-                }
-            }
-
-            self.vertices = FanIter {
-                vertices: &contour.fill,
-                index: 0,
-            }
-            .collect();
-            contour.fill.clear();
-            contour.fill.extend(self.vertices.drain(..));
-
-            if has_fringe {
-                let rw = fringe_width - woff;
-                let ru = 1.0;
-
+                let (rw, ru) = (fringe_width - woff, 1.0);
                 let (lw, lu) = if convex {
                     // Create only half a fringe for convex shapes so that
                     // the shape can be rendered without stenciling.
@@ -706,9 +471,13 @@ impl Tessellator {
                 let p1 = contour.stroke[1].pos;
                 contour.stroke.push(Vertex::new(p0, [lu, 1.0]));
                 contour.stroke.push(Vertex::new(p1, [ru, 1.0]));
-            }
+            } else {
+                let points = &self.points[contour.point_range.clone()];
 
-            // fan to strip
+                for point in points {
+                    contour.fill.push(Vertex::new(point.pos, [0.5, 1.0]));
+                }
+            }
         }
     }
 
@@ -838,6 +607,227 @@ impl Tessellator {
                     Vertex::new(contour.stroke[1].pos, [u1, 1.0]),
                 ]);
             }
+        }
+    }
+
+    fn add_point(&mut self, point: Offset, dist_tol: f32, flags: PointFlags) {
+        if let Some(contour) = self.contours.last_mut() {
+            // If last point equals this new point just OR the flags and ignore the new point
+            if let Some(last_point) = self.points.get_mut(contour.point_range.end) {
+                if approx_eq(last_point.pos, point, dist_tol) {
+                    last_point.flags |= flags;
+                    return;
+                }
+            }
+
+            self.points.push(Point::new(point, flags));
+            contour.point_range.end += 1;
+        }
+    }
+
+    fn add_contour(&mut self) {
+        self.contours.push(Contour {
+            point_range: self.points.len()..self.points.len(),
+            ..Contour::default()
+        });
+    }
+
+    fn calculate_joins(&mut self, width: f32, line_join: LineJoin, miter_limit: f32) {
+        let inv_width = if width > 0.0 { 1.0 / width } else { 0.0 };
+
+        for contour in &mut self.contours {
+            let points = &mut self.points[contour.point_range.clone()];
+            let mut nleft = 0;
+
+            contour.bevel = 0;
+
+            let mut x_sign = 0;
+            let mut y_sign = 0;
+            let mut x_first_sign = 0; // Sign of first nonzero edge vector x
+            let mut y_first_sign = 0; // Sign of first nonzero edge vector y
+            let mut x_flips = 0; // Number of sign changes in x
+            let mut y_flips = 0; // Number of sign changes in y
+
+            for i in 0..points.len() {
+                let p0 = if i == 0 {
+                    points.get(points.len() - 1).cloned().unwrap()
+                } else {
+                    points.get(i - 1).cloned().unwrap()
+                };
+
+                let p1 = points.get_mut(i).unwrap();
+
+                let dl0 = Offset::new(p0.dir.y, -p0.dir.x);
+                let dl1 = Offset::new(p1.dir.y, -p1.dir.x);
+
+                // Calculate extrusions
+                p1.ext = (dl0 + dl1) * 0.5;
+
+                let dmr2 = p1.ext.x * p1.ext.x + p1.ext.y * p1.ext.y;
+                if dmr2 > 0.000_001 {
+                    p1.ext *= (1.0 / dmr2).min(600.0);
+                }
+
+                // Clear flags, but keep the corner.
+                p1.flags &= PointFlags::CORNER;
+
+                // Keep track of left turns.
+                let cross = p1.dir.x * p0.dir.y - p0.dir.x * p1.dir.y;
+                if cross > 0.0 {
+                    nleft += 1;
+                    p1.flags |= PointFlags::LEFT;
+                }
+
+                // Determine sign for convexity
+                match p1.dir.x.partial_cmp(&0.0) {
+                    Some(Ordering::Greater) => {
+                        match x_sign.cmp(&0) {
+                            Ordering::Less => x_flips += 1,
+                            Ordering::Equal => x_first_sign = 1,
+                            Ordering::Greater => (),
+                        }
+                        x_sign = 1;
+                    }
+                    Some(Ordering::Less) => {
+                        match x_sign.cmp(&0) {
+                            Ordering::Less => (),
+                            Ordering::Equal => x_first_sign = -1,
+                            Ordering::Greater => x_flips += 1,
+                        }
+                        x_sign = -1;
+                    }
+                    _ => (),
+                }
+
+                match p1.dir.y.partial_cmp(&0.0) {
+                    Some(Ordering::Greater) => {
+                        match y_sign.cmp(&0) {
+                            Ordering::Less => y_flips += 1,
+                            Ordering::Equal => y_first_sign = 1,
+                            Ordering::Greater => (),
+                        }
+                        y_sign = 1;
+                    }
+                    Some(Ordering::Less) => {
+                        match y_sign.cmp(&0) {
+                            Ordering::Less => (),
+                            Ordering::Equal => y_first_sign = -1,
+                            Ordering::Greater => y_flips += 1,
+                        }
+                        y_sign = -1;
+                    }
+                    _ => (),
+                }
+
+                // Calculate if we should use bevel or miter for inner join.
+                let limit = (p0.len.min(p1.len) * inv_width).max(1.01);
+
+                if (dmr2 * limit * limit) < 1.0 {
+                    p1.flags |= PointFlags::INNERBEVEL;
+                }
+
+                // Check to see if the corner needs to be beveled.
+                if p1.flags.contains(PointFlags::CORNER)
+                    && ((dmr2 * miter_limit * miter_limit) < 1.0
+                        || line_join == LineJoin::Bevel
+                        || line_join == LineJoin::Round)
+                {
+                    p1.flags |= PointFlags::BEVEL;
+                }
+
+                contour.bevel += p1
+                    .flags
+                    .contains(PointFlags::BEVEL | PointFlags::INNERBEVEL)
+                    as usize;
+            }
+
+            x_flips += (x_sign != 0 && x_first_sign != 0 && x_sign != x_first_sign) as i32;
+            y_flips += (y_sign != 0 && y_first_sign != 0 && y_sign != y_first_sign) as i32;
+
+            let convex = x_flips == 2 && y_flips == 2;
+
+            contour.convexity = if nleft == points.len() && convex {
+                Convexity::Convex
+            } else {
+                Convexity::Concave
+            };
+        }
+    }
+
+    // Adaptive forward differencing for bezier tesselation.
+    // See Lien, Sheue-Ling, Michael Shantz, and Vaughan Pratt.
+    // "Adaptive forward differencing for rendering curves and surfaces."
+    // ACM SIGGRAPH Computer Graphics. Vol. 21. No. 4. ACM, 1987.
+    fn tesselate_bezier(&mut self, [p0, p1, p2, p3]: [Offset; 4], tess_tol: f32, dist_tol: f32) {
+        const AFD_ONE: i32 = 1 << 10;
+
+        // Power basis.
+        let a = p1 * 3.0 - p0 - p2 * 3.0 + p3;
+        let b = p0 * 3.0 - p1 * 6.0 + p2 * 3.0;
+        let c = p1 * 3.0 - p0 * 3.0;
+
+        // Transform to forward difference basis (stepsize 1)
+        let mut d0 = p0;
+        let mut d1 = a + b + c;
+        let mut d2 = a * 6.0 + b * 2.0;
+        let mut d3 = a * 6.0;
+        let mut times: i32 = 0;
+        let mut stepsize: i32 = AFD_ONE;
+        let tol = tess_tol * 4.0;
+        while times < AFD_ONE {
+            // Flatness measure.
+            let mut flatness = d2.magnitude_sq() + d3.magnitude_sq();
+
+            // Go to higher resolution if we're moving a lot
+            // or overshooting the end.
+            while flatness > tol && stepsize > 1 || times + stepsize > AFD_ONE {
+                // Apply L to the curve. Increase curve resolution.
+                d1 = d1 * 0.50 - d2 * 0.125 + d3 * 0.0625;
+                d2 = d2 * 0.25 - d3 * 0.125;
+                d3 *= 0.125;
+
+                stepsize /= 2;
+                flatness = d2.magnitude_sq() + d3.magnitude_sq();
+            }
+
+            // Go to lower resolution if we're really flat
+            // and we aren't going to overshoot the end.
+            // XXX: tol/32 is just a guess for when we are too flat.
+            while flatness > 0.0
+                && flatness < tol / 32.0
+                && stepsize < AFD_ONE
+                && times + 2 * stepsize <= AFD_ONE
+            {
+                // Apply L^(-1) to the curve. Decrease curve resolution.
+                d1 = d1 * 2.0 + d2;
+                d2 = d2 * 4.0 + d3 * 4.0;
+                d3 *= 8.0;
+
+                stepsize *= 2;
+                flatness = d2.magnitude_sq() + d3.magnitude_sq();
+            }
+
+            // Forward differencing.
+            d0 += d1;
+            d1 += d2;
+            d2 += d3;
+
+            // Output a point.
+            self.add_point(
+                d0,
+                dist_tol,
+                if times > 0 {
+                    PointFlags::CORNER
+                } else {
+                    PointFlags::empty()
+                },
+            );
+
+            // Advance along the curve.
+            times += stepsize;
+
+            // Ensure we don't overshoot.
+            debug_assert!(times <= AFD_ONE);
         }
     }
 }

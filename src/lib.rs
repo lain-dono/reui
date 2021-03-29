@@ -23,7 +23,8 @@ mod path;
 mod picture;
 mod renderer;
 mod tessellator;
-mod valloc;
+
+//mod text;
 
 pub use self::{
     canvas::Canvas,
@@ -32,4 +33,5 @@ pub use self::{
     path::{Path, Solidity, Winding},
     picture::{PictureBundle, PictureRecorder},
     renderer::Renderer,
+    tessellator::Tessellator,
 };

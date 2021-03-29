@@ -2,9 +2,8 @@ use crate::{
     math::{Corners, Offset, Rect, Transform},
     paint::{LineJoin, Paint, PaintingStyle, RawPaint, Stroke},
     path::{Command, Path},
-    picture::{DrawCall, Instance, PictureRecorder, Vertex},
+    picture::{DrawCall, Instance, PictureRecorder},
     renderer::Renderer,
-    tessellator::Convexity,
 };
 
 impl Transform {
@@ -59,52 +58,37 @@ impl<'a> Canvas<'a> {
 
     pub fn draw_image_rect(&mut self, image: u32, rect: Rect) {
         if self.ctx.images.get(&image).is_some() {
-            let Offset { x: x0, y: y0 } = rect.min;
-            let Offset { x: x1, y: y1 } = rect.max;
+            let Rect { min: p0, max: p1 } = rect;
+            let instance = self.picture.push_instance(Instance::image([255; 4]));
+            let transform = self.states.transform();
+            let (base_vertex, indices) = self.picture.push_image(p0, p1, transform);
 
-            let xform = self.states.transform();
-            let vtx = [
-                Vertex::new([x1, y1], [1.0, 1.0]).transform(&xform),
-                Vertex::new([x1, y0], [1.0, 0.0]).transform(&xform),
-                Vertex::new([x0, y0], [0.0, 0.0]).transform(&xform),
-                Vertex::new([x0, y1], [0.0, 1.0]).transform(&xform),
-            ];
-
-            let start = self.picture.push_instance(Instance::image([255; 4]));
-            let vertices = self
-                .picture
-                .vertices
-                .extend_with(&[vtx[0], vtx[1], vtx[2], vtx[0], vtx[2], vtx[3]]);
             self.picture.call(DrawCall::SelectImage { image });
-            self.picture.call(DrawCall::Image { start, vertices });
+            self.picture.call(DrawCall::Image {
+                indices,
+                base_vertex,
+                instance,
+            });
         }
     }
 
     pub fn draw_image(&mut self, image: u32, offset: Offset) {
-        // [012 023] [11 10 00 01]
-
         if let Some(image_bind) = self.ctx.images.get(&image) {
-            let Offset { x: x0, y: y0 } = offset;
-            let (x1, y1) = (
-                x0 + image_bind.size.width as f32 / self.scale,
-                y0 + image_bind.size.height as f32 / self.scale,
+            let p0 = offset;
+            let p1 = Offset::new(
+                p0.x + image_bind.size.width as f32 / self.scale,
+                p0.y + image_bind.size.height as f32 / self.scale,
             );
+            let instance = self.picture.push_instance(Instance::image([255; 4]));
+            let transform = self.states.transform();
+            let (base_vertex, indices) = self.picture.push_image(p0, p1, transform);
 
-            let xform = self.states.transform();
-            let vtx = [
-                Vertex::new([x1, y1], [1.0, 1.0]).transform(&xform),
-                Vertex::new([x1, y0], [1.0, 0.0]).transform(&xform),
-                Vertex::new([x0, y0], [0.0, 0.0]).transform(&xform),
-                Vertex::new([x0, y1], [0.0, 1.0]).transform(&xform),
-            ];
-
-            let start = self.picture.push_instance(Instance::image([255; 4]));
-            let vertices = self
-                .picture
-                .vertices
-                .extend_with(&[vtx[0], vtx[1], vtx[2], vtx[0], vtx[2], vtx[3]]);
             self.picture.call(DrawCall::SelectImage { image });
-            self.picture.call(DrawCall::Image { start, vertices });
+            self.picture.call(DrawCall::Image {
+                indices,
+                base_vertex,
+                instance,
+            });
         }
     }
 
@@ -135,15 +119,7 @@ impl<'a> Canvas<'a> {
             tess_tol,
         );
 
-        // Allocate vertices for all the paths.
-        let verts = &mut self.picture.vertices;
-        let iter = tess
-            .contours
-            .iter()
-            .filter(|p| !p.stroke.is_empty())
-            .map(|path| verts.extend_with(&path.stroke));
-
-        let path = self.picture.ranges.extend(iter);
+        let (base_vertex, path) = self.picture.push_stroke(&tess.contours);
 
         // Fill shader
         let first = self.picture.push_instance(Instance::from_stroke(
@@ -157,15 +133,18 @@ impl<'a> Canvas<'a> {
                 .push_instance(Instance::from_stroke(&stroke, width, fringe_width, -1.0));
 
         self.picture.call(DrawCall::StrokeBase {
-            start: first,
+            instance: first,
+            base_vertex,
             path: path.clone(),
         });
         self.picture.call(DrawCall::Fringes {
-            start: second,
+            instance: second,
+            base_vertex,
             path: path.clone(),
         });
         self.picture.call(DrawCall::StrokeStencil {
-            start: second,
+            instance: second,
+            base_vertex,
             path,
         });
     }
@@ -205,106 +184,78 @@ impl<'a> Canvas<'a> {
                 tess_tol,
             );
 
-            // Allocate vertices for all the paths.
-            let verts = &mut self.picture.vertices;
-            let iter = cache
-                .contours
-                .iter()
-                .filter(|p| !p.stroke.is_empty())
-                .map(|path| verts.extend_with(&path.stroke));
+            let (base_vertex, path) = self.picture.push_stroke(&cache.contours);
 
-            let path = self.picture.ranges.extend(iter);
-
-            // Fill shader
             let first = self.picture.push_instance(raw_paint.to_instance(
                 stroke_width,
                 fringe_width,
                 1.0 - 0.5 / 255.0,
             ));
+
             let second =
                 self.picture
                     .push_instance(raw_paint.to_instance(stroke_width, fringe_width, -1.0));
 
             self.picture.call(DrawCall::StrokeBase {
-                start: first,
+                instance: first,
+                base_vertex,
                 path: path.clone(),
             });
             self.picture.call(DrawCall::Fringes {
-                start: second,
+                instance: second,
+                base_vertex,
                 path: path.clone(),
             });
             self.picture.call(DrawCall::StrokeStencil {
-                start: second,
+                instance: second,
+                base_vertex,
                 path,
             });
         } else {
-            let w = if paint.antialias {
-                1.0 / self.scale
-            } else {
-                0.0
-            };
-
             let fringe_width = 1.0 / self.scale;
             cache.flatten(commands, 0.25 / self.scale, 0.01 / self.scale);
             cache.expand_fill(fringe_width, LineJoin::Miter, 2.4);
-            let paths = &cache.contours;
 
-            // Bounding box fill quad not needed for convex fill
-            let kind = !(paths.len() == 1 && paths[0].convexity == Convexity::Convex);
-
-            // Allocate vertices for all the paths.
-
-            let fills = paths.iter().filter(|p| !p.fill.is_empty()).count();
-            let strokes = paths.iter().filter(|p| !p.stroke.is_empty()).count();
-
-            self.picture.ranges.reserve(fills + strokes + 4);
-
-            let (fills, fills_dst) = self.picture.ranges.alloc_default(fills);
-            let vertices = &mut self.picture.vertices;
-            paths
-                .iter()
-                .filter(|p| !p.fill.is_empty())
-                .map(|p| &p.fill)
-                .zip(fills_dst.iter_mut())
-                .for_each(|(src, dst)| *dst = vertices.extend_with(src));
-
-            let (strokes, strokes_dst) = self.picture.ranges.alloc_default(strokes);
-            paths
-                .iter()
-                .filter(|p| !p.stroke.is_empty())
-                .map(|p| &p.stroke)
-                .zip(strokes_dst.iter_mut())
-                .for_each(|(src, dst)| *dst = vertices.extend_with(src));
+            let (base_fill, fill) = self.picture.push_fill(&cache.contours);
+            let (base_stroke, stroke) = self.picture.push_stroke(&cache.contours);
 
             // Setup uniforms for draw calls
             let uniform = raw_paint.to_instance(fringe_width, fringe_width, -1.0);
-            if kind {
-                let quad = self.picture.vertices.extend_with(&[
-                    Vertex::new([cache.bounds.max.x, cache.bounds.max.y], [0.5, 1.0]),
-                    Vertex::new([cache.bounds.max.x, cache.bounds.min.y], [0.5, 1.0]),
-                    Vertex::new([cache.bounds.min.x, cache.bounds.max.y], [0.5, 1.0]),
-                    Vertex::new([cache.bounds.min.x, cache.bounds.min.y], [0.5, 1.0]),
-                ]);
+            if cache.is_convex() {
+                // Bounding box fill quad not needed for convex fill
+                let instance = self.picture.push_instance(uniform);
+                self.picture.call(DrawCall::Convex {
+                    instance,
+                    base_vertex: base_fill,
+                    path: fill,
+                });
+                self.picture.call(DrawCall::Convex {
+                    instance,
+                    base_vertex: base_stroke,
+                    path: stroke,
+                });
+            } else {
+                let bounds = cache.bounds();
+                let (base_quad, quad) = self.picture.push_quad(bounds.min, bounds.max);
 
                 let first = self.picture.push_instance(Instance::default());
                 let second = self.picture.push_instance(uniform);
 
                 self.picture.call(DrawCall::FillStencil {
-                    start: first,
-                    path: fills,
+                    instance: first,
+                    base_vertex: base_fill,
+                    path: fill,
                 });
                 self.picture.call(DrawCall::Fringes {
-                    start: second,
-                    path: strokes,
+                    instance: second,
+                    base_vertex: base_stroke,
+                    path: stroke,
                 });
                 self.picture.call(DrawCall::FillQuad {
-                    start: second,
+                    instance: second,
+                    base_vertex: base_quad,
                     quad,
                 });
-            } else {
-                let path = fills.start..strokes.end;
-                let start = self.picture.push_instance(uniform);
-                self.picture.call(DrawCall::Convex { start, path });
             }
         }
     }

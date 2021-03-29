@@ -162,55 +162,93 @@ impl Renderer {
     ) {
         rpass.set_stencil_reference(0);
         rpass.set_bind_group(0, &self.viewport.bind_group, &[]);
+        rpass.set_index_buffer(bundle.indices.slice(..), wgpu::IndexFormat::Uint32);
         rpass.set_vertex_buffer(0, bundle.vertices.slice(..));
         rpass.set_vertex_buffer(1, bundle.instances.slice(..));
 
         for call in picture.calls.iter().cloned() {
             match call {
-                DrawCall::Convex { start, path } => {
-                    let end = start + 1;
+                DrawCall::Convex {
+                    instance,
+                    base_vertex,
+                    path,
+                } => {
                     rpass.set_pipeline(&self.pipeline.convex);
                     for path in &picture.ranges[path] {
-                        rpass.draw(path.clone(), start..end);
+                        rpass.draw_indexed(path.clone(), base_vertex, instance..instance + 1);
                     }
                 }
 
-                DrawCall::FillStencil { start, path } => {
-                    let end = start + 1;
+                DrawCall::FillStencil {
+                    instance,
+                    base_vertex,
+                    path,
+                } => {
                     rpass.set_pipeline(&self.pipeline.fill_stencil);
                     for path in &picture.ranges[path] {
-                        rpass.draw(path.clone(), start..end);
+                        rpass.draw_indexed(path.clone(), base_vertex, instance..instance + 1);
                     }
                 }
-                DrawCall::FillQuad { start, quad } => {
-                    let end = start + 1;
+                DrawCall::FillQuad {
+                    instance,
+                    base_vertex,
+                    quad,
+                } => {
                     rpass.set_pipeline(&self.pipeline.fill_quad);
-                    rpass.draw(quad, start..end);
+                    rpass.draw_indexed(quad, base_vertex, instance..instance + 1);
+                }
+
+                DrawCall::FillQuadEvenOdd {
+                    instance,
+                    base_vertex,
+                    quad,
+                } => {
+                    rpass.set_pipeline(&self.pipeline.fill_quad_even_odd);
+                    rpass.draw_indexed(quad, base_vertex, instance..instance + 1);
                 }
 
                 // Fill the stroke base without overlap
-                DrawCall::StrokeBase { start, path } => {
-                    let end = start + 1;
+                DrawCall::StrokeBase {
+                    instance,
+                    base_vertex,
+                    path,
+                } => {
                     rpass.set_pipeline(&self.pipeline.stroke_base);
                     for path in &picture.ranges[path] {
-                        rpass.draw(path.clone(), start..end);
+                        rpass.draw_indexed(path.clone(), base_vertex, instance..instance + 1);
                     }
                 }
                 // Clear stencil buffer
-                DrawCall::StrokeStencil { start, path } => {
-                    let end = start + 1;
+                DrawCall::StrokeStencil {
+                    instance,
+                    base_vertex,
+                    path,
+                } => {
                     rpass.set_pipeline(&self.pipeline.stroke_stencil);
                     for path in &picture.ranges[path] {
-                        rpass.draw(path.clone(), start..end);
+                        rpass.draw_indexed(path.clone(), base_vertex, instance..instance + 1);
                     }
                 }
 
                 // Draw anti-aliased pixels.
-                DrawCall::Fringes { start, path } => {
-                    let end = start + 1;
+                DrawCall::Fringes {
+                    instance,
+                    base_vertex,
+                    path,
+                } => {
                     rpass.set_pipeline(&self.pipeline.fringes);
                     for path in &picture.ranges[path] {
-                        rpass.draw(path.clone(), start..end);
+                        rpass.draw_indexed(path.clone(), base_vertex, instance..instance + 1);
+                    }
+                }
+                DrawCall::FringesEvenOdd {
+                    instance,
+                    base_vertex,
+                    path,
+                } => {
+                    rpass.set_pipeline(&self.pipeline.fringes_even_odd);
+                    for path in &picture.ranges[path] {
+                        rpass.draw_indexed(path.clone(), base_vertex, instance..instance + 1);
                     }
                 }
 
@@ -218,9 +256,13 @@ impl Renderer {
                     rpass.set_bind_group(1, &self.images[&image].bind_group, &[]);
                 }
 
-                DrawCall::Image { start, vertices } => {
+                DrawCall::Image {
+                    indices,
+                    base_vertex,
+                    instance,
+                } => {
                     rpass.set_pipeline(&self.pipeline.image);
-                    rpass.draw(vertices, start..start + 1);
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
                 }
             }
         }
@@ -288,6 +330,9 @@ struct Pipeline {
 
     fill_stencil: wgpu::RenderPipeline,
     fill_quad: wgpu::RenderPipeline,
+
+    fringes_even_odd: wgpu::RenderPipeline,
+    fill_quad_even_odd: wgpu::RenderPipeline,
 
     stroke_base: wgpu::RenderPipeline,
     stroke_stencil: wgpu::RenderPipeline,
@@ -361,7 +406,7 @@ impl Pipeline {
                 wgpu::StencilFaceState {
                     compare: wgpu::CompareFunction::$comp,
                     fail_op: wgpu::StencilOperation::$fail,
-                    depth_fail_op: wgpu::StencilOperation::$fail,
+                    depth_fail_op: wgpu::StencilOperation::Keep,
                     pass_op: wgpu::StencilOperation::$pass,
                 }
             };
@@ -375,15 +420,18 @@ impl Pipeline {
 
         Self {
             image: builder.image(stencil_face!(Always, Fail::Keep, Pass::Keep)),
-
             convex: builder.base(stencil_face!(Always, Fail::Keep, Pass::Keep)),
-            fringes: builder.base(stencil_face!(Equal, Fail::Keep, Pass::Keep)),
 
             fill_stencil: builder.stencil(None, INCR_WRAP, DECR_WRAP),
             fill_quad: builder.base(stencil_face!(NotEqual, Fail::Zero, Pass::Zero)),
 
             stroke_base: builder.base(stencil_face!(Equal, Fail::Keep, Pass::IncrementClamp)),
             stroke_stencil: builder.stencil(Some(wgpu::Face::Back), ALWAYS_ZERO, ALWAYS_ZERO),
+
+            fringes: builder.base(stencil_face!(Equal, Fail::Keep, Pass::Keep)),
+
+            fringes_even_odd: builder.even_odd(stencil_face!(Equal, Fail::Keep, Pass::Keep)),
+            fill_quad_even_odd: builder.even_odd(stencil_face!(NotEqual, Fail::Zero, Pass::Zero)),
 
             image_layout,
             sampler,
@@ -400,10 +448,36 @@ struct Builder<'a> {
 
 impl<'a> Builder<'a> {
     fn base(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
-        let topology = wgpu::PrimitiveTopology::TriangleStrip;
-        let (front, back) = (stencil.clone(), stencil);
-        let (write_mask, cull_mode) = (wgpu::ColorWrite::ALL, Some(wgpu::Face::Back));
-        self.pipeline("main", write_mask, cull_mode, front, back, topology)
+        self.pipeline(
+            "main",
+            wgpu::ColorWrite::ALL,
+            Some(wgpu::Face::Back),
+            stencil.clone(),
+            stencil,
+            false,
+        )
+    }
+
+    fn even_odd(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
+        self.pipeline(
+            "main",
+            wgpu::ColorWrite::ALL,
+            Some(wgpu::Face::Back),
+            stencil.clone(),
+            stencil,
+            true,
+        )
+    }
+
+    fn image(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
+        self.pipeline(
+            "image",
+            wgpu::ColorWrite::ALL,
+            Some(wgpu::Face::Back),
+            stencil.clone(),
+            stencil,
+            false,
+        )
     }
 
     fn stencil(
@@ -412,16 +486,14 @@ impl<'a> Builder<'a> {
         front: wgpu::StencilFaceState,
         back: wgpu::StencilFaceState,
     ) -> wgpu::RenderPipeline {
-        let topology = wgpu::PrimitiveTopology::TriangleStrip;
-        let write_mask = wgpu::ColorWrite::empty();
-        self.pipeline("stencil", write_mask, cull_mode, front, back, topology)
-    }
-
-    fn image(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
-        let topology = wgpu::PrimitiveTopology::TriangleList;
-        let (front, back) = (stencil.clone(), stencil);
-        let (write_mask, cull_mode) = (wgpu::ColorWrite::ALL, Some(wgpu::Face::Back));
-        self.pipeline("image", write_mask, cull_mode, front, back, topology)
+        self.pipeline(
+            "stencil",
+            wgpu::ColorWrite::empty(),
+            cull_mode,
+            front,
+            back,
+            false,
+        )
     }
 
     fn pipeline(
@@ -431,7 +503,7 @@ impl<'a> Builder<'a> {
         cull_mode: Option<wgpu::Face>,
         front: wgpu::StencilFaceState,
         back: wgpu::StencilFaceState,
-        topology: wgpu::PrimitiveTopology,
+        one_mask: bool,
     ) -> wgpu::RenderPipeline {
         let targets = &[wgpu::ColorTargetState {
             format: self.format,
@@ -469,6 +541,8 @@ impl<'a> Builder<'a> {
             },
         ];
 
+        let stencil_mask = if one_mask { 0x01 } else { 0xFF };
+
         self.device
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(entry_point),
@@ -484,7 +558,7 @@ impl<'a> Builder<'a> {
                     targets,
                 }),
                 primitive: wgpu::PrimitiveState {
-                    topology,
+                    topology: wgpu::PrimitiveTopology::TriangleList,
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Ccw,
                     cull_mode,
@@ -498,8 +572,8 @@ impl<'a> Builder<'a> {
                     stencil: wgpu::StencilState {
                         front,
                         back,
-                        read_mask: 0xFF,
-                        write_mask: 0xFF,
+                        read_mask: stencil_mask,
+                        write_mask: stencil_mask,
                     },
                     clamp_depth: false,
                     bias: wgpu::DepthBiasState::default(),
