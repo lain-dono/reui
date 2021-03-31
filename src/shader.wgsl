@@ -48,7 +48,7 @@ fn vertex(in: Input) -> Variable {
 
 fn sdroundrect(pt: vec2<f32>, ext: vec2<f32>, rad: f32) -> f32 {
     var d: vec2<f32> = abs(pt) - ext + vec2<f32>(rad, rad);
-    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - rad;
+    return min(max(d.x, d.y), 0.0) + length(max(d, vec2<f32>(0.0, 0.0))) - rad;
 }
 
 [[stage(fragment)]]
@@ -74,7 +74,8 @@ fn main(in: Input) -> [[location(0)]] vec4<f32> {
 
     // Calculate gradient color using box gradient
     var d: f32 = sdroundrect(pt, extent, radius) / feather + 0.5;
-    var color: vec4<f32> = mix(in.inner_color, in.outer_color, clamp(d, 0.0, 1.0));
+    var d: f32 = clamp(d, 0.0, 1.0);
+    var color: vec4<f32> = mix(in.inner_color, in.outer_color, vec4<f32>(d, d, d, d));
 
     // Combine alpha
     color.a = color.a * stroke_alpha;

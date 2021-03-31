@@ -1,14 +1,14 @@
 use crate::{
     math::{Corners, Offset, Rect, Transform},
-    paint::{LineJoin, Paint, PaintingStyle, RawPaint, Stroke},
-    path::{Command, Path},
-    picture::{DrawCall, Instance, PictureRecorder},
+    paint::{Paint, PaintingStyle},
+    path::Command,
+    picture::Recorder,
     renderer::Renderer,
 };
 
 impl Transform {
     #[inline]
-    fn average_scale(&self) -> f32 {
+    pub(crate) fn average_scale(&self) -> f32 {
         self.re * self.re + self.im * self.im
     }
 }
@@ -40,13 +40,13 @@ impl TransformStack {
 
 pub struct Canvas<'a> {
     ctx: &'a mut Renderer,
-    picture: &'a mut PictureRecorder,
+    picture: &'a mut Recorder,
     states: TransformStack,
     scale: f32,
 }
 
 impl<'a> Canvas<'a> {
-    pub fn new(ctx: &'a mut Renderer, picture: &'a mut PictureRecorder, scale: f32) -> Self {
+    pub fn new(ctx: &'a mut Renderer, picture: &'a mut Recorder, scale: f32) -> Self {
         let transform = Transform::default();
         Self {
             ctx,
@@ -58,17 +58,8 @@ impl<'a> Canvas<'a> {
 
     pub fn draw_image_rect(&mut self, image: u32, rect: Rect) {
         if self.ctx.images.get(&image).is_some() {
-            let Rect { min: p0, max: p1 } = rect;
-            let instance = self.picture.push_instance(Instance::image([255; 4]));
-            let transform = self.states.transform();
-            let (base_vertex, indices) = self.picture.push_image(p0, p1, transform);
-
-            self.picture.call(DrawCall::SelectImage { image });
-            self.picture.call(DrawCall::Image {
-                indices,
-                base_vertex,
-                instance,
-            });
+            self.picture
+                .push_image(rect, self.states.transform(), image, [255; 4]);
         }
     }
 
@@ -79,184 +70,23 @@ impl<'a> Canvas<'a> {
                 p0.x + image_bind.size.width as f32 / self.scale,
                 p0.y + image_bind.size.height as f32 / self.scale,
             );
-            let instance = self.picture.push_instance(Instance::image([255; 4]));
-            let transform = self.states.transform();
-            let (base_vertex, indices) = self.picture.push_image(p0, p1, transform);
-
-            self.picture.call(DrawCall::SelectImage { image });
-            self.picture.call(DrawCall::Image {
-                indices,
-                base_vertex,
-                instance,
-            });
-        }
-    }
-
-    pub fn stroke_path(&mut self, path: &Path, stroke: &Stroke) {
-        let xform = self.states.transform();
-
-        let tess = &mut self.ctx.tess;
-        let mut width = (stroke.width * xform.average_scale()).clamp(0.0, 200.0);
-        let mut color = stroke.color;
-        let fringe_width = 1.0 / self.scale;
-        if width < fringe_width {
-            // If the stroke width is less than pixel size, use alpha to emulate coverage.
-            // Since coverage is area, scale by alpha*alpha.
-            let alpha = (width / fringe_width).clamp(0.0, 1.0);
-            color.alpha *= alpha * alpha;
-            width = fringe_width;
-        }
-
-        let tess_tol = 0.25 / self.scale;
-        tess.flatten(path.transform(xform), 0.25 / self.scale, 0.01 / self.scale);
-        tess.expand_stroke(
-            width * 0.5,
-            fringe_width,
-            stroke.line_cap,
-            stroke.line_cap,
-            stroke.line_join,
-            stroke.miter_limit,
-            tess_tol,
-        );
-
-        let (base_vertex, path) = self.picture.push_stroke(&tess.contours);
-
-        // Fill shader
-        let first = self.picture.push_instance(Instance::from_stroke(
-            &stroke,
-            width,
-            fringe_width,
-            1.0 - 0.5 / 255.0,
-        ));
-        let second =
             self.picture
-                .push_instance(Instance::from_stroke(&stroke, width, fringe_width, -1.0));
-
-        self.picture.call(DrawCall::StrokeBase {
-            instance: first,
-            base_vertex,
-            path: path.clone(),
-        });
-        self.picture.call(DrawCall::Fringes {
-            instance: second,
-            base_vertex,
-            path: path.clone(),
-        });
-        self.picture.call(DrawCall::StrokeStencil {
-            instance: second,
-            base_vertex,
-            path,
-        });
+                .push_image(Rect::new(p0, p1), self.states.transform(), image, [255; 4]);
+        }
     }
 
-    fn fill_or_stroke(&mut self, paint: &Paint, force_stroke: bool) {
-        let cache = &mut self.ctx.tess;
+    fn force_stroke(&mut self, paint: &Paint) {
         let xform = self.states.transform();
-        let commands = self.ctx.path.transform(xform);
+        let commands = self.ctx.path.into_iter();
+        self.picture.stroke_path(commands, paint, xform, self.scale);
+    }
 
-        let mut raw_paint = RawPaint::convert(paint, xform);
-
-        if force_stroke || paint.style == PaintingStyle::Stroke {
-            let scale = xform.average_scale();
-            let mut stroke_width = (paint.width * scale).clamp(0.0, 200.0);
-
-            let fringe_width = 1.0 / self.scale;
-
-            if stroke_width < fringe_width {
-                // If the stroke width is less than pixel size, use alpha to emulate coverage.
-                // Since coverage is area, scale by alpha*alpha.
-                let alpha = (stroke_width / fringe_width).clamp(0.0, 1.0);
-                let coverage = alpha * alpha;
-                raw_paint.inner_color.alpha *= coverage;
-                raw_paint.outer_color.alpha *= coverage;
-                stroke_width = fringe_width;
-            }
-
-            let tess_tol = 0.25 / self.scale;
-            cache.flatten(commands, tess_tol, 0.01 / self.scale);
-            cache.expand_stroke(
-                stroke_width * 0.5,
-                fringe_width,
-                paint.cap,
-                paint.cap,
-                paint.join,
-                paint.miter,
-                tess_tol,
-            );
-
-            let (base_vertex, path) = self.picture.push_stroke(&cache.contours);
-
-            let first = self.picture.push_instance(raw_paint.to_instance(
-                stroke_width,
-                fringe_width,
-                1.0 - 0.5 / 255.0,
-            ));
-
-            let second =
-                self.picture
-                    .push_instance(raw_paint.to_instance(stroke_width, fringe_width, -1.0));
-
-            self.picture.call(DrawCall::StrokeBase {
-                instance: first,
-                base_vertex,
-                path: path.clone(),
-            });
-            self.picture.call(DrawCall::Fringes {
-                instance: second,
-                base_vertex,
-                path: path.clone(),
-            });
-            self.picture.call(DrawCall::StrokeStencil {
-                instance: second,
-                base_vertex,
-                path,
-            });
-        } else {
-            let fringe_width = 1.0 / self.scale;
-            cache.flatten(commands, 0.25 / self.scale, 0.01 / self.scale);
-            cache.expand_fill(fringe_width, LineJoin::Miter, 2.4);
-
-            let (base_fill, fill) = self.picture.push_fill(&cache.contours);
-            let (base_stroke, stroke) = self.picture.push_stroke(&cache.contours);
-
-            // Setup uniforms for draw calls
-            let uniform = raw_paint.to_instance(fringe_width, fringe_width, -1.0);
-            if cache.is_convex() {
-                // Bounding box fill quad not needed for convex fill
-                let instance = self.picture.push_instance(uniform);
-                self.picture.call(DrawCall::Convex {
-                    instance,
-                    base_vertex: base_fill,
-                    path: fill,
-                });
-                self.picture.call(DrawCall::Convex {
-                    instance,
-                    base_vertex: base_stroke,
-                    path: stroke,
-                });
-            } else {
-                let bounds = cache.bounds();
-                let (base_quad, quad) = self.picture.push_quad(bounds.min, bounds.max);
-
-                let first = self.picture.push_instance(Instance::default());
-                let second = self.picture.push_instance(uniform);
-
-                self.picture.call(DrawCall::FillStencil {
-                    instance: first,
-                    base_vertex: base_fill,
-                    path: fill,
-                });
-                self.picture.call(DrawCall::Fringes {
-                    instance: second,
-                    base_vertex: base_stroke,
-                    path: stroke,
-                });
-                self.picture.call(DrawCall::FillQuad {
-                    instance: second,
-                    base_vertex: base_quad,
-                    quad,
-                });
-            }
+    fn fill_or_stroke(&mut self, paint: &Paint) {
+        let xform = self.states.transform();
+        let commands = self.ctx.path.into_iter();
+        match paint.style {
+            PaintingStyle::Stroke => self.picture.stroke_path(commands, paint, xform, self.scale),
+            PaintingStyle::Fill => self.picture.fill_path(commands, paint, xform, self.scale),
         }
     }
 
@@ -321,10 +151,9 @@ impl<'a> Canvas<'a> {
     /// and that has the radius given by the second argument, with the Paint given in the third argument.
     /// Whether the circle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_circle(&mut self, center: Offset, radius: f32, paint: Paint) {
-        self.ctx.tess.clear();
         self.ctx.path.clear();
         self.ctx.path.circle(center, radius);
-        self.fill_or_stroke(&paint, false);
+        self.fill_or_stroke(&paint);
     }
 
     /*
@@ -350,36 +179,33 @@ impl<'a> Canvas<'a> {
     /// Draws a line between the given points using the given paint.
     /// The line is stroked, the value of the Paint.style is ignored for this call. [...]
     pub fn draw_line(&mut self, p0: Offset, p1: Offset, paint: Paint) {
-        self.ctx.tess.clear();
         self.ctx.path.clear();
         let xform = self.states.transform();
         let (p0, p1) = (xform.apply(p0), xform.apply(p1));
         self.ctx.path.move_to(p0);
         self.ctx.path.line_to(p1);
-        self.fill_or_stroke(&paint, true);
+        self.force_stroke(&paint);
     }
 
     pub fn draw_lines(&mut self, points: &[Offset], paint: Paint) {
         if points.len() < 2 {
             return;
         }
-        self.ctx.tess.clear();
 
         self.ctx.path.clear();
         self.ctx.path.move_to(points[0]);
         for &p in &points[1..] {
             self.ctx.path.line_to(p);
         }
-        self.fill_or_stroke(&paint, true);
+        self.force_stroke(&paint);
     }
 
     /// Draws an axis-aligned oval that fills the given axis-aligned rectangle with the given Paint.
     /// Whether the oval is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
-        self.ctx.tess.clear();
         self.ctx.path.clear();
         self.ctx.path.oval(rect);
-        self.fill_or_stroke(&paint, false);
+        self.fill_or_stroke(&paint);
     }
 
     /*
@@ -393,11 +219,10 @@ impl<'a> Canvas<'a> {
     /// Draws the given Path with the given Paint.
     /// Whether this shape is filled or stroked (or both) is controlled by Paint.style.
     /// If the path is filled, then sub-paths within it are implicitly closed (see Path.close).
-    pub fn draw_path(&mut self, path: impl IntoIterator<Item = Command>, paint: Paint) {
-        self.ctx.tess.clear();
+    pub fn draw_path(&mut self, iter: impl IntoIterator<Item = Command>, paint: Paint) {
         self.ctx.path.clear();
-        self.ctx.path.extend(path);
-        self.fill_or_stroke(&paint, false);
+        self.ctx.path.extend(iter);
+        self.fill_or_stroke(&paint);
     }
 
     /*
@@ -415,19 +240,17 @@ impl<'a> Canvas<'a> {
     /// Draws a rectangle with the given Paint.
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
-        self.ctx.tess.clear();
         self.ctx.path.clear();
         self.ctx.path.rect(rect);
-        self.fill_or_stroke(&paint, false);
+        self.fill_or_stroke(&paint);
     }
 
     /// Draws a rounded rectangle with the given Paint.
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rrect(&mut self, rect: Rect, radius: Corners, paint: Paint) {
-        self.ctx.tess.clear();
         self.ctx.path.clear();
         self.ctx.path.rrect(rect, radius);
-        self.fill_or_stroke(&paint, false);
+        self.fill_or_stroke(&paint);
     }
 
     /*

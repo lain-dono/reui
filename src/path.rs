@@ -111,16 +111,19 @@ impl Command {
     }
 }
 
-#[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum Winding {
-    Positive = 1, // Winding for solid shapes
-    Negative = 2, // Winding for holes
-}
-
 pub struct PathIter<'a> {
     index: std::slice::Iter<'a, Raw>,
     coord: &'a [Offset],
+}
+
+impl<'a> PathIter<'a> {
+    pub(crate) fn transform(self, transform: Transform) -> PathTransformIter<'a> {
+        PathTransformIter {
+            transform,
+            index: self.index,
+            coord: self.coord,
+        }
+    }
 }
 
 impl<'a> Iterator for PathIter<'a> {
@@ -142,13 +145,13 @@ impl<'a> Iterator for PathIter<'a> {
     }
 }
 
-pub struct PathTransform<'a> {
+pub struct PathTransformIter<'a> {
     transform: Transform,
     index: std::slice::Iter<'a, Raw>,
     coord: &'a [Offset],
 }
 
-impl<'a> Iterator for PathTransform<'a> {
+impl<'a> Iterator for PathTransformIter<'a> {
     type Item = Command;
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -228,8 +231,8 @@ impl Path {
     }
 
     /// Returns a copy of the [`Path`] with all the segments of every sub-path transformed by the given matrix.
-    pub fn transform(&self, t: Transform) -> PathTransform {
-        PathTransform {
+    pub fn transform(&self, t: Transform) -> PathTransformIter {
+        PathTransformIter {
             transform: t,
             index: self.index.iter(),
             coord: &self.coord,

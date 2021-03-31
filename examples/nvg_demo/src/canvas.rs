@@ -253,7 +253,7 @@ pub fn draw_window(ctx: &mut Canvas, bounds: Rect, content: impl FnOnce(&mut Can
             bounds,
             corner_radius,
             10.0,
-            Color::hex(0x80_000000),
+            Color::hex(0x88_000000),
             Color::hex(0x00_000000),
         );
         ctx.draw_path(&path, shadow_paint);

@@ -1,15 +1,6 @@
 use crate::math::{Color, Rect, Transform};
 use crate::picture::Instance;
 
-#[derive(Clone, PartialEq)]
-pub struct Stroke {
-    pub color: Color,
-    pub line_cap: LineCap,
-    pub line_join: LineJoin,
-    pub miter_limit: f32,
-    pub width: f32,
-}
-
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum LineCap {
@@ -60,7 +51,8 @@ pub enum Gradient {
 #[derive(Clone, Copy)]
 pub struct Paint {
     pub style: PaintingStyle,
-    pub cap: LineCap,
+    pub cap_start: LineCap,
+    pub cap_end: LineCap,
     pub join: LineJoin,
     pub antialias: bool,
     pub miter: f32,
@@ -74,7 +66,8 @@ impl Default for Paint {
         Self {
             style: PaintingStyle::Fill,
             color: Color::BLACK,
-            cap: LineCap::Butt,
+            cap_start: LineCap::Butt,
+            cap_end: LineCap::Butt,
             join: LineJoin::Miter,
             antialias: true,
             miter: 10.0,
@@ -102,7 +95,11 @@ impl Paint {
     }
 
     pub fn stroke_cap(self, cap: LineCap) -> Self {
-        Self { cap, ..self }
+        Self {
+            cap_start: cap,
+            cap_end: cap,
+            ..self
+        }
     }
 
     pub fn stroke_join(self, join: LineJoin) -> Self {

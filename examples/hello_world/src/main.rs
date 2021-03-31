@@ -2,7 +2,7 @@
 
 use reui::{
     app::{self, ControlFlow, Options, Surface, WindowEvent},
-    wgpu, Offset, Paint, PictureRecorder, Rect, Renderer,
+    wgpu, Offset, Paint, Recorder, Rect, Renderer,
 };
 
 pub fn main() {
@@ -17,7 +17,7 @@ pub fn main() {
 
 struct Demo {
     vg: Renderer,
-    picture: PictureRecorder,
+    picture: Recorder,
     img: u32,
 }
 
@@ -26,7 +26,7 @@ impl app::Application for Demo {
 
     fn init(device: &wgpu::Device, queue: &wgpu::Queue, surface: &mut Surface) -> Self {
         let mut vg = Renderer::new(&device, surface.format());
-        let picture = PictureRecorder::default();
+        let picture = Recorder::default();
 
         let img = vg
             .open_image(device, queue, "examples/rust-jerk.jpg")

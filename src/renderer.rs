@@ -1,8 +1,7 @@
 use crate::{
     canvas::Canvas,
     path::Path,
-    picture::{DrawCall, Instance, PictureBundle, PictureRecorder, Vertex},
-    tessellator::Tessellator,
+    picture::{DrawCall, Instance, Picture, Recorder, Vertex},
 };
 use std::collections::HashMap;
 
@@ -97,7 +96,7 @@ impl HostImage {
 
 pub struct Renderer {
     pub(crate) path: Path,
-    pub(crate) tess: Tessellator,
+    //pub(crate) tess: Tessellator,
     pub(crate) images: HashMap<u32, ImageBind>,
     images_idx: u32,
     pipeline: Pipeline,
@@ -112,7 +111,6 @@ impl Renderer {
         let images = HashMap::default();
 
         Self {
-            tess: Tessellator::new(),
             path: Path::new(),
 
             images,
@@ -148,7 +146,7 @@ impl Renderer {
         width: u32,
         height: u32,
         scale: f32,
-        picture: &'a mut PictureRecorder,
+        picture: &'a mut Recorder,
     ) -> Canvas<'a> {
         self.viewport.upload(queue, width, height, scale);
         Canvas::new(self, picture, scale)
@@ -157,99 +155,87 @@ impl Renderer {
     pub fn draw_picture<'rpass>(
         &'rpass self,
         rpass: &mut wgpu::RenderPass<'rpass>,
-        picture: &'rpass PictureRecorder,
-        bundle: &'rpass PictureBundle,
+        picture: &'rpass Recorder,
+        bundle: &'rpass Picture,
     ) {
-        rpass.set_stencil_reference(0);
+        //rpass.set_stencil_reference(0);
         rpass.set_bind_group(0, &self.viewport.bind_group, &[]);
-        rpass.set_index_buffer(bundle.indices.slice(..), wgpu::IndexFormat::Uint32);
+        rpass.set_index_buffer(bundle.indices.slice(..), wgpu::IndexFormat::Uint16);
         rpass.set_vertex_buffer(0, bundle.vertices.slice(..));
         rpass.set_vertex_buffer(1, bundle.instances.slice(..));
 
         for call in picture.calls.iter().cloned() {
             match call {
                 DrawCall::Convex {
-                    instance,
+                    indices,
                     base_vertex,
-                    path,
+                    instance,
                 } => {
                     rpass.set_pipeline(&self.pipeline.convex);
-                    for path in &picture.ranges[path] {
-                        rpass.draw_indexed(path.clone(), base_vertex, instance..instance + 1);
-                    }
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
                 }
 
                 DrawCall::FillStencil {
-                    instance,
+                    indices,
                     base_vertex,
-                    path,
+                    instance,
                 } => {
                     rpass.set_pipeline(&self.pipeline.fill_stencil);
-                    for path in &picture.ranges[path] {
-                        rpass.draw_indexed(path.clone(), base_vertex, instance..instance + 1);
-                    }
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
                 }
                 DrawCall::FillQuad {
-                    instance,
+                    indices,
                     base_vertex,
-                    quad,
+                    instance,
                 } => {
                     rpass.set_pipeline(&self.pipeline.fill_quad);
-                    rpass.draw_indexed(quad, base_vertex, instance..instance + 1);
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
                 }
 
                 DrawCall::FillQuadEvenOdd {
-                    instance,
+                    indices,
                     base_vertex,
-                    quad,
+                    instance,
                 } => {
                     rpass.set_pipeline(&self.pipeline.fill_quad_even_odd);
-                    rpass.draw_indexed(quad, base_vertex, instance..instance + 1);
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
                 }
 
                 // Fill the stroke base without overlap
                 DrawCall::StrokeBase {
-                    instance,
+                    indices,
                     base_vertex,
-                    path,
+                    instance,
                 } => {
                     rpass.set_pipeline(&self.pipeline.stroke_base);
-                    for path in &picture.ranges[path] {
-                        rpass.draw_indexed(path.clone(), base_vertex, instance..instance + 1);
-                    }
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
                 }
                 // Clear stencil buffer
                 DrawCall::StrokeStencil {
-                    instance,
+                    indices,
                     base_vertex,
-                    path,
+                    instance,
                 } => {
                     rpass.set_pipeline(&self.pipeline.stroke_stencil);
-                    for path in &picture.ranges[path] {
-                        rpass.draw_indexed(path.clone(), base_vertex, instance..instance + 1);
-                    }
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
                 }
 
                 // Draw anti-aliased pixels.
                 DrawCall::Fringes {
-                    instance,
+                    indices,
                     base_vertex,
-                    path,
+                    instance,
                 } => {
                     rpass.set_pipeline(&self.pipeline.fringes);
-                    for path in &picture.ranges[path] {
-                        rpass.draw_indexed(path.clone(), base_vertex, instance..instance + 1);
-                    }
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
                 }
                 DrawCall::FringesEvenOdd {
-                    instance,
+                    indices,
                     base_vertex,
-                    path,
+                    instance,
                 } => {
                     rpass.set_pipeline(&self.pipeline.fringes_even_odd);
-                    for path in &picture.ranges[path] {
-                        rpass.draw_indexed(path.clone(), base_vertex, instance..instance + 1);
-                    }
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
                 }
 
                 DrawCall::SelectImage { image } => {

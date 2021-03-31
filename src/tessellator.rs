@@ -10,31 +10,42 @@ use std::{
     ops::Range,
 };
 
+mod util {
+    use crate::math::Offset;
+
+    // Adapted from libcollections/vec.rs in Rust
+    // Primary author in Rust: Michael Darakananda
+    pub fn retain_mut<T>(vec: &mut Vec<T>, mut f: impl FnMut(&mut T) -> bool) {
+        let len = vec.len();
+        let mut del = 0;
+        {
+            let v = &mut **vec;
+
+            for i in 0..len {
+                if !f(&mut v[i]) {
+                    del += 1;
+                } else if del > 0 {
+                    v.swap(i - del, i);
+                }
+            }
+        }
+        if del > 0 {
+            vec.truncate(len - del);
+        }
+    }
+
+    #[inline]
+    pub fn approx_eq(a: Offset, b: Offset, epsilon: f32) -> bool {
+        let x = (a.x - b.x).abs() < epsilon;
+        let y = (a.y - b.y).abs() < epsilon;
+        x && y
+    }
+}
+
 const DEFAULT_BOUNDS: Rect = Rect {
     min: Offset::new(1e6, 1e6),
     max: Offset::new(-1e6, -1e6),
 };
-
-// Adapted from libcollections/vec.rs in Rust
-// Primary author in Rust: Michael Darakananda
-fn retain_mut<T>(vec: &mut Vec<T>, mut f: impl FnMut(&mut T) -> bool) {
-    let len = vec.len();
-    let mut del = 0;
-    {
-        let v = &mut **vec;
-
-        for i in 0..len {
-            if !f(&mut v[i]) {
-                del += 1;
-            } else if del > 0 {
-                v.swap(i - del, i);
-            }
-        }
-    }
-    if del > 0 {
-        vec.truncate(len - del);
-    }
-}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Convexity {
@@ -47,51 +58,6 @@ impl Default for Convexity {
     fn default() -> Self {
         Self::Unknown
     }
-}
-
-#[inline]
-fn approx_eq(a: Offset, b: Offset, epsilon: f32) -> bool {
-    let x = (a.x - b.x).abs() < epsilon;
-    let y = (a.y - b.y).abs() < epsilon;
-    x && y
-}
-
-#[inline]
-fn normalize(pt: &mut Offset) -> f32 {
-    let xx = pt.x * pt.x;
-    let yy = pt.y * pt.y;
-    let d = (xx + yy).sqrt();
-    if d > 1e-6 {
-        let id = d.recip();
-        pt.x *= id;
-        pt.y *= id;
-    }
-    d
-}
-
-#[inline]
-fn polygon_area(points: &[Point]) -> f32 {
-    fn triarea2(a: Offset, b: Offset, c: Offset) -> f32 {
-        let (ba, ca) = (b - a, c - a);
-        ca.x * ba.y - ba.x * ca.y
-    }
-
-    0.5 * points
-        .windows(3)
-        .map(|w| triarea2(w[0].pos, w[1].pos, w[2].pos))
-        .sum::<f32>()
-}
-
-#[inline]
-fn _polygon_area(pts: &[Point]) -> f32 {
-    let mut area = 0.0;
-    let a = &pts[0];
-    for i in 2..pts.len() {
-        let b = &pts[i - 1];
-        let c = &pts[i];
-        area += (c.pos - a.pos).cross(b.pos - a.pos);
-    }
-    area * 0.5
 }
 
 bitflags::bitflags!(
@@ -121,16 +87,54 @@ impl Point {
             ..Self::default()
         }
     }
+
+    #[inline]
+    pub fn polygon_area(points: &[Self]) -> f32 {
+        fn triarea2(a: Offset, b: Offset, c: Offset) -> f32 {
+            let (ba, ca) = (b - a, c - a);
+            ca.x * ba.y - ba.x * ca.y
+        }
+
+        0.5 * points
+            .windows(3)
+            .map(|w| triarea2(w[0].pos, w[1].pos, w[2].pos))
+            .sum::<f32>()
+    }
+
+    #[inline]
+    fn _polygon_area(pts: &[Self]) -> f32 {
+        let mut area = 0.0;
+        let a = &pts[0];
+        for i in 2..pts.len() {
+            let b = &pts[i - 1];
+            let c = &pts[i];
+            area += (c.pos - a.pos).cross(b.pos - a.pos);
+        }
+        area * 0.5
+    }
+
+    #[inline]
+    pub fn set_direction(&mut self, mut dir: Offset) {
+        let xx = dir.x * dir.x;
+        let yy = dir.y * dir.y;
+        let d = (xx + yy).sqrt();
+        if d > 1e-6 {
+            let id = d.recip();
+            dir.x *= id;
+            dir.y *= id;
+        }
+        self.dir = dir;
+        self.len = d;
+    }
 }
 
 pub struct Contour {
     point_range: Range<usize>,
+    pub(crate) fill: Range<usize>,
+    pub(crate) stroke: Range<usize>,
     bevel: usize,
     closed: bool,
     solidity: Solidity,
-
-    pub(crate) fill: Vec<Vertex>,
-    pub(crate) stroke: Vec<Vertex>,
     convexity: Convexity,
 }
 
@@ -138,12 +142,10 @@ impl Default for Contour {
     fn default() -> Self {
         Self {
             point_range: 0..0,
-            fill: Vec::new(),
-            stroke: Vec::new(),
-
+            fill: 0..0,
+            stroke: 0..0,
             closed: false,
             bevel: 0,
-
             solidity: Solidity::default(),
             convexity: Convexity::default(),
         }
@@ -192,36 +194,10 @@ impl<'a> Iterator for PointPairsIter<'a> {
     }
 }
 
-#[inline]
-fn fan2strip(i: usize, len: usize) -> usize {
-    if 0 == i % 2 {
-        len - 1 - i / 2
-    } else {
-        i / 2
-    }
-}
-
-struct FanIter<'a> {
-    vertices: &'a [Vertex],
-    index: usize,
-}
-
-impl<'a> Iterator for FanIter<'a> {
-    type Item = Vertex;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.vertices.len() {
-            let i = fan2strip(self.index, self.vertices.len());
-            self.index += 1;
-            Some(self.vertices[i])
-        } else {
-            None
-        }
-    }
-}
-
 pub struct Tessellator {
     points: Vec<Point>,
-    pub contours: Vec<Contour>,
+    contours: Vec<Contour>,
+    vertices: Vec<Vertex>,
     bounds: Rect,
 }
 
@@ -230,6 +206,7 @@ impl Default for Tessellator {
         Self {
             points: Vec::new(),
             contours: Vec::new(),
+            vertices: Vec::new(),
             bounds: DEFAULT_BOUNDS,
         }
     }
@@ -247,7 +224,16 @@ impl Tessellator {
     pub fn clear(&mut self) {
         self.points.clear();
         self.contours.clear();
+        self.vertices.clear();
         self.bounds = DEFAULT_BOUNDS;
+    }
+
+    pub fn contours(&self) -> &[Contour] {
+        &self.contours
+    }
+
+    pub fn vertices(&self) -> &[Vertex] {
+        &self.vertices
     }
 
     pub fn is_convex(&self) -> bool {
@@ -326,11 +312,6 @@ impl Tessellator {
                         self.tesselate_bezier([p0.pos, p1, p2, p3], tess_tol, dist_tol);
                     }
                 }
-                Command::Close => {
-                    if let Some(contour) = self.contours.last_mut() {
-                        contour.closed = true;
-                    }
-                }
                 Command::Solid => {
                     if let Some(contour) = self.contours.last_mut() {
                         contour.solidity = Solidity::Solid;
@@ -341,18 +322,23 @@ impl Tessellator {
                         contour.solidity = Solidity::Hole;
                     }
                 }
+                Command::Close => {
+                    if let Some(contour) = self.contours.last_mut() {
+                        contour.closed = true;
+                    }
+                }
             }
         }
 
         let all_points = &mut self.points;
         let bounds = &mut self.bounds;
 
-        retain_mut(&mut self.contours, |contour| {
+        util::retain_mut(&mut self.contours, |contour| {
             let mut points = &mut all_points[contour.point_range.clone()];
 
             // If the first and last points are the same, remove the last, mark as closed contour.
             if let (Some(p0), Some(p1)) = (points.last(), points.first()) {
-                if approx_eq(p0.pos, p1.pos, dist_tol) {
+                if util::approx_eq(p0.pos, p1.pos, dist_tol) {
                     contour.point_range.end -= 1;
                     contour.closed = true;
                     points = &mut all_points[contour.point_range.clone()];
@@ -364,7 +350,7 @@ impl Tessellator {
             }
 
             // Enforce solidity by reversing the winding.
-            let area = polygon_area(points);
+            let area = Point::polygon_area(points);
             if contour.solidity == Solidity::Solid && area < 0.0 {
                 points.reverse();
             }
@@ -381,8 +367,7 @@ impl Tessellator {
                     points.get_mut(i - 1).unwrap()
                 };
 
-                p0.dir = p1.pos - p0.pos;
-                p0.len = normalize(&mut p0.dir);
+                p0.set_direction(p1.pos - p0.pos);
 
                 bounds.min.x = bounds.min.x.min(p0.pos.x);
                 bounds.min.y = bounds.min.y.min(p0.pos.y);
@@ -395,9 +380,12 @@ impl Tessellator {
     }
 
     pub(crate) fn expand_fill(&mut self, fringe_width: f32, line_join: LineJoin, miter_limit: f32) {
+        self.calculate_joins(fringe_width, line_join, miter_limit);
+
         let has_fringe = fringe_width > 0.0;
 
-        self.calculate_joins(fringe_width, line_join, miter_limit);
+        let convex = self.is_convex();
+        let vertices = &mut self.vertices;
 
         // Calculate max vertex usage.
         for contour in &mut self.contours {
@@ -406,43 +394,39 @@ impl Tessellator {
 
             if has_fringe {
                 vertex_count += (point_count + contour.bevel * 5 + 1) * 2;
-                contour.stroke.reserve(vertex_count);
+                vertices.reserve(vertex_count);
             }
 
-            contour.fill.reserve(vertex_count);
+            vertices.reserve(vertex_count);
         }
 
-        let convex = self.is_convex();
+        // TODO: woff = 0.0 produces no artifaacts for small sizes
+        let woff = 0.5 * fringe_width;
+        //let woff = 0.0; // Makes everything thicker
 
-        for contour in &mut self.contours {
-            contour.stroke.clear();
-            contour.fill.clear();
-
-            // TODO: woff = 0.0 produces no artifaacts for small sizes
-            let woff = 0.5 * fringe_width;
-            //let woff = 0.0; // Makes everything thicker
-
-            if has_fringe {
+        if has_fringe {
+            for contour in &mut self.contours {
+                let start = vertices.len();
                 for (p0, p1) in contour.point_pairs(&self.points) {
                     let uv = [0.5, 1.0];
                     if p1.flags.contains(PointFlags::BEVEL) {
                         if p1.flags.contains(PointFlags::LEFT) {
-                            contour.fill.push(Vertex::new(p1.pos + p1.ext * woff, uv));
+                            vertices.push(Vertex::new(p1.pos + p1.ext * woff, uv));
                         } else {
-                            contour.fill.push(Vertex::new(
-                                p1.pos + Offset::new(p0.dir.y, -p0.dir.x) * woff,
-                                uv,
-                            ));
-                            contour.fill.push(Vertex::new(
-                                p1.pos + Offset::new(p1.dir.y, -p1.dir.x) * woff,
-                                uv,
-                            ));
+                            let p0 = p1.pos + Offset::new(p0.dir.y, -p0.dir.x) * woff;
+                            let p1 = p1.pos + Offset::new(p1.dir.y, -p1.dir.x) * woff;
+                            vertices.push(Vertex::new(p0, uv));
+                            vertices.push(Vertex::new(p1, uv));
                         }
                     } else {
-                        contour.fill.push(Vertex::new(p1.pos + p1.ext * woff, uv));
+                        vertices.push(Vertex::new(p1.pos + p1.ext * woff, uv));
                     }
                 }
 
+                contour.fill = start..vertices.len();
+            }
+
+            for contour in &mut self.contours {
                 let (rw, ru) = (fringe_width - woff, 1.0);
                 let (lw, lu) = if convex {
                     // Create only half a fringe for convex shapes so that
@@ -452,31 +436,36 @@ impl Tessellator {
                     (fringe_width + woff, 0.0)
                 };
 
+                let start = vertices.len();
+
                 for (p0, p1) in contour.point_pairs(&self.points) {
                     if p1
                         .flags
                         .contains(PointFlags::BEVEL | PointFlags::INNERBEVEL)
                     {
-                        bevel_join(&mut contour.stroke, p0, &p1, [lw, rw, lu, ru]);
+                        bevel_join(vertices, p0, &p1, [lw, rw, lu, ru]);
                     } else {
-                        contour.stroke.extend_from_slice(&[
-                            Vertex::new(p1.pos + (p1.ext * lw), [lu, 1.0]),
-                            Vertex::new(p1.pos - (p1.ext * rw), [ru, 1.0]),
-                        ]);
+                        vertices.push(Vertex::new(p1.pos + (p1.ext * lw), [lu, 1.0]));
+                        vertices.push(Vertex::new(p1.pos - (p1.ext * rw), [ru, 1.0]));
                     }
                 }
 
                 // Loop it
-                let p0 = contour.stroke[0].pos;
-                let p1 = contour.stroke[1].pos;
-                contour.stroke.push(Vertex::new(p0, [lu, 1.0]));
-                contour.stroke.push(Vertex::new(p1, [ru, 1.0]));
-            } else {
+                let p0 = vertices[start].pos;
+                let p1 = vertices[start + 1].pos;
+                vertices.push(Vertex::new(p0, [lu, 1.0]));
+                vertices.push(Vertex::new(p1, [ru, 1.0]));
+                contour.stroke = start..vertices.len();
+            }
+        } else {
+            for contour in &mut self.contours {
                 let points = &self.points[contour.point_range.clone()];
 
+                let start = vertices.len();
                 for point in points {
-                    contour.fill.push(Vertex::new(point.pos, [0.5, 1.0]));
+                    vertices.push(Vertex::new(point.pos, [0.5, 1.0]));
                 }
+                contour.fill = start..vertices.len();
             }
         }
     }
@@ -485,15 +474,15 @@ impl Tessellator {
         &mut self,
         stroke_width: f32,
         fringe_width: f32,
-        line_cap_start: LineCap,
-        line_cap_end: LineCap,
-        line_join: LineJoin,
+        cap_start: LineCap,
+        cap_end: LineCap,
+        join: LineJoin,
         miter_limit: f32,
         tess_tol: f32,
     ) {
         let ncap = curve_divisions(stroke_width, PI, tess_tol);
-
         let stroke_width = stroke_width + (fringe_width * 0.5);
+        self.calculate_joins(stroke_width, join, miter_limit);
 
         // Disable the gradient used for antialiasing when antialiasing is not enabled.
         let (u0, u1) = if fringe_width == 0.0 {
@@ -502,41 +491,35 @@ impl Tessellator {
             (0.0, 1.0)
         };
 
-        self.calculate_joins(stroke_width, line_join, miter_limit);
+        let vertices = &mut self.vertices;
 
         for contour in &mut self.contours {
-            contour.stroke.clear();
-
+            let start = vertices.len();
             for (i, (p0, p1)) in contour.point_pairs(&self.points).enumerate() {
                 // Add start cap
                 if !contour.closed && i == 1 {
-                    match line_cap_start {
+                    match cap_start {
                         LineCap::Butt => butt_cap_start(
-                            &mut contour.stroke,
-                            &p0,
-                            &p0,
+                            vertices,
+                            p0,
+                            p0,
                             stroke_width,
                             -fringe_width * 0.5,
                             fringe_width,
                             (u0, u1),
                         ),
                         LineCap::Square => butt_cap_start(
-                            &mut contour.stroke,
-                            &p0,
-                            &p0,
+                            vertices,
+                            p0,
+                            p0,
                             stroke_width,
                             stroke_width - fringe_width,
                             fringe_width,
                             (u0, u1),
                         ),
-                        LineCap::Round => round_cap_start(
-                            &mut contour.stroke,
-                            &p0,
-                            &p0,
-                            stroke_width,
-                            ncap as usize,
-                            (u0, u1),
-                        ),
+                        LineCap::Round => {
+                            round_cap_start(vertices, p0, p0, stroke_width, ncap as usize, (u0, u1))
+                        }
                     }
                 }
 
@@ -544,44 +527,32 @@ impl Tessellator {
                     if p1.flags.contains(PointFlags::BEVEL)
                         || p1.flags.contains(PointFlags::INNERBEVEL)
                     {
-                        if line_join == LineJoin::Round {
-                            round_join(
-                                &mut contour.stroke,
-                                &p0,
-                                &p1,
-                                [stroke_width, stroke_width, u0, u1],
-                                ncap as usize,
-                            );
+                        let args = [stroke_width, stroke_width, u0, u1];
+                        if join == LineJoin::Round {
+                            round_join(vertices, p0, p1, args, ncap as usize);
                         } else {
-                            bevel_join(
-                                &mut contour.stroke,
-                                &p0,
-                                &p1,
-                                [stroke_width, stroke_width, u0, u1],
-                            );
+                            bevel_join(vertices, p0, p1, args);
                         }
                     } else {
-                        contour.stroke.extend_from_slice(&[
-                            Vertex::new(p1.pos + (p1.ext * stroke_width), [u0, 1.0]),
-                            Vertex::new(p1.pos - (p1.ext * stroke_width), [u1, 1.0]),
-                        ]);
+                        vertices.push(Vertex::new(p1.pos + (p1.ext * stroke_width), [u0, 1.0]));
+                        vertices.push(Vertex::new(p1.pos - (p1.ext * stroke_width), [u1, 1.0]));
                     }
                 }
 
                 // Add end cap
                 if !contour.closed && i == contour.len() - 1 {
-                    match line_cap_end {
+                    match cap_end {
                         LineCap::Butt => butt_cap_end(
-                            &mut contour.stroke,
-                            &p1,
-                            &p0,
+                            vertices,
+                            p1,
+                            p0,
                             stroke_width,
                             -fringe_width * 0.5,
                             fringe_width,
                             (u0, u1),
                         ),
                         LineCap::Square => butt_cap_end(
-                            &mut contour.stroke,
+                            vertices,
                             &p1,
                             &p0,
                             stroke_width,
@@ -589,24 +560,21 @@ impl Tessellator {
                             fringe_width,
                             (u0, u1),
                         ),
-                        LineCap::Round => round_cap_end(
-                            &mut contour.stroke,
-                            &p1,
-                            &p0,
-                            stroke_width,
-                            ncap as usize,
-                            (u0, u1),
-                        ),
+                        LineCap::Round => {
+                            round_cap_end(vertices, &p1, &p0, stroke_width, ncap as usize, (u0, u1))
+                        }
                     }
                 }
             }
 
             if contour.closed {
-                contour.stroke.extend_from_slice(&[
-                    Vertex::new(contour.stroke[0].pos, [u0, 1.0]),
-                    Vertex::new(contour.stroke[1].pos, [u1, 1.0]),
-                ]);
+                let p0 = vertices[start].pos;
+                let p1 = vertices[start + 1].pos;
+                vertices.push(Vertex::new(p0, [u0, 1.0]));
+                vertices.push(Vertex::new(p1, [u1, 1.0]));
             }
+
+            contour.stroke = start..vertices.len();
         }
     }
 
@@ -614,7 +582,7 @@ impl Tessellator {
         if let Some(contour) = self.contours.last_mut() {
             // If last point equals this new point just OR the flags and ignore the new point
             if let Some(last_point) = self.points.get_mut(contour.point_range.end) {
-                if approx_eq(last_point.pos, point, dist_tol) {
+                if util::approx_eq(last_point.pos, point, dist_tol) {
                     last_point.flags |= flags;
                     return;
                 }
@@ -963,28 +931,8 @@ fn bevel_join(vtx: &mut Vec<Vertex>, p0: &Point, p1: &Point, [lw, rw, lu, ru]: [
     }
 }
 
-/*
 fn butt_cap_start(
-    vtx: &mut Vec<Vertex>,
-    p: &Point,
-    delta: Offset,
-    w: f32,
-    d: f32,
-    aa: f32,
-    u: (f32, f32),
-) {
-    let p1 = p.pos - delta * d;
-    let p0 = p1 - delta * aa;
-    let dl = Offset::new(delta.y, -delta.x) * w;
-    vtx.push(Vertex::new(p0 + dl, [u.0, 0.0]));
-    vtx.push(Vertex::new(p0 - dl, [u.1, 0.0]));
-    vtx.push(Vertex::new(p1 + dl, [u.0, 1.0]));
-    vtx.push(Vertex::new(p1 - dl, [u.1, 1.0]));
-}
-*/
-
-fn butt_cap_start(
-    verts: &mut Vec<Vertex>,
+    vertices: &mut Vec<Vertex>,
     p0: &Point,
     p1: &Point,
     w: f32,
@@ -995,34 +943,14 @@ fn butt_cap_start(
     let p = p0.pos - p1.dir * d;
     let dl = Offset::new(p1.dir.y, -p1.dir.x);
 
-    verts.push(Vertex::new(p + dl * w - p1.dir * aa, [u.0, 0.0]));
-    verts.push(Vertex::new(p - dl * w - p1.dir * aa, [u.1, 0.0]));
-    verts.push(Vertex::new(p + dl * w, [u.0, 1.0]));
-    verts.push(Vertex::new(p - dl * w, [u.1, 1.0]));
+    vertices.push(Vertex::new(p + dl * w - p1.dir * aa, [u.0, 0.0]));
+    vertices.push(Vertex::new(p - dl * w - p1.dir * aa, [u.1, 0.0]));
+    vertices.push(Vertex::new(p + dl * w, [u.0, 1.0]));
+    vertices.push(Vertex::new(p - dl * w, [u.1, 1.0]));
 }
 
-/*
 fn butt_cap_end(
-    vtx: &mut Vec<Vertex>,
-    p: &Point,
-    delta: Offset,
-    w: f32,
-    d: f32,
-    aa: f32,
-    u: (f32, f32),
-) {
-    let p1 = p.pos + delta * d;
-    let p0 = p1 + delta * aa;
-    let dl = Offset::new(delta.y, -delta.x) * w;
-    vtx.push(Vertex::new(p1 + dl, [u.0, 1.0]));
-    vtx.push(Vertex::new(p1 - dl, [u.1, 1.0]));
-    vtx.push(Vertex::new(p0 + dl, [u.0, 0.0]));
-    vtx.push(Vertex::new(p0 - dl, [u.1, 0.0]));
-}
-*/
-
-fn butt_cap_end(
-    verts: &mut Vec<Vertex>,
+    vertices: &mut Vec<Vertex>,
     p0: &Point,
     p1: &Point,
     w: f32,
@@ -1033,58 +961,14 @@ fn butt_cap_end(
     let p = p0.pos + p1.dir * d;
     let dl = Offset::new(p1.dir.y, -p1.dir.x);
 
-    verts.push(Vertex::new(p + dl * w, [u.0, 1.0]));
-    verts.push(Vertex::new(p - dl * w, [u.1, 1.0]));
-    verts.push(Vertex::new(p + dl * w + p1.dir * aa, [u.0, 0.0]));
-    verts.push(Vertex::new(p - dl * w + p1.dir * aa, [u.1, 0.0]));
+    vertices.push(Vertex::new(p + dl * w, [u.0, 1.0]));
+    vertices.push(Vertex::new(p - dl * w, [u.1, 1.0]));
+    vertices.push(Vertex::new(p + dl * w + p1.dir * aa, [u.0, 0.0]));
+    vertices.push(Vertex::new(p - dl * w + p1.dir * aa, [u.1, 0.0]));
 }
-
-/*
-fn round_cap_start(
-    vtx: &mut Vec<Vertex>,
-    p: &Point,
-    delta: Offset,
-    w: f32,
-    ncap: usize,
-    _aa: f32,
-    u: (f32, f32),
-) {
-    let (delta, dl) = (delta * w, Offset::new(delta.y, -delta.x) * w);
-    for i in 0..ncap {
-        let angle = (i as f32) / ((ncap - 1) as f32) * PI;
-        let (sin, cos) = angle.sin_cos();
-        vtx.push(Vertex::new(p.pos - dl * cos - delta * sin, [u.0, 1.0]));
-        vtx.push(Vertex::new(p.pos, [0.5, 1.0]));
-    }
-
-    vtx.push(Vertex::new(p.pos + dl, [u.0, 1.0]));
-    vtx.push(Vertex::new(p.pos - dl, [u.1, 1.0]));
-}
-fn round_cap_end(
-    vtx: &mut Vec<Vertex>,
-    p: &Point,
-    delta: Offset,
-    w: f32,
-    ncap: usize,
-    _aa: f32,
-    u: (f32, f32),
-) {
-    let (delta, dl) = (delta * w, Offset::new(delta.y, -delta.x) * w);
-
-    vtx.push(Vertex::new(p.pos + dl, [u.0, 1.0]));
-    vtx.push(Vertex::new(p.pos - dl, [u.1, 1.0]));
-
-    for i in 0..ncap {
-        let angle = (i as f32) / ((ncap - 1) as f32) * PI;
-        let (sin, cos) = angle.sin_cos();
-        vtx.push(Vertex::new(p.pos, [0.5, 1.0]));
-        vtx.push(Vertex::new(p.pos - dl * cos + delta * sin, [u.0, 1.0]));
-    }
-}
-*/
 
 fn round_cap_start(
-    verts: &mut Vec<Vertex>,
+    vertices: &mut Vec<Vertex>,
     p0: &Point,
     p1: &Point,
     w: f32,
@@ -1098,16 +982,16 @@ fn round_cap_start(
         let angle = i as f32 / (ncap as f32 - 1.0) * PI;
         let (sin, cos) = angle.sin_cos();
 
-        verts.push(Vertex::new(p - dl * cos * w - p1.dir * sin * w, [u.0, 1.0]));
-        verts.push(Vertex::new(p, [0.5, 1.0]));
+        vertices.push(Vertex::new(p - dl * cos * w - p1.dir * sin * w, [u.0, 1.0]));
+        vertices.push(Vertex::new(p, [0.5, 1.0]));
     }
 
-    verts.push(Vertex::new(p + dl * w, [u.0, 1.0]));
-    verts.push(Vertex::new(p - dl * w, [u.1, 1.0]));
+    vertices.push(Vertex::new(p + dl * w, [u.0, 1.0]));
+    vertices.push(Vertex::new(p - dl * w, [u.1, 1.0]));
 }
 
 fn round_cap_end(
-    verts: &mut Vec<Vertex>,
+    vertices: &mut Vec<Vertex>,
     p0: &Point,
     p1: &Point,
     w: f32,
@@ -1117,14 +1001,14 @@ fn round_cap_end(
     let p = p0.pos;
     let dl = Offset::new(p1.dir.y, -p1.dir.x);
 
-    verts.push(Vertex::new(p + dl * w, [u.0, 1.0]));
-    verts.push(Vertex::new(p - dl * w, [u.1, 1.0]));
+    vertices.push(Vertex::new(p + dl * w, [u.0, 1.0]));
+    vertices.push(Vertex::new(p - dl * w, [u.1, 1.0]));
 
     for i in 0..ncap {
         let angle = i as f32 / (ncap as f32 - 1.0) * PI;
         let (sin, cos) = angle.sin_cos();
 
-        verts.push(Vertex::new(p, [0.5, 1.0]));
-        verts.push(Vertex::new(p - dl * cos * w + p1.dir * sin * w, [u.0, 1.0]));
+        vertices.push(Vertex::new(p, [0.5, 1.0]));
+        vertices.push(Vertex::new(p - dl * cos * w + p1.dir * sin * w, [u.0, 1.0]));
     }
 }

@@ -29,9 +29,9 @@ mod tessellator;
 pub use self::{
     canvas::Canvas,
     math::{Color, Corners, Offset, RRect, Rect, Transform},
-    paint::{Gradient, LineCap, LineJoin, Paint, PaintingStyle, Stroke},
-    path::{Path, Solidity, Winding},
-    picture::{PictureBundle, PictureRecorder},
+    paint::{Gradient, LineCap, LineJoin, Paint, PaintingStyle},
+    path::{Path, Solidity},
+    picture::{Picture, Recorder},
     renderer::Renderer,
     tessellator::Tessellator,
 };
