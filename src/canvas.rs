@@ -1,7 +1,7 @@
 use crate::{
     math::{Corners, Offset, Rect, Transform},
     paint::{Paint, PaintingStyle},
-    path::Command,
+    path::{Command, FillRule, Path},
     picture::Recorder,
     renderer::Renderer,
 };
@@ -9,7 +9,7 @@ use crate::{
 impl Transform {
     #[inline]
     pub(crate) fn average_scale(&self) -> f32 {
-        self.re * self.re + self.im * self.im
+        (self.re * self.re + self.im * self.im).sqrt()
     }
 }
 
@@ -40,53 +40,65 @@ impl TransformStack {
 
 pub struct Canvas<'a> {
     ctx: &'a mut Renderer,
-    picture: &'a mut Recorder,
+    recorder: &'a mut Recorder,
     states: TransformStack,
+    path: Path,
     scale: f32,
 }
 
 impl<'a> Canvas<'a> {
-    pub fn new(ctx: &'a mut Renderer, picture: &'a mut Recorder, scale: f32) -> Self {
+    pub fn new(ctx: &'a mut Renderer, recorder: &'a mut Recorder, scale: f32) -> Self {
         let transform = Transform::default();
         Self {
             ctx,
-            picture,
+            recorder,
             states: TransformStack(transform, Vec::with_capacity(16)),
+            path: Path::new(),
             scale,
         }
     }
 
     pub fn draw_image_rect(&mut self, image: u32, rect: Rect) {
-        if self.ctx.images.get(&image).is_some() {
-            self.picture
+        if self.ctx.images.get(image).is_some() {
+            self.recorder
                 .push_image(rect, self.states.transform(), image, [255; 4]);
         }
     }
 
     pub fn draw_image(&mut self, image: u32, offset: Offset) {
-        if let Some(image_bind) = self.ctx.images.get(&image) {
+        if let Some(image_bind) = self.ctx.images.get(image) {
             let p0 = offset;
             let p1 = Offset::new(
                 p0.x + image_bind.size.width as f32 / self.scale,
                 p0.y + image_bind.size.height as f32 / self.scale,
             );
-            self.picture
+            self.recorder
                 .push_image(Rect::new(p0, p1), self.states.transform(), image, [255; 4]);
         }
     }
 
     fn force_stroke(&mut self, paint: &Paint) {
         let xform = self.states.transform();
-        let commands = self.ctx.path.into_iter();
-        self.picture.stroke_path(commands, paint, xform, self.scale);
+        let commands = self.path.into_iter();
+        self.recorder
+            .stroke_path(commands, paint, xform, self.scale);
     }
 
     fn fill_or_stroke(&mut self, paint: &Paint) {
         let xform = self.states.transform();
-        let commands = self.ctx.path.into_iter();
+        let commands = self.path.into_iter();
         match paint.style {
-            PaintingStyle::Stroke => self.picture.stroke_path(commands, paint, xform, self.scale),
-            PaintingStyle::Fill => self.picture.fill_path(commands, paint, xform, self.scale),
+            PaintingStyle::Stroke => self
+                .recorder
+                .stroke_path(commands, paint, xform, self.scale),
+            PaintingStyle::FillNonZero => {
+                self.recorder
+                    .fill_path(commands, paint, xform, self.scale, FillRule::NonZero)
+            }
+            PaintingStyle::FillEvenOdd => {
+                self.recorder
+                    .fill_path(commands, paint, xform, self.scale, FillRule::EvenOdd)
+            }
         }
     }
 
@@ -151,8 +163,8 @@ impl<'a> Canvas<'a> {
     /// and that has the radius given by the second argument, with the Paint given in the third argument.
     /// Whether the circle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_circle(&mut self, center: Offset, radius: f32, paint: Paint) {
-        self.ctx.path.clear();
-        self.ctx.path.circle(center, radius);
+        self.path.clear();
+        self.path.circle(center, radius);
         self.fill_or_stroke(&paint);
     }
 
@@ -179,32 +191,28 @@ impl<'a> Canvas<'a> {
     /// Draws a line between the given points using the given paint.
     /// The line is stroked, the value of the Paint.style is ignored for this call. [...]
     pub fn draw_line(&mut self, p0: Offset, p1: Offset, paint: Paint) {
-        self.ctx.path.clear();
-        let xform = self.states.transform();
-        let (p0, p1) = (xform.apply(p0), xform.apply(p1));
-        self.ctx.path.move_to(p0);
-        self.ctx.path.line_to(p1);
+        self.path.clear();
+        self.path.move_to(p0);
+        self.path.line_to(p1);
         self.force_stroke(&paint);
     }
 
     pub fn draw_lines(&mut self, points: &[Offset], paint: Paint) {
-        if points.len() < 2 {
-            return;
+        if points.len() >= 2 {
+            self.path.clear();
+            self.path.move_to(points[0]);
+            for &p in &points[1..] {
+                self.path.line_to(p);
+            }
+            self.force_stroke(&paint);
         }
-
-        self.ctx.path.clear();
-        self.ctx.path.move_to(points[0]);
-        for &p in &points[1..] {
-            self.ctx.path.line_to(p);
-        }
-        self.force_stroke(&paint);
     }
 
     /// Draws an axis-aligned oval that fills the given axis-aligned rectangle with the given Paint.
     /// Whether the oval is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
-        self.ctx.path.clear();
-        self.ctx.path.oval(rect);
+        self.path.clear();
+        self.path.oval(rect);
         self.fill_or_stroke(&paint);
     }
 
@@ -220,8 +228,8 @@ impl<'a> Canvas<'a> {
     /// Whether this shape is filled or stroked (or both) is controlled by Paint.style.
     /// If the path is filled, then sub-paths within it are implicitly closed (see Path.close).
     pub fn draw_path(&mut self, iter: impl IntoIterator<Item = Command>, paint: Paint) {
-        self.ctx.path.clear();
-        self.ctx.path.extend(iter);
+        self.path.clear();
+        self.path.extend(iter);
         self.fill_or_stroke(&paint);
     }
 
@@ -240,16 +248,20 @@ impl<'a> Canvas<'a> {
     /// Draws a rectangle with the given Paint.
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
-        self.ctx.path.clear();
-        self.ctx.path.rect(rect);
+        self.path.clear();
+        self.path.rect(rect);
         self.fill_or_stroke(&paint);
     }
 
     /// Draws a rounded rectangle with the given Paint.
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rrect(&mut self, rect: Rect, radius: Corners, paint: Paint) {
-        self.ctx.path.clear();
-        self.ctx.path.rrect(rect, radius);
+        self.path.clear();
+        if radius.tl <= 0.0 && radius.tr <= 0.0 && radius.br <= 0.0 && radius.bl <= 0.0 {
+            self.path.rect(rect);
+        } else {
+            self.path.rrect(rect, radius);
+        }
         self.fill_or_stroke(&paint);
     }
 

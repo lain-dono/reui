@@ -21,6 +21,7 @@ mod math;
 mod paint;
 mod path;
 mod picture;
+mod pipeline;
 mod renderer;
 mod tessellator;
 

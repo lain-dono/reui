@@ -27,6 +27,7 @@ struct Demo {
     mouse: Offset,
     counter: crate::time::Counter,
     image: u32,
+    blowup: bool,
 }
 
 impl app::Application for Demo {
@@ -46,14 +47,27 @@ impl app::Application for Demo {
             mouse: Offset::zero(),
             counter: crate::time::Counter::new(),
             image,
+            blowup: false,
         }
     }
 
     fn update(&mut self, event: WindowEvent, control_flow: &mut ControlFlow) {
+        use reui::app::winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
         match event {
             WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
             WindowEvent::CursorMoved { position, .. } => {
                 self.mouse = Offset::new(position.x as f32, position.y as f32)
+            }
+            WindowEvent::KeyboardInput {
+                input:
+                    KeyboardInput {
+                        virtual_keycode: Some(VirtualKeyCode::Space),
+                        state: ElementState::Released,
+                        ..
+                    },
+                ..
+            } => {
+                self.blowup = !self.blowup;
             }
             _ => {}
         }
@@ -85,12 +99,12 @@ impl app::Application for Demo {
             .vg
             .begin_frame(&queue, width, height, scale, &mut self.picture);
         ctx.draw_image_rect(self.image, Rect::from_size(wsize.x, wsize.y));
-        canvas::render_demo(&mut ctx, mouse, wsize, time);
+        canvas::render_demo(&mut ctx, mouse, wsize, time, self.blowup);
 
-        let bundle = self.picture.build(&device);
+        let bundle = self.picture.finish(&device, &self.vg);
         {
             let mut rpass = frame.clear(&mut encoder, [0.3, 0.3, 0.32, 1.0]);
-            self.vg.draw_picture(&mut rpass, &self.picture, &bundle);
+            rpass.execute_bundles(bundle.into_iter());
         }
 
         queue.submit(Some(encoder.finish()));

@@ -70,10 +70,10 @@ impl app::Application for Demo {
             ctx.draw_image(self.img, Offset::zero());
         }
 
-        let bundle = self.picture.build(&device);
+        let bundle = self.picture.finish(&device, &self.vg);
         {
             let mut rpass = frame.clear(&mut encoder, [0.3, 0.3, 0.32, 1.0]);
-            self.vg.draw_picture(&mut rpass, &self.picture, &bundle);
+            rpass.execute_bundles(bundle.into_iter());
         }
 
         queue.submit(Some(encoder.finish()));

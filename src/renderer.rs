@@ -1,11 +1,5 @@
-use crate::{
-    canvas::Canvas,
-    path::Path,
-    picture::{DrawCall, Instance, Picture, Recorder, Vertex},
-};
+use crate::{canvas::Canvas, picture::Recorder, pipeline::Pipeline};
 use std::collections::HashMap;
-
-const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
 
 pub(crate) struct ImageBind {
     pub bind_group: wgpu::BindGroup,
@@ -94,13 +88,36 @@ impl HostImage {
     }
 }
 
-pub struct Renderer {
-    pub(crate) path: Path,
-    //pub(crate) tess: Tessellator,
+#[derive(Default)]
+pub(crate) struct Images {
     pub(crate) images: HashMap<u32, ImageBind>,
-    images_idx: u32,
-    pipeline: Pipeline,
-    viewport: Viewport,
+    idx: u32,
+}
+
+impl std::ops::Index<u32> for Images {
+    type Output = ImageBind;
+    fn index(&self, index: u32) -> &Self::Output {
+        &self.images[&index]
+    }
+}
+
+impl Images {
+    pub fn get(&self, image: u32) -> Option<&ImageBind> {
+        self.images.get(&image)
+    }
+
+    pub fn create(&mut self, bind: ImageBind) -> u32 {
+        let idx = self.idx;
+        drop(self.images.insert(idx, bind));
+        self.idx += 1;
+        idx
+    }
+}
+
+pub struct Renderer {
+    pub(crate) images: Images,
+    pub(crate) pipeline: Pipeline,
+    pub(crate) viewport: Viewport,
 }
 
 impl Renderer {
@@ -108,13 +125,8 @@ impl Renderer {
         let viewport = Viewport::new(device);
         let pipeline = Pipeline::new(device, format, &viewport);
 
-        let images = HashMap::default();
-
         Self {
-            path: Path::new(),
-
-            images,
-            images_idx: 1,
+            images: Images::default(),
 
             pipeline,
             viewport,
@@ -130,14 +142,7 @@ impl Renderer {
     ) -> image::ImageResult<u32> {
         let image = HostImage::open_rgba(device, queue, path)?;
         let bind = image.bind(device, &self.pipeline.image_layout, &self.pipeline.sampler);
-        Ok(self.create_image(bind))
-    }
-
-    fn create_image(&mut self, bind: ImageBind) -> u32 {
-        let idx = self.images_idx;
-        drop(self.images.insert(idx, bind));
-        self.images_idx += 1;
-        idx
+        Ok(self.images.create(bind))
     }
 
     pub fn begin_frame<'a>(
@@ -146,119 +151,17 @@ impl Renderer {
         width: u32,
         height: u32,
         scale: f32,
-        picture: &'a mut Recorder,
+        recorder: &'a mut Recorder,
     ) -> Canvas<'a> {
         self.viewport.upload(queue, width, height, scale);
-        Canvas::new(self, picture, scale)
-    }
-
-    pub fn draw_picture<'rpass>(
-        &'rpass self,
-        rpass: &mut wgpu::RenderPass<'rpass>,
-        picture: &'rpass Recorder,
-        bundle: &'rpass Picture,
-    ) {
-        //rpass.set_stencil_reference(0);
-        rpass.set_bind_group(0, &self.viewport.bind_group, &[]);
-        rpass.set_index_buffer(bundle.indices.slice(..), wgpu::IndexFormat::Uint16);
-        rpass.set_vertex_buffer(0, bundle.vertices.slice(..));
-        rpass.set_vertex_buffer(1, bundle.instances.slice(..));
-
-        for call in picture.calls.iter().cloned() {
-            match call {
-                DrawCall::Convex {
-                    indices,
-                    base_vertex,
-                    instance,
-                } => {
-                    rpass.set_pipeline(&self.pipeline.convex);
-                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
-                }
-
-                DrawCall::FillStencil {
-                    indices,
-                    base_vertex,
-                    instance,
-                } => {
-                    rpass.set_pipeline(&self.pipeline.fill_stencil);
-                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
-                }
-                DrawCall::FillQuad {
-                    indices,
-                    base_vertex,
-                    instance,
-                } => {
-                    rpass.set_pipeline(&self.pipeline.fill_quad);
-                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
-                }
-
-                DrawCall::FillQuadEvenOdd {
-                    indices,
-                    base_vertex,
-                    instance,
-                } => {
-                    rpass.set_pipeline(&self.pipeline.fill_quad_even_odd);
-                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
-                }
-
-                // Fill the stroke base without overlap
-                DrawCall::StrokeBase {
-                    indices,
-                    base_vertex,
-                    instance,
-                } => {
-                    rpass.set_pipeline(&self.pipeline.stroke_base);
-                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
-                }
-                // Clear stencil buffer
-                DrawCall::StrokeStencil {
-                    indices,
-                    base_vertex,
-                    instance,
-                } => {
-                    rpass.set_pipeline(&self.pipeline.stroke_stencil);
-                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
-                }
-
-                // Draw anti-aliased pixels.
-                DrawCall::Fringes {
-                    indices,
-                    base_vertex,
-                    instance,
-                } => {
-                    rpass.set_pipeline(&self.pipeline.fringes);
-                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
-                }
-                DrawCall::FringesEvenOdd {
-                    indices,
-                    base_vertex,
-                    instance,
-                } => {
-                    rpass.set_pipeline(&self.pipeline.fringes_even_odd);
-                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
-                }
-
-                DrawCall::SelectImage { image } => {
-                    rpass.set_bind_group(1, &self.images[&image].bind_group, &[]);
-                }
-
-                DrawCall::Image {
-                    indices,
-                    base_vertex,
-                    instance,
-                } => {
-                    rpass.set_pipeline(&self.pipeline.image);
-                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
-                }
-            }
-        }
+        Canvas::new(self, recorder, scale)
     }
 }
 
-struct Viewport {
-    layout: wgpu::BindGroupLayout,
-    buffer: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
+pub(crate) struct Viewport {
+    pub layout: wgpu::BindGroupLayout,
+    pub buffer: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
 }
 
 impl Viewport {
@@ -305,270 +208,5 @@ impl Viewport {
         let h = scale / height as f32;
         let viewport = [w, h, 0.0, 0.0];
         queue.write_buffer(&self.buffer, 0, crate::picture::cast_slice(&viewport));
-    }
-}
-
-struct Pipeline {
-    image: wgpu::RenderPipeline,
-
-    convex: wgpu::RenderPipeline,
-    fringes: wgpu::RenderPipeline,
-
-    fill_stencil: wgpu::RenderPipeline,
-    fill_quad: wgpu::RenderPipeline,
-
-    fringes_even_odd: wgpu::RenderPipeline,
-    fill_quad_even_odd: wgpu::RenderPipeline,
-
-    stroke_base: wgpu::RenderPipeline,
-    stroke_stencil: wgpu::RenderPipeline,
-
-    image_layout: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
-}
-
-impl Pipeline {
-    fn new(device: &wgpu::Device, format: wgpu::TextureFormat, viewport: &Viewport) -> Self {
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: None,
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
-            lod_min_clamp: 0.0,
-            lod_max_clamp: 100.0,
-            compare: None,
-            anisotropy_clamp: None,
-            border_color: None,
-        });
-
-        let image_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("VG bind group layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler {
-                        comparison: false,
-                        filtering: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("reui layout"),
-            bind_group_layouts: &[&viewport.layout, &image_layout],
-            push_constant_ranges: &[],
-        });
-
-        let builder = Builder {
-            format,
-            device,
-            layout,
-
-            module: device.create_shader_module(&wgpu::ShaderModuleDescriptor {
-                label: Some("reui shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-                flags: wgpu::ShaderFlags::all(),
-            }),
-        };
-
-        macro_rules! stencil_face {
-            ($comp:ident, Fail::$fail:ident, Pass::$pass:ident) => {
-                wgpu::StencilFaceState {
-                    compare: wgpu::CompareFunction::$comp,
-                    fail_op: wgpu::StencilOperation::$fail,
-                    depth_fail_op: wgpu::StencilOperation::Keep,
-                    pass_op: wgpu::StencilOperation::$pass,
-                }
-            };
-        }
-
-        const ALWAYS_ZERO: wgpu::StencilFaceState = stencil_face!(Always, Fail::Zero, Pass::Zero);
-        const INCR_WRAP: wgpu::StencilFaceState =
-            stencil_face!(Always, Fail::Keep, Pass::IncrementWrap);
-        const DECR_WRAP: wgpu::StencilFaceState =
-            stencil_face!(Always, Fail::Keep, Pass::DecrementWrap);
-
-        Self {
-            image: builder.image(stencil_face!(Always, Fail::Keep, Pass::Keep)),
-            convex: builder.base(stencil_face!(Always, Fail::Keep, Pass::Keep)),
-
-            fill_stencil: builder.stencil(None, INCR_WRAP, DECR_WRAP),
-            fill_quad: builder.base(stencil_face!(NotEqual, Fail::Zero, Pass::Zero)),
-
-            stroke_base: builder.base(stencil_face!(Equal, Fail::Keep, Pass::IncrementClamp)),
-            stroke_stencil: builder.stencil(Some(wgpu::Face::Back), ALWAYS_ZERO, ALWAYS_ZERO),
-
-            fringes: builder.base(stencil_face!(Equal, Fail::Keep, Pass::Keep)),
-
-            fringes_even_odd: builder.even_odd(stencil_face!(Equal, Fail::Keep, Pass::Keep)),
-            fill_quad_even_odd: builder.even_odd(stencil_face!(NotEqual, Fail::Zero, Pass::Zero)),
-
-            image_layout,
-            sampler,
-        }
-    }
-}
-
-struct Builder<'a> {
-    device: &'a wgpu::Device,
-    format: wgpu::TextureFormat,
-    layout: wgpu::PipelineLayout,
-    module: wgpu::ShaderModule,
-}
-
-impl<'a> Builder<'a> {
-    fn base(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
-        self.pipeline(
-            "main",
-            wgpu::ColorWrite::ALL,
-            Some(wgpu::Face::Back),
-            stencil.clone(),
-            stencil,
-            false,
-        )
-    }
-
-    fn even_odd(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
-        self.pipeline(
-            "main",
-            wgpu::ColorWrite::ALL,
-            Some(wgpu::Face::Back),
-            stencil.clone(),
-            stencil,
-            true,
-        )
-    }
-
-    fn image(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
-        self.pipeline(
-            "image",
-            wgpu::ColorWrite::ALL,
-            Some(wgpu::Face::Back),
-            stencil.clone(),
-            stencil,
-            false,
-        )
-    }
-
-    fn stencil(
-        &self,
-        cull_mode: Option<wgpu::Face>,
-        front: wgpu::StencilFaceState,
-        back: wgpu::StencilFaceState,
-    ) -> wgpu::RenderPipeline {
-        self.pipeline(
-            "stencil",
-            wgpu::ColorWrite::empty(),
-            cull_mode,
-            front,
-            back,
-            false,
-        )
-    }
-
-    fn pipeline(
-        &self,
-        entry_point: &str,
-        write_mask: wgpu::ColorWrite,
-        cull_mode: Option<wgpu::Face>,
-        front: wgpu::StencilFaceState,
-        back: wgpu::StencilFaceState,
-        one_mask: bool,
-    ) -> wgpu::RenderPipeline {
-        let targets = &[wgpu::ColorTargetState {
-            format: self.format,
-            write_mask,
-            blend: Some(wgpu::BlendState {
-                color: wgpu::BlendComponent {
-                    src_factor: wgpu::BlendFactor::SrcAlpha,
-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                    operation: wgpu::BlendOperation::Add,
-                },
-                alpha: wgpu::BlendComponent {
-                    src_factor: wgpu::BlendFactor::One,
-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                    operation: wgpu::BlendOperation::Add,
-                },
-            }),
-        }];
-
-        let buffers = &[
-            wgpu::VertexBufferLayout {
-                array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-                step_mode: wgpu::InputStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Unorm16x2],
-            },
-            wgpu::VertexBufferLayout {
-                array_stride: std::mem::size_of::<Instance>() as wgpu::BufferAddress,
-                step_mode: wgpu::InputStepMode::Instance,
-                attributes: &wgpu::vertex_attr_array![
-                    2 => Float32x4,
-                    3 => Unorm8x4,
-                    4 => Unorm8x4,
-                    5 => Float32x4,
-                    6 => Float32x2
-                ],
-            },
-        ];
-
-        let stencil_mask = if one_mask { 0x01 } else { 0xFF };
-
-        self.device
-            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(entry_point),
-                layout: Some(&self.layout),
-                vertex: wgpu::VertexState {
-                    module: &self.module,
-                    entry_point: "vertex",
-                    buffers,
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &self.module,
-                    entry_point,
-                    targets,
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode,
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    conservative: false,
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: DEPTH,
-                    depth_write_enabled: false,
-                    depth_compare: wgpu::CompareFunction::Always,
-                    stencil: wgpu::StencilState {
-                        front,
-                        back,
-                        read_mask: stencil_mask,
-                        write_mask: stencil_mask,
-                    },
-                    clamp_depth: false,
-                    bias: wgpu::DepthBiasState::default(),
-                }),
-
-                multisample: wgpu::MultisampleState {
-                    count: 1,
-                    ..wgpu::MultisampleState::default()
-                },
-            })
     }
 }

@@ -1,9 +1,10 @@
 use crate::{
-    math::{Offset, Rect, Transform},
+    math::{Rect, Transform},
     paint::{LineJoin, Paint, RawPaint},
-    path::PathIter,
-    tessellator::Contour,
-    Tessellator,
+    path::{FillRule, PathIter},
+    pipeline::{Instance, Vertex},
+    renderer::Renderer,
+    tessellator::{Draw, Tessellator},
 };
 use std::{mem::size_of, ops::Range, slice::from_raw_parts};
 
@@ -12,7 +13,7 @@ pub(crate) fn cast_slice<T: Sized>(slice: &[T]) -> &[u8] {
 }
 
 #[derive(Clone)]
-pub enum DrawCall {
+enum DrawCall {
     Convex {
         indices: Range<u32>,
         base_vertex: i32,
@@ -24,7 +25,7 @@ pub enum DrawCall {
         base_vertex: i32,
         instance: u32,
     },
-    FillQuad {
+    FillQuadNonZero {
         indices: Range<u32>,
         base_vertex: i32,
         instance: u32,
@@ -46,12 +47,11 @@ pub enum DrawCall {
         instance: u32,
     },
 
-    Fringes {
+    FringesNonZero {
         indices: Range<u32>,
         base_vertex: i32,
         instance: u32,
     },
-
     FringesEvenOdd {
         indices: Range<u32>,
         base_vertex: i32,
@@ -69,61 +69,21 @@ pub enum DrawCall {
     },
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-pub struct Vertex {
-    pub pos: [f32; 2],
-    pub uv: [u16; 2],
-}
-
-impl Vertex {
-    #[inline]
-    pub fn new(pos: impl Into<[f32; 2]>, uv: [f32; 2]) -> Self {
-        let pos = pos.into();
-        let uv = [(uv[0] * 65535.0) as u16, (uv[1] * 65535.0) as u16];
-        Self { pos, uv }
-    }
-
-    #[inline]
-    pub fn transform(self, transform: Transform) -> Self {
-        let pos = transform.apply(Offset::from(self.pos)).into();
-        Self { pos, ..self }
-    }
-}
-
-#[repr(C, align(4))]
-#[derive(Clone, Copy, Default)]
-pub struct Instance {
-    pub paint_mat: [f32; 4],
-    pub inner_color: [u8; 4],
-    pub outer_color: [u8; 4],
-
-    pub extent: [f32; 2],
-    pub radius: f32,
-    pub feather: f32,
-
-    pub stroke_mul: f32, // scale
-    pub stroke_thr: f32, // threshold
-}
-
-impl Instance {
-    pub fn image(color: [u8; 4]) -> Self {
-        Self {
-            inner_color: color,
-            ..Self::default()
-        }
-    }
-}
-
 pub struct Picture {
-    pub(crate) indices: wgpu::Buffer,
-    pub(crate) vertices: wgpu::Buffer,
-    pub(crate) instances: wgpu::Buffer,
+    bundle: wgpu::RenderBundle,
+}
+
+impl<'a> std::iter::IntoIterator for &'a Picture {
+    type Item = &'a wgpu::RenderBundle;
+    type IntoIter = std::iter::Once<Self::Item>;
+    fn into_iter(self) -> Self::IntoIter {
+        std::iter::once(&self.bundle)
+    }
 }
 
 #[derive(Default)]
 pub struct Recorder {
-    pub(crate) calls: Vec<DrawCall>,
+    calls: Vec<DrawCall>,
     batch: Batch,
     cache: Tessellator,
 }
@@ -139,7 +99,8 @@ impl Recorder {
         self.cache.clear();
     }
 
-    pub fn call(&mut self, call: DrawCall) {
+    #[inline]
+    fn call(&mut self, call: DrawCall) {
         self.calls.push(call);
     }
 
@@ -152,7 +113,7 @@ impl Recorder {
     ) {
         let mut raw_paint = RawPaint::convert(paint, xform);
 
-        let mut stroke_width = (paint.width * xform.average_scale()).clamp(0.0, 200.0);
+        let mut stroke_width = (paint.width * xform.average_scale()).max(0.0);
 
         let fringe_width = 1.0 / scale;
 
@@ -166,10 +127,15 @@ impl Recorder {
             stroke_width = fringe_width;
         }
 
+        let fringe_width = if paint.antialias { fringe_width } else { 0.0 };
+
+        let commands = commands.transform(xform);
         let tess_tol = 0.25 / scale;
-        self.cache
-            .flatten(commands.transform(xform), tess_tol, 0.01 / scale);
-        self.cache.expand_stroke(
+        self.cache.flatten(commands, tess_tol, 0.01 / scale);
+
+        let base_vertex = self.batch.base_vertex();
+        let indices = self.cache.expand_stroke(
+            &mut self.batch,
             stroke_width * 0.5,
             fringe_width,
             paint.cap_start,
@@ -178,11 +144,6 @@ impl Recorder {
             paint.miter,
             tess_tol,
         );
-
-        let base_vertex = self.batch.base_vertex();
-        let indices = self
-            .batch
-            .stroke(0, self.cache.contours(), self.cache.vertices());
 
         let first = self.batch.instance(raw_paint.to_instance(
             stroke_width,
@@ -198,7 +159,7 @@ impl Recorder {
             base_vertex,
             instance: first,
         });
-        self.call(DrawCall::Fringes {
+        self.call(DrawCall::FringesNonZero {
             indices: indices.clone(),
             base_vertex,
             instance: second,
@@ -216,62 +177,71 @@ impl Recorder {
         paint: &Paint,
         xform: Transform,
         scale: f32,
+        fill_rule: FillRule,
     ) {
         let raw_paint = RawPaint::convert(paint, xform);
 
         let fringe_width = if paint.antialias { 1.0 / scale } else { 0.0 };
-        self.cache
-            .flatten(commands.transform(xform), 0.25 / scale, 0.01 / scale);
-        self.cache.expand_fill(fringe_width, LineJoin::Miter, 2.4);
-
-        let base_vertex = self.batch.base_vertex();
-        let fill = self
-            .batch
-            .fill(0, self.cache.contours(), self.cache.vertices());
-        let offset = (self.batch.base_vertex() - base_vertex) as u16;
-        let stroke = self
-            .batch
-            .stroke(offset, self.cache.contours(), self.cache.vertices());
 
         // Setup uniforms for draw calls
         let instance = self
             .batch
             .instance(raw_paint.to_instance(fringe_width, fringe_width, -1.0));
-        if self.cache.is_convex() {
+
+        self.cache
+            .flatten(commands.transform(xform), 0.25 / scale, 0.01 / scale);
+        let draw = self
+            .cache
+            .expand_fill(&mut self.batch, fringe_width, LineJoin::Miter, 2.4);
+
+        match draw {
             // Bounding box fill quad not needed for convex fill
-            self.call(DrawCall::Convex {
-                indices: fill.start..stroke.end,
+            Draw::Convex {
+                base_vertex,
+                indices,
+            } => self.call(DrawCall::Convex {
+                indices,
                 base_vertex,
                 instance,
-            });
-        } else {
-            let Rect { min, max } = self.cache.bounds();
-
-            let quad = self.batch.push_strip(
-                (self.batch.base_vertex() - base_vertex) as u16,
-                &[
-                    Vertex::new([max.x, max.y], [0.5, 1.0]),
-                    Vertex::new([max.x, min.y], [0.5, 1.0]),
-                    Vertex::new([min.x, max.y], [0.5, 1.0]),
-                    Vertex::new([min.x, min.y], [0.5, 1.0]),
-                ],
-            );
-
-            self.call(DrawCall::FillStencil {
-                indices: fill,
+            }),
+            Draw::Concave {
                 base_vertex,
-                instance,
-            });
-            self.call(DrawCall::Fringes {
-                indices: stroke,
-                base_vertex,
-                instance,
-            });
-            self.call(DrawCall::FillQuad {
-                indices: quad,
-                base_vertex,
-                instance,
-            });
+                fill,
+                stroke,
+                quad,
+            } => {
+                self.call(DrawCall::FillStencil {
+                    indices: fill,
+                    base_vertex,
+                    instance,
+                });
+                match fill_rule {
+                    FillRule::NonZero => {
+                        self.call(DrawCall::FringesNonZero {
+                            indices: stroke,
+                            base_vertex,
+                            instance,
+                        });
+                        self.call(DrawCall::FillQuadNonZero {
+                            indices: quad,
+                            base_vertex,
+                            instance,
+                        });
+                    }
+                    FillRule::EvenOdd => {
+                        self.call(DrawCall::FringesEvenOdd {
+                            indices: stroke,
+                            base_vertex,
+                            instance,
+                        });
+                        self.call(DrawCall::FillQuadEvenOdd {
+                            indices: quad,
+                            base_vertex,
+                            instance,
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -298,99 +268,199 @@ impl Recorder {
         });
     }
 
-    pub fn build(&mut self, device: &wgpu::Device) -> Picture {
+    pub fn finish(&mut self, device: &wgpu::Device, renderer: &Renderer) -> Picture {
         use wgpu::util::DeviceExt;
 
         let indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("index buffer"),
+            label: Some("reui index buffer"),
             contents: cast_slice(self.batch.indices.as_ref()),
             usage: wgpu::BufferUsage::INDEX,
         });
 
         let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("vertex buffer"),
+            label: Some("reui vertex buffer"),
             contents: cast_slice(self.batch.vertices.as_ref()),
             usage: wgpu::BufferUsage::VERTEX,
         });
 
         let instances = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("instance buffer"),
+            label: Some("reui instance buffer"),
             contents: cast_slice(self.batch.instances.as_ref()),
             usage: wgpu::BufferUsage::VERTEX,
         });
 
-        Picture {
-            indices,
-            vertices,
-            instances,
+        let label = Some("reui picture");
+
+        let mut rpass = device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
+            label,
+            color_formats: &[wgpu::TextureFormat::Bgra8UnormSrgb],
+            depth_stencil_format: Some(wgpu::TextureFormat::Depth24PlusStencil8),
+            sample_count: 1,
+        });
+
+        //rpass.set_stencil_reference(0);
+        rpass.set_bind_group(0, &renderer.viewport.bind_group, &[]);
+        rpass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint16);
+        rpass.set_vertex_buffer(0, vertices.slice(..));
+        rpass.set_vertex_buffer(1, instances.slice(..));
+
+        let pipeline = &renderer.pipeline;
+        for call in self.calls.iter().cloned() {
+            match call {
+                DrawCall::Convex {
+                    indices,
+                    base_vertex,
+                    instance,
+                } => {
+                    rpass.set_pipeline(&pipeline.convex);
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
+                }
+
+                DrawCall::FillStencil {
+                    indices,
+                    base_vertex,
+                    instance,
+                } => {
+                    rpass.set_pipeline(&pipeline.fill_stencil);
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
+                }
+                DrawCall::FillQuadNonZero {
+                    indices,
+                    base_vertex,
+                    instance,
+                } => {
+                    rpass.set_pipeline(&pipeline.fill_quad_non_zero);
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
+                }
+
+                DrawCall::FillQuadEvenOdd {
+                    indices,
+                    base_vertex,
+                    instance,
+                } => {
+                    rpass.set_pipeline(&pipeline.fill_quad_even_odd);
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
+                }
+
+                // Fill the stroke base without overlap
+                DrawCall::StrokeBase {
+                    indices,
+                    base_vertex,
+                    instance,
+                } => {
+                    rpass.set_pipeline(&pipeline.stroke_base);
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
+                }
+                // Clear stencil buffer
+                DrawCall::StrokeStencil {
+                    indices,
+                    base_vertex,
+                    instance,
+                } => {
+                    rpass.set_pipeline(&pipeline.stroke_stencil);
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
+                }
+
+                // Draw anti-aliased pixels.
+                DrawCall::FringesNonZero {
+                    indices,
+                    base_vertex,
+                    instance,
+                } => {
+                    rpass.set_pipeline(&pipeline.fringes_non_zero);
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
+                }
+                DrawCall::FringesEvenOdd {
+                    indices,
+                    base_vertex,
+                    instance,
+                } => {
+                    rpass.set_pipeline(&pipeline.fringes_even_odd);
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
+                }
+
+                DrawCall::SelectImage { image } => {
+                    rpass.set_bind_group(1, &renderer.images[image].bind_group, &[]);
+                }
+
+                DrawCall::Image {
+                    indices,
+                    base_vertex,
+                    instance,
+                } => {
+                    rpass.set_pipeline(&pipeline.image);
+                    rpass.draw_indexed(indices, base_vertex, instance..instance + 1);
+                }
+            }
         }
+
+        let bundle = rpass.finish(&wgpu::RenderBundleDescriptor { label });
+        Picture { bundle }
     }
 }
 
 #[derive(Default)]
-struct Batch {
+pub(crate) struct Batch {
     instances: Vec<Instance>,
     indices: Vec<u16>,
     vertices: Vec<Vertex>,
 }
 
+impl std::ops::Index<i32> for Batch {
+    type Output = Vertex;
+    #[inline]
+    fn index(&self, index: i32) -> &Self::Output {
+        &self.vertices[index as usize]
+    }
+}
+
+impl std::ops::IndexMut<i32> for Batch {
+    #[inline]
+    fn index_mut(&mut self, index: i32) -> &mut Self::Output {
+        &mut self.vertices[index as usize]
+    }
+}
+
 #[allow(clippy::cast_possible_wrap)]
 impl Batch {
+    #[inline]
     pub fn clear(&mut self) {
         self.vertices.clear();
         self.indices.clear();
         self.instances.clear();
     }
 
-    pub fn instance(&mut self, instance: Instance) -> u32 {
+    #[inline]
+    pub fn push(&mut self, vertex: Vertex) {
+        self.vertices.push(vertex)
+    }
+
+    #[inline]
+    pub(crate) fn instance(&mut self, instance: Instance) -> u32 {
         self.instances.push(instance);
         self.instances.len() as u32 - 1
     }
 
-    fn base_vertex(&self) -> i32 {
+    #[inline]
+    pub(crate) fn base_vertex(&self) -> i32 {
         self.vertices.len() as i32
     }
 
-    fn base_index(&self) -> u32 {
+    #[inline]
+    pub(crate) fn base_index(&self) -> u32 {
         self.indices.len() as u32
     }
 
-    fn fill(&mut self, mut offset: u16, contours: &[Contour], vertices: &[Vertex]) -> Range<u32> {
+    #[inline]
+    pub(crate) fn push_strip(&mut self, offset: u16, vertices: &[Vertex]) -> Range<u32> {
         let start = self.base_index();
-        for contour in contours {
-            if !contour.fill.is_empty() {
-                let vertices = &vertices[contour.fill.clone()];
-                self.vertices.extend_from_slice(vertices);
-                self.fan(offset, vertices.len());
-                offset += vertices.len() as u16;
-            }
-        }
-        start..self.base_index()
-    }
-
-    fn stroke(&mut self, mut offset: u16, contours: &[Contour], vertices: &[Vertex]) -> Range<u32> {
-        let start = self.base_index();
-        for contour in contours {
-            if !contour.stroke.is_empty() {
-                let vertices = &vertices[contour.stroke.clone()];
-
-                self.vertices.extend_from_slice(vertices);
-                self.strip(offset, vertices.len());
-                offset += vertices.len() as u16;
-            }
-        }
-        start..self.base_index()
-    }
-
-    fn push_strip(&mut self, offset: u16, vertices: &[Vertex]) -> Range<u32> {
         self.vertices.extend_from_slice(vertices);
-
-        let start = self.base_index();
-        self.strip(offset, vertices.len());
+        self.strip(offset, vertices.len() as i32);
         start..self.base_index()
     }
 
-    fn strip(&mut self, offset: u16, num_vertices: usize) {
+    #[inline]
+    pub(crate) fn strip(&mut self, offset: u16, num_vertices: i32) {
         for i in 0..num_vertices.saturating_sub(2) as u16 {
             let (a, b) = if 0 == i % 2 { (1, 2) } else { (2, 1) };
             self.indices.push(offset + i);
@@ -399,7 +469,8 @@ impl Batch {
         }
     }
 
-    fn fan(&mut self, offset: u16, num_vertices: usize) {
+    #[inline]
+    pub(crate) fn fan(&mut self, offset: u16, num_vertices: i32) {
         for i in 0..num_vertices.saturating_sub(2) as u16 {
             self.indices.push(offset);
             self.indices.push(offset + i + 1);

@@ -1,27 +1,30 @@
-use crate::math::{Color, Rect, Transform};
-use crate::picture::Instance;
+use crate::{
+    math::{Color, Rect, Transform},
+    pipeline::Instance,
+};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum LineCap {
-    Butt = 0,
-    Round = 1,
-    Square = 2,
+    Butt,
+    Round,
+    Square,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum LineJoin {
-    Round = 1,
-    Bevel = 3,
-    Miter = 4,
+    Round,
+    Bevel,
+    Miter,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PaintingStyle {
-    Fill = 0,
-    Stroke = 1,
+    FillNonZero,
+    FillEvenOdd,
+    Stroke,
 }
 
 #[derive(Clone, Copy)]
@@ -64,7 +67,7 @@ pub struct Paint {
 impl Default for Paint {
     fn default() -> Self {
         Self {
-            style: PaintingStyle::Fill,
+            style: PaintingStyle::FillNonZero,
             color: Color::BLACK,
             cap_start: LineCap::Butt,
             cap_end: LineCap::Butt,
@@ -80,7 +83,7 @@ impl Default for Paint {
 impl Paint {
     pub fn fill(color: Color) -> Self {
         Self {
-            style: PaintingStyle::Fill,
+            style: PaintingStyle::FillNonZero,
             color,
             ..Self::default()
         }
