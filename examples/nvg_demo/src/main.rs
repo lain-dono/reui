@@ -33,8 +33,6 @@ struct Demo {
 }
 
 impl app::Application for Demo {
-    //type UserEvent = ();
-
     fn init(
         device: &wgpu::Device,
         queue: &wgpu::Queue,

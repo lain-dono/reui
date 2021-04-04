@@ -474,7 +474,7 @@ impl<'a> Builder<'a> {
                     conservative: false,
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth24PlusStencil8,
+                    format: self.target.depth,
                     depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Always,
                     stencil: wgpu::StencilState {
