@@ -14,7 +14,6 @@ exclude = ["Cargo.lock", "examples/**/*", "tests/**/*", "target/**/*"]
 [workspace]
 members = [
     "examples/nvg_demo",
-    "examples/hello_world",
 ]
 
 [dependencies]
