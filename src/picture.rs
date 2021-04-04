@@ -1,16 +1,13 @@
 use crate::{
-    math::{Rect, Transform},
+    geom::{Rect, Transform},
     paint::{LineJoin, Paint, RawPaint},
     path::{FillRule, PathIter},
-    pipeline::{Instance, Vertex},
+    pipeline::{Batch, Instance, Vertex},
     renderer::Renderer,
     tessellator::{Draw, Tessellator},
+    viewport::Target,
 };
-use std::{mem::size_of, ops::Range, slice::from_raw_parts};
-
-pub(crate) fn cast_slice<T: Sized>(slice: &[T]) -> &[u8] {
-    unsafe { from_raw_parts(slice.as_ptr().cast(), slice.len() * size_of::<T>()) }
-}
+use std::ops::Range;
 
 #[derive(Clone)]
 enum DrawCall {
@@ -268,26 +265,17 @@ impl Recorder {
         });
     }
 
-    pub fn finish(&mut self, device: &wgpu::Device, renderer: &Renderer) -> Picture {
-        use wgpu::util::DeviceExt;
-
-        let indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("reui index buffer"),
-            contents: cast_slice(self.batch.indices.as_ref()),
-            usage: wgpu::BufferUsage::INDEX,
-        });
-
-        let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("reui vertex buffer"),
-            contents: cast_slice(self.batch.vertices.as_ref()),
-            usage: wgpu::BufferUsage::VERTEX,
-        });
-
-        let instances = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("reui instance buffer"),
-            contents: cast_slice(self.batch.instances.as_ref()),
-            usage: wgpu::BufferUsage::VERTEX,
-        });
+    pub fn finish(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_belt: &mut wgpu::util::StagingBelt,
+        device: &wgpu::Device,
+        renderer: &mut Renderer,
+        target: &Target,
+    ) -> Picture {
+        renderer
+            .batch
+            .upload(encoder, staging_belt, device, &self.batch);
 
         let label = Some("reui picture");
 
@@ -299,10 +287,8 @@ impl Recorder {
         });
 
         //rpass.set_stencil_reference(0);
-        rpass.set_bind_group(0, &renderer.viewport.bind_group, &[]);
-        rpass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint16);
-        rpass.set_vertex_buffer(0, vertices.slice(..));
-        rpass.set_vertex_buffer(1, instances.slice(..));
+        target.bind(&mut rpass);
+        renderer.batch.bind(&mut rpass);
 
         let pipeline = &renderer.pipeline;
         for call in self.calls.iter().cloned() {
@@ -396,85 +382,5 @@ impl Recorder {
 
         let bundle = rpass.finish(&wgpu::RenderBundleDescriptor { label });
         Picture { bundle }
-    }
-}
-
-#[derive(Default)]
-pub(crate) struct Batch {
-    instances: Vec<Instance>,
-    indices: Vec<u16>,
-    vertices: Vec<Vertex>,
-}
-
-impl std::ops::Index<i32> for Batch {
-    type Output = Vertex;
-    #[inline]
-    fn index(&self, index: i32) -> &Self::Output {
-        &self.vertices[index as usize]
-    }
-}
-
-impl std::ops::IndexMut<i32> for Batch {
-    #[inline]
-    fn index_mut(&mut self, index: i32) -> &mut Self::Output {
-        &mut self.vertices[index as usize]
-    }
-}
-
-#[allow(clippy::cast_possible_wrap)]
-impl Batch {
-    #[inline]
-    pub fn clear(&mut self) {
-        self.vertices.clear();
-        self.indices.clear();
-        self.instances.clear();
-    }
-
-    #[inline]
-    pub fn push(&mut self, vertex: Vertex) {
-        self.vertices.push(vertex)
-    }
-
-    #[inline]
-    pub(crate) fn instance(&mut self, instance: Instance) -> u32 {
-        self.instances.push(instance);
-        self.instances.len() as u32 - 1
-    }
-
-    #[inline]
-    pub(crate) fn base_vertex(&self) -> i32 {
-        self.vertices.len() as i32
-    }
-
-    #[inline]
-    pub(crate) fn base_index(&self) -> u32 {
-        self.indices.len() as u32
-    }
-
-    #[inline]
-    pub(crate) fn push_strip(&mut self, offset: u16, vertices: &[Vertex]) -> Range<u32> {
-        let start = self.base_index();
-        self.vertices.extend_from_slice(vertices);
-        self.strip(offset, vertices.len() as i32);
-        start..self.base_index()
-    }
-
-    #[inline]
-    pub(crate) fn strip(&mut self, offset: u16, num_vertices: i32) {
-        for i in 0..num_vertices.saturating_sub(2) as u16 {
-            let (a, b) = if 0 == i % 2 { (1, 2) } else { (2, 1) };
-            self.indices.push(offset + i);
-            self.indices.push(offset + i + a);
-            self.indices.push(offset + i + b);
-        }
-    }
-
-    #[inline]
-    pub(crate) fn fan(&mut self, offset: u16, num_vertices: i32) {
-        for i in 0..num_vertices.saturating_sub(2) as u16 {
-            self.indices.push(offset);
-            self.indices.push(offset + i + 1);
-            self.indices.push(offset + i + 2);
-        }
     }
 }

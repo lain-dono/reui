@@ -1,4 +1,9 @@
-use crate::{canvas::Canvas, picture::Recorder, pipeline::Pipeline};
+use crate::{
+    canvas::Canvas,
+    picture::Recorder,
+    pipeline::{BatchUpload, Pipeline},
+    viewport::Viewport,
+};
 use std::collections::HashMap;
 
 pub(crate) struct ImageBind {
@@ -58,34 +63,6 @@ impl HostImage {
 
         Ok(Self { texture, size })
     }
-
-    fn bind(
-        &self,
-        device: &wgpu::Device,
-        layout: &wgpu::BindGroupLayout,
-        sampler: &wgpu::Sampler,
-    ) -> ImageBind {
-        let desc = wgpu::TextureViewDescriptor::default();
-        let view = self.texture.create_view(&desc);
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("image bind group"),
-            layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-            ],
-        });
-
-        let size = self.size;
-        ImageBind { bind_group, size }
-    }
 }
 
 #[derive(Default)]
@@ -116,20 +93,18 @@ impl Images {
 
 pub struct Renderer {
     pub(crate) images: Images,
-    pub(crate) pipeline: Pipeline,
-    pub(crate) viewport: Viewport,
+    pub pipeline: Pipeline,
+    pub batch: BatchUpload,
 }
 
 impl Renderer {
-    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
-        let viewport = Viewport::new(device);
-        let pipeline = Pipeline::new(device, format, &viewport);
+    pub fn new(device: &wgpu::Device) -> Self {
+        let pipeline = Pipeline::new(device);
 
         Self {
             images: Images::default(),
-
             pipeline,
-            viewport,
+            batch: BatchUpload::new(device),
         }
     }
 
@@ -141,72 +116,21 @@ impl Renderer {
         path: impl AsRef<std::path::Path>,
     ) -> image::ImageResult<u32> {
         let image = HostImage::open_rgba(device, queue, path)?;
-        let bind = image.bind(device, &self.pipeline.image_layout, &self.pipeline.sampler);
-        Ok(self.images.create(bind))
+
+        let desc = wgpu::TextureViewDescriptor::default();
+        let view = image.texture.create_view(&desc);
+        let bind_group = self.pipeline.bind_texture_view(device, &view);
+
+        let size = image.size;
+
+        Ok(self.images.create(ImageBind { bind_group, size }))
     }
 
     pub fn begin_frame<'a>(
         &'a mut self,
-        queue: &wgpu::Queue,
-        width: u32,
-        height: u32,
-        scale: f32,
+        viewport: &Viewport,
         recorder: &'a mut Recorder,
     ) -> Canvas<'a> {
-        self.viewport.upload(queue, width, height, scale);
-        Canvas::new(self, recorder, scale)
-    }
-}
-
-pub(crate) struct Viewport {
-    pub layout: wgpu::BindGroupLayout,
-    pub buffer: wgpu::Buffer,
-    pub bind_group: wgpu::BindGroup,
-}
-
-impl Viewport {
-    fn new(device: &wgpu::Device) -> Self {
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Viewport bind group layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStage::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: wgpu::BufferSize::new(std::mem::size_of::<f32>() as u64 * 4),
-                },
-                count: None,
-            }],
-        });
-
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Viewport buffer"),
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-            size: std::mem::size_of::<[f32; 4]>() as u64,
-            mapped_at_creation: false,
-        });
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Viewport bind group"),
-            layout: &layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            }],
-        });
-
-        Self {
-            layout,
-            buffer,
-            bind_group,
-        }
-    }
-
-    fn upload(&self, queue: &wgpu::Queue, width: u32, height: u32, scale: f32) {
-        let w = scale / width as f32;
-        let h = scale / height as f32;
-        let viewport = [w, h, 0.0, 0.0];
-        queue.write_buffer(&self.buffer, 0, crate::picture::cast_slice(&viewport));
+        Canvas::new(self, recorder, viewport.scale())
     }
 }

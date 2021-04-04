@@ -1,5 +1,6 @@
 use crate::{
-    math::{Color, Rect, Transform},
+    color::Color,
+    geom::{Rect, Transform},
     pipeline::Instance,
 };
 

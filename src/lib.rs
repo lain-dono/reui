@@ -17,22 +17,30 @@ pub use wgpu;
 pub mod app;
 
 mod canvas;
-mod math;
+mod color;
+mod geom;
 mod paint;
 mod path;
 mod picture;
 mod pipeline;
 mod renderer;
 mod tessellator;
+mod upload_buffer;
+
+//mod glyph;
+//mod glyph_cache;
+mod viewport;
 
 //mod text;
 
 pub use self::{
     canvas::Canvas,
-    math::{Color, Corners, Offset, RRect, Rect, Transform},
+    color::Color,
+    geom::{Corners, Offset, RRect, Rect, Size, Transform},
     paint::{Gradient, LineCap, LineJoin, Paint, PaintingStyle},
     path::{Path, Solidity},
     picture::{Picture, Recorder},
     renderer::Renderer,
     tessellator::Tessellator,
+    viewport::{Target, TargetDescriptor, Viewport},
 };

@@ -1,7 +1,9 @@
 use crate::{
-    math::{Offset, Transform},
-    renderer::Viewport,
+    geom::{Offset, Transform},
+    upload_buffer::UploadBuffer,
+    viewport::{TargetDescriptor, Viewport},
 };
+use std::ops::Range;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -49,7 +51,152 @@ impl Instance {
     }
 }
 
-pub(crate) struct Pipeline {
+#[derive(Default)]
+pub struct Batch {
+    instances: Vec<Instance>,
+    indices: Vec<u32>,
+    vertices: Vec<Vertex>,
+}
+
+impl std::ops::Index<i32> for Batch {
+    type Output = Vertex;
+    #[inline]
+    fn index(&self, index: i32) -> &Self::Output {
+        &self.vertices[index as usize]
+    }
+}
+
+impl std::ops::IndexMut<i32> for Batch {
+    #[inline]
+    fn index_mut(&mut self, index: i32) -> &mut Self::Output {
+        &mut self.vertices[index as usize]
+    }
+}
+
+#[allow(clippy::cast_possible_wrap)]
+impl Batch {
+    #[inline]
+    pub fn clear(&mut self) {
+        self.vertices.clear();
+        self.indices.clear();
+        self.instances.clear();
+    }
+
+    #[inline]
+    pub fn push(&mut self, vertex: Vertex) {
+        self.vertices.push(vertex)
+    }
+
+    #[inline]
+    pub(crate) fn instance(&mut self, instance: Instance) -> u32 {
+        self.instances.push(instance);
+        self.instances.len() as u32 - 1
+    }
+
+    #[inline]
+    pub(crate) fn base_vertex(&self) -> i32 {
+        self.vertices.len() as i32
+    }
+
+    #[inline]
+    pub(crate) fn base_index(&self) -> u32 {
+        self.indices.len() as u32
+    }
+
+    #[inline]
+    pub(crate) fn push_strip(&mut self, offset: u32, vertices: &[Vertex]) -> Range<u32> {
+        let start = self.base_index();
+        self.vertices.extend_from_slice(vertices);
+        self.strip(offset, vertices.len() as i32);
+        start..self.base_index()
+    }
+
+    #[inline]
+    pub(crate) fn strip(&mut self, offset: u32, num_vertices: i32) {
+        for i in 0..num_vertices.saturating_sub(2) as u32 {
+            let (a, b) = if 0 == i % 2 { (1, 2) } else { (2, 1) };
+            self.indices.push(offset + i);
+            self.indices.push(offset + i + a);
+            self.indices.push(offset + i + b);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn fan(&mut self, offset: u32, num_vertices: i32) {
+        for i in 0..num_vertices.saturating_sub(2) as u32 {
+            self.indices.push(offset);
+            self.indices.push(offset + i + 1);
+            self.indices.push(offset + i + 2);
+        }
+    }
+}
+
+pub struct BatchUpload {
+    indices: UploadBuffer<u32>,
+    vertices: UploadBuffer<Vertex>,
+    instances: UploadBuffer<Instance>,
+}
+
+impl BatchUpload {
+    pub fn new(device: &wgpu::Device) -> Self {
+        Self {
+            indices: UploadBuffer::new(device, wgpu::BufferUsage::INDEX, 128, "reui indices"),
+            vertices: UploadBuffer::new(device, wgpu::BufferUsage::VERTEX, 128, "reui vertices"),
+            instances: UploadBuffer::new(device, wgpu::BufferUsage::VERTEX, 128, "reui instances"),
+        }
+    }
+    pub fn init(device: &wgpu::Device, batch: &Batch) -> Self {
+        let indices = UploadBuffer::init(
+            device,
+            wgpu::BufferUsage::INDEX,
+            batch.indices.as_ref(),
+            "reui index buffer",
+        );
+
+        let vertices = UploadBuffer::init(
+            device,
+            wgpu::BufferUsage::VERTEX,
+            batch.vertices.as_ref(),
+            "reui vertex buffer",
+        );
+
+        let instances = UploadBuffer::init(
+            device,
+            wgpu::BufferUsage::VERTEX,
+            batch.instances.as_ref(),
+            "reui instance buffer",
+        );
+
+        Self {
+            indices,
+            vertices,
+            instances,
+        }
+    }
+
+    pub fn upload(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_belt: &mut wgpu::util::StagingBelt,
+        device: &wgpu::Device,
+        batch: &Batch,
+    ) {
+        self.indices
+            .upload(encoder, staging_belt, device, &batch.indices);
+        self.vertices
+            .upload(encoder, staging_belt, device, &batch.vertices);
+        self.instances
+            .upload(encoder, staging_belt, device, &batch.instances);
+    }
+
+    pub fn bind<'rpass>(&'rpass self, rpass: &mut impl wgpu::util::RenderEncoder<'rpass>) {
+        rpass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+        rpass.set_vertex_buffer(0, self.vertices.slice(..));
+        rpass.set_vertex_buffer(1, self.instances.slice(..));
+    }
+}
+
+pub struct Pipeline {
     pub image: wgpu::RenderPipeline,
 
     pub convex: wgpu::RenderPipeline,
@@ -64,12 +211,13 @@ pub(crate) struct Pipeline {
     pub stroke_base: wgpu::RenderPipeline,
     pub stroke_stencil: wgpu::RenderPipeline,
 
-    pub image_layout: wgpu::BindGroupLayout,
-    pub sampler: wgpu::Sampler,
+    target: TargetDescriptor,
+    image_layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
 }
 
 impl Pipeline {
-    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat, viewport: &Viewport) -> Self {
+    pub fn new(device: &wgpu::Device) -> Self {
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("reui default sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -84,6 +232,8 @@ impl Pipeline {
             anisotropy_clamp: None,
             border_color: None,
         });
+
+        let target = TargetDescriptor::new(device);
 
         let image_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("reui image bind group"),
@@ -112,13 +262,13 @@ impl Pipeline {
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("reui pipeline layout"),
-            bind_group_layouts: &[&viewport.layout, &image_layout],
+            bind_group_layouts: &[&target.layout, &image_layout],
             push_constant_ranges: &[],
         });
 
         let builder = Builder {
-            format,
             device,
+            target: &target,
             layout,
 
             module: device.create_shader_module(&wgpu::ShaderModuleDescriptor {
@@ -159,15 +309,47 @@ impl Pipeline {
             fringes_non_zero: builder.base(stencil_face!(Equal, Fail::Keep, Pass::Keep)),
             fringes_even_odd: builder.even_odd(stencil_face!(Equal, Fail::Keep, Pass::Keep)),
 
+            target,
             image_layout,
             sampler,
         }
+    }
+
+    pub fn create_viewport(
+        &self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        scale: f32,
+    ) -> Viewport {
+        Viewport::new(device, &self.target, width, height, scale)
+    }
+
+    pub fn bind_texture_view(
+        &self,
+        device: &wgpu::Device,
+        view: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("image bind group"),
+            layout: &self.image_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(view),
+                },
+            ],
+        })
     }
 }
 
 struct Builder<'a> {
     device: &'a wgpu::Device,
-    format: wgpu::TextureFormat,
+    target: &'a TargetDescriptor,
     layout: wgpu::PipelineLayout,
     module: wgpu::ShaderModule,
 }
@@ -232,7 +414,7 @@ impl<'a> Builder<'a> {
         one_mask: bool,
     ) -> wgpu::RenderPipeline {
         let targets = &[wgpu::ColorTargetState {
-            format: self.format,
+            format: self.target.color,
             write_mask,
             blend: Some(wgpu::BlendState {
                 color: wgpu::BlendComponent {
@@ -262,7 +444,7 @@ impl<'a> Builder<'a> {
                     3 => Unorm8x4,
                     4 => Unorm8x4,
                     5 => Float32x4,
-                    6 => Float32x2
+                    6 => Float32x2,
                 ],
             },
         ];

@@ -1,9 +1,8 @@
 use crate::{
-    math::{Offset, Rect},
+    geom::{Offset, Rect},
     paint::{LineCap, LineJoin},
     path::{Command, FillRule, Solidity},
-    picture::Batch,
-    pipeline::Vertex,
+    pipeline::{Batch, Vertex},
 };
 use std::{
     cmp::Ordering,
@@ -12,7 +11,7 @@ use std::{
 };
 
 mod util {
-    use crate::math::Offset;
+    use crate::geom::Offset;
 
     // Adapted from libcollections/vec.rs in Rust
     // Primary author in Rust: Michael Darakananda
@@ -419,7 +418,7 @@ impl Tessellator {
 
                 let num_batch = batch.base_vertex() - start;
                 batch.fan(offset, num_batch);
-                offset += num_batch as u16;
+                offset += num_batch as u32;
             }
 
             fill = base_index..batch.base_index();
@@ -457,7 +456,7 @@ impl Tessellator {
 
                 let num_batch = batch.base_vertex() - start;
                 batch.strip(offset, num_batch);
-                offset += num_batch as u16;
+                offset += num_batch as u32;
             }
 
             stroke = base_index..batch.base_index();
@@ -474,7 +473,7 @@ impl Tessellator {
 
                 let num_batch = batch.base_vertex() - start;
                 batch.fan(offset, num_batch);
-                offset += num_batch as u16;
+                offset += num_batch as u32;
             }
             fill = base_index..batch.base_index();
             stroke = batch.base_index()..batch.base_index();
@@ -488,7 +487,7 @@ impl Tessellator {
         } else {
             let Rect { min, max } = self.bounds;
             let quad = batch.push_strip(
-                (batch.base_vertex() - base_vertex) as u16,
+                (batch.base_vertex() - base_vertex) as u32,
                 &[
                     Vertex::new([max.x, max.y], [0.5, 1.0]),
                     Vertex::new([max.x, min.y], [0.5, 1.0]),
@@ -613,7 +612,7 @@ impl Tessellator {
 
             let num_batch = batch.base_vertex() - start;
             batch.strip(offset, num_batch);
-            offset += num_batch as u16;
+            offset += num_batch as u32;
         }
 
         base_index..batch.base_index()

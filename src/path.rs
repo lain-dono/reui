@@ -1,4 +1,4 @@
-use crate::math::{Corners, Offset, Rect, Transform};
+use crate::geom::{Corners, Offset, Rect, Transform};
 
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.
 const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
@@ -231,9 +231,9 @@ impl Path {
     }
 
     /// Returns a copy of the [`Path`] with all the segments of every sub-path transformed by the given matrix.
-    pub fn transform(&self, t: Transform) -> PathTransformIter {
+    pub fn transform(&self, transform: Transform) -> PathTransformIter {
         PathTransformIter {
-            transform: t,
+            transform,
             index: self.index.iter(),
             coord: &self.coord,
         }
@@ -299,16 +299,12 @@ impl Path {
 
     /// Adds a new sub-path that consists of a curve that forms the ellipse that fills the given rectangle. [...]
     pub fn oval(&mut self, rect: Rect) {
-        let Offset { x: cx, y: cy } = rect.center();
-        let Offset { x: rx, y: ry } = rect.size() / 2.0;
-        self.ellipse(cx, cy, rx, ry);
+        self.ellipse(rect.center(), rect.size() / 2.0);
     }
 
     /// Adds a circle to the [`Path`] given its center coordinate and its radius.
     pub fn circle(&mut self, center: Offset, radius: f32) {
-        let Offset { x: cx, y: cy } = center;
-        let (rx, ry) = (radius, radius);
-        self.ellipse(cx, cy, rx, ry);
+        self.ellipse(center, Offset::new(radius, radius));
     }
 
     /// Adds [`Rect`] to the [`Path`].
@@ -358,21 +354,21 @@ impl Path {
                 Raw::Close,
             ],
             &[
-                Offset::new(min.x, min.y + tl.y),
-                Offset::new(min.x, max.y - bl.y),
-                Offset::new(min.x, max.y - bl.y * kappa),
+                Offset::new(min.x, min.y + tl.y),         // move
+                Offset::new(min.x, max.y - bl.y),         // line
+                Offset::new(min.x, max.y - bl.y * kappa), // curve
                 Offset::new(min.x + bl.x * kappa, max.y),
                 Offset::new(min.x + bl.x, max.y),
-                Offset::new(max.x - br.x, max.y),
-                Offset::new(max.x - br.x * kappa, max.y),
+                Offset::new(max.x - br.x, max.y),         // line
+                Offset::new(max.x - br.x * kappa, max.y), // curve
                 Offset::new(max.x, max.y - br.y * kappa),
                 Offset::new(max.x, max.y - br.y),
-                Offset::new(max.x, min.y + tr.y),
-                Offset::new(max.x, min.y + tr.y * kappa),
+                Offset::new(max.x, min.y + tr.y),         // line
+                Offset::new(max.x, min.y + tr.y * kappa), // curve
                 Offset::new(max.x - tr.x * kappa, min.y),
                 Offset::new(max.x - tr.x, min.y),
-                Offset::new(min.x + tl.x, min.y),
-                Offset::new(min.x + tl.x * kappa, min.y),
+                Offset::new(min.x + tl.x, min.y),         // line
+                Offset::new(min.x + tl.x * kappa, min.y), // curve
                 Offset::new(min.x, min.y + tl.y * kappa),
                 Offset::new(min.x, min.y + tl.y),
             ],
@@ -380,7 +376,10 @@ impl Path {
     }
 
     #[inline]
-    fn ellipse(&mut self, cx: f32, cy: f32, rx: f32, ry: f32) {
+    fn ellipse(&mut self, center: Offset, radius: Offset) {
+        let kappa = radius * KAPPA90;
+        let (positive_radius, positive_kappa) = (center + radius, center + kappa);
+        let (negative_radius, negative_kappa) = (center - radius, center - kappa);
         self.append(
             &[
                 Raw::MoveTo,
@@ -391,19 +390,19 @@ impl Path {
                 Raw::Close,
             ],
             &[
-                Offset::new(cx - rx, cy),
-                Offset::new(cx - rx, cy + ry * KAPPA90),
-                Offset::new(cx - rx * KAPPA90, cy + ry),
-                Offset::new(cx, cy + ry),
-                Offset::new(cx + rx * KAPPA90, cy + ry),
-                Offset::new(cx + rx, cy + ry * KAPPA90),
-                Offset::new(cx + rx, cy),
-                Offset::new(cx + rx, cy - ry * KAPPA90),
-                Offset::new(cx + rx * KAPPA90, cy - ry),
-                Offset::new(cx, cy - ry),
-                Offset::new(cx - rx * KAPPA90, cy - ry),
-                Offset::new(cx - rx, cy - ry * KAPPA90),
-                Offset::new(cx - rx, cy),
+                Offset::new(negative_radius.x, center.y),         // move
+                Offset::new(negative_radius.x, positive_kappa.y), // curve
+                Offset::new(negative_kappa.x, positive_radius.y),
+                Offset::new(center.x, positive_radius.y),
+                Offset::new(positive_kappa.x, positive_radius.y), // curve
+                Offset::new(positive_radius.x, positive_kappa.y),
+                Offset::new(positive_radius.x, center.y),
+                Offset::new(positive_radius.x, negative_kappa.y), // curve
+                Offset::new(positive_kappa.x, negative_radius.y),
+                Offset::new(center.x, negative_radius.y),
+                Offset::new(negative_kappa.x, negative_radius.y), // curve
+                Offset::new(negative_radius.x, negative_kappa.y),
+                Offset::new(negative_radius.x, center.y),
             ],
         )
     }
@@ -412,10 +411,7 @@ impl Path {
         self.index.extend_from_slice(cmd);
         self.coord.extend_from_slice(coord);
     }
-}
 
-#[doc(hidden)]
-impl Path {
     /*
     /// Appends up to four conic curves weighted to describe an oval of radius and rotated by rotation. [...]
     pub fn relative_arc_to_point(Offset arcEndDelta, { Radius radius: Radius.zero, double rotation: 0.0, bool largeArc: false, bool clockwise: true }) -> void

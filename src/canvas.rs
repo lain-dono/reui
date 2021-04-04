@@ -1,5 +1,5 @@
 use crate::{
-    math::{Corners, Offset, Rect, Transform},
+    geom::{Corners, Offset, Rect, Transform},
     paint::{Paint, PaintingStyle},
     path::{Command, FillRule, Path},
     picture::Recorder,
@@ -227,9 +227,9 @@ impl<'a> Canvas<'a> {
     /// Draws the given Path with the given Paint.
     /// Whether this shape is filled or stroked (or both) is controlled by Paint.style.
     /// If the path is filled, then sub-paths within it are implicitly closed (see Path.close).
-    pub fn draw_path(&mut self, iter: impl IntoIterator<Item = Command>, paint: Paint) {
+    pub fn draw_path(&mut self, path_iter: impl IntoIterator<Item = Command>, paint: Paint) {
         self.path.clear();
-        self.path.extend(iter);
+        self.path.extend(path_iter);
         self.fill_or_stroke(&paint);
     }
 

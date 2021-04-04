@@ -7,23 +7,25 @@ mod canvas;
 mod time;
 
 use reui::{
-    app::{self, ControlFlow, Options, Surface, WindowEvent},
-    wgpu, Offset, Recorder, Rect, Renderer,
+    app::{self, ControlFlow, Spawner, WindowEvent},
+    wgpu, Offset, Recorder, Rect, Renderer, Viewport,
 };
 
 pub fn main() {
+    tracing_subscriber::fmt::init();
+
     let event_loop = app::EventLoop::new();
     let window = app::Window::new(&event_loop).unwrap();
     window.set_title("Anti-aliased vector graphics (wgpu-rs)");
     window.set_inner_size(app::LogicalSize::new(1000, 600));
 
-    let options = Options::default();
-    app::run::<Demo>(event_loop, window, options);
+    app::run::<Demo>(event_loop, window);
 }
 
 struct Demo {
     vg: Renderer,
-    picture: Recorder,
+    viewport: Viewport,
+    recorder: Recorder,
     mouse: Offset,
     counter: crate::time::Counter,
     image: u32,
@@ -31,11 +33,18 @@ struct Demo {
 }
 
 impl app::Application for Demo {
-    type UserEvent = ();
+    //type UserEvent = ();
 
-    fn init(device: &wgpu::Device, queue: &wgpu::Queue, surface: &mut Surface) -> Self {
-        let mut vg = Renderer::new(&device, surface.format());
-        let picture = Recorder::default();
+    fn init(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        width: u32,
+        height: u32,
+        scale: f32,
+    ) -> Self {
+        let mut vg = Renderer::new(&device);
+        let viewport = vg.pipeline.create_viewport(device, width, height, scale);
+        let recorder = Recorder::default();
 
         let image = vg
             .open_image(device, queue, "examples/rust-jerk.jpg")
@@ -43,7 +52,8 @@ impl app::Application for Demo {
 
         Self {
             vg,
-            picture,
+            viewport,
+            recorder,
             mouse: Offset::zero(),
             counter: crate::time::Counter::new(),
             image,
@@ -73,40 +83,55 @@ impl app::Application for Demo {
         }
     }
 
-    fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, surface: &mut Surface) {
+    fn render(
+        &mut self,
+        frame: &wgpu::SwapChainTexture,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        _spawner: &Spawner,
+        staging_belt: &mut wgpu::util::StagingBelt,
+        width: u32,
+        height: u32,
+        scale: f32,
+    ) {
+        self.viewport.resize(device, queue, width, height, scale);
+
         let time = self.counter.update();
-        let scale = surface.scale() as f32;
-        let (width, height) = surface.size();
         let mouse = self.mouse / scale;
         let wsize = Offset::new(width as f32, height as f32) / scale;
 
         if self.counter.index == 0 {
-            println!("average wgpu: {}ms", self.counter.average_ms());
+            tracing::info!("average frame time: {}ms", self.counter.average_ms());
         }
-
-        let frame = match surface.current_frame() {
-            Ok(frame) => frame,
-            Err(_) => {
-                println!("Timeout when acquiring next swap chain texture");
-                return;
-            }
-        };
 
         let mut encoder = device.create_command_encoder(&Default::default());
 
-        self.picture.clear();
-        let mut ctx = self
-            .vg
-            .begin_frame(&queue, width, height, scale, &mut self.picture);
+        self.recorder.clear();
+        let mut ctx = self.vg.begin_frame(&self.viewport, &mut self.recorder);
+
         ctx.draw_image_rect(self.image, Rect::from_size(wsize.x, wsize.y));
         canvas::render_demo(&mut ctx, mouse, wsize, time, self.blowup);
 
-        let bundle = self.picture.finish(&device, &self.vg);
+        let target = self.viewport.target(&frame.view);
+        let bundle =
+            self.recorder
+                .finish(&mut encoder, staging_belt, &device, &mut self.vg, &target);
         {
-            let mut rpass = frame.clear(&mut encoder, [0.3, 0.3, 0.32, 1.0]);
+            let mut rpass = target.rpass(
+                &mut encoder,
+                Some(reui::wgpu::Color {
+                    r: 0.3,
+                    g: 0.3,
+                    b: 0.32,
+                    a: 1.0,
+                }),
+                true,
+                true,
+            );
             rpass.execute_bundles(bundle.into_iter());
         }
 
+        staging_belt.finish();
         queue.submit(Some(encoder.finish()));
     }
 }
