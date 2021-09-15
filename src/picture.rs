@@ -2,8 +2,8 @@ use crate::{
     geom::{Rect, Transform},
     paint::{LineJoin, Paint, RawPaint},
     path::{FillRule, PathIter},
-    pipeline::{Batch, Instance, Vertex},
-    renderer::Renderer,
+    pipeline::{Batch, BatchUpload, Instance, Pipeline, Vertex},
+    renderer::{Images, Renderer},
     tessellator::{Draw, Tessellator},
     viewport::Target,
 };
@@ -66,15 +66,15 @@ enum DrawCall {
     },
 }
 
-pub struct Picture {
-    bundle: wgpu::RenderBundle,
-}
+pub struct Picture(wgpu::RenderBundle);
 
 impl<'a> std::iter::IntoIterator for &'a Picture {
     type Item = &'a wgpu::RenderBundle;
     type IntoIter = std::iter::Once<Self::Item>;
+
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        std::iter::once(&self.bundle)
+        std::iter::once(&self.0)
     }
 }
 
@@ -101,7 +101,7 @@ impl Recorder {
         self.calls.push(call);
     }
 
-    pub(crate) fn stroke_path(
+    pub(crate) fn stroke(
         &mut self,
         commands: PathIter,
         paint: &Paint,
@@ -110,7 +110,8 @@ impl Recorder {
     ) {
         let mut raw_paint = RawPaint::convert(paint, xform);
 
-        let mut stroke_width = (paint.width * xform.average_scale()).max(0.0);
+        let average_scale = (xform.re * xform.re + xform.im * xform.im).sqrt();
+        let mut stroke_width = (paint.width * average_scale).max(0.0);
 
         let fringe_width = 1.0 / scale;
 
@@ -168,7 +169,27 @@ impl Recorder {
         });
     }
 
-    pub(crate) fn fill_path(
+    pub(crate) fn fill_even_odd(
+        &mut self,
+        commands: PathIter,
+        paint: &Paint,
+        xform: Transform,
+        scale: f32,
+    ) {
+        self.fill(commands, paint, xform, scale, FillRule::EvenOdd);
+    }
+
+    pub(crate) fn fill_non_zero(
+        &mut self,
+        commands: PathIter,
+        paint: &Paint,
+        xform: Transform,
+        scale: f32,
+    ) {
+        self.fill(commands, paint, xform, scale, FillRule::NonZero);
+    }
+
+    pub(crate) fn fill(
         &mut self,
         commands: PathIter,
         paint: &Paint,
@@ -187,6 +208,7 @@ impl Recorder {
 
         self.cache
             .flatten(commands.transform(xform), 0.25 / scale, 0.01 / scale);
+
         let draw = self
             .cache
             .expand_fill(&mut self.batch, fringe_width, LineJoin::Miter, 2.4);
@@ -277,21 +299,43 @@ impl Recorder {
             .batch
             .upload(encoder, staging_belt, device, &self.batch);
 
-        let label = Some("reui picture");
-
         let mut rpass = device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
-            label,
+            label: Some("reui::Picture bundle encoder"),
             color_formats: &[wgpu::TextureFormat::Bgra8UnormSrgb],
-            depth_stencil_format: Some(wgpu::TextureFormat::Depth24PlusStencil8),
+            depth_stencil: Some(wgpu::RenderBundleDepthStencil {
+                format: wgpu::TextureFormat::Depth24PlusStencil8,
+                depth_read_only: false,
+                stencil_read_only: false,
+            }),
             sample_count: 1,
         });
 
-        //rpass.set_stencil_reference(0);
-        target.bind(&mut rpass);
-        renderer.batch.bind(&mut rpass);
+        Self::encode(
+            self.calls.iter().cloned(),
+            target,
+            &mut rpass,
+            &mut renderer.batch,
+            &renderer.pipeline,
+            &renderer.images,
+        );
 
-        let pipeline = &renderer.pipeline;
-        for call in self.calls.iter().cloned() {
+        Picture(rpass.finish(&wgpu::RenderBundleDescriptor {
+            label: Some("reui::Picture"),
+        }))
+    }
+
+    fn encode<'a>(
+        calls: impl Iterator<Item = DrawCall>,
+        target: &'a Target,
+        rpass: &mut impl wgpu::util::RenderEncoder<'a>,
+        batch: &'a mut BatchUpload,
+        pipeline: &'a Pipeline,
+        images: &'a Images,
+    ) {
+        target.bind(rpass);
+        batch.bind(rpass);
+
+        for call in calls {
             match call {
                 DrawCall::Convex {
                     indices,
@@ -366,7 +410,7 @@ impl Recorder {
                 }
 
                 DrawCall::SelectImage { image } => {
-                    rpass.set_bind_group(1, &renderer.images[image].bind_group, &[]);
+                    rpass.set_bind_group(1, &images[image].bind_group, &[]);
                 }
 
                 DrawCall::Image {
@@ -379,8 +423,5 @@ impl Recorder {
                 }
             }
         }
-
-        let bundle = rpass.finish(&wgpu::RenderBundleDescriptor { label });
-        Picture { bundle }
     }
 }

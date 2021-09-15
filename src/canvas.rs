@@ -1,17 +1,10 @@
 use crate::{
     geom::{Corners, Offset, Rect, Transform},
     paint::{Paint, PaintingStyle},
-    path::{Command, FillRule, Path},
+    path::{Command, Path},
     picture::Recorder,
     renderer::Renderer,
 };
-
-impl Transform {
-    #[inline]
-    pub(crate) fn average_scale(&self) -> f32 {
-        (self.re * self.re + self.im * self.im).sqrt()
-    }
-}
 
 #[derive(Default)]
 struct TransformStack(Transform, Vec<Transform>);
@@ -19,7 +12,7 @@ struct TransformStack(Transform, Vec<Transform>);
 impl TransformStack {
     #[inline]
     fn save(&mut self) {
-        self.1.push(self.transform())
+        self.1.push(self.transform());
     }
 
     #[inline]
@@ -58,6 +51,10 @@ impl<'a> Canvas<'a> {
         }
     }
 
+    pub fn dpi(&self) -> f32 {
+        self.scale
+    }
+
     pub fn draw_image_rect(&mut self, image: u32, rect: Rect) {
         if self.ctx.images.get(image).is_some() {
             self.recorder
@@ -80,25 +77,16 @@ impl<'a> Canvas<'a> {
     fn force_stroke(&mut self, paint: &Paint) {
         let xform = self.states.transform();
         let commands = self.path.into_iter();
-        self.recorder
-            .stroke_path(commands, paint, xform, self.scale);
+        self.recorder.stroke(commands, paint, xform, self.scale);
     }
 
     fn fill_or_stroke(&mut self, paint: &Paint) {
-        let xform = self.states.transform();
-        let commands = self.path.into_iter();
+        let t = self.states.transform();
+        let cmd = self.path.into_iter();
         match paint.style {
-            PaintingStyle::Stroke => self
-                .recorder
-                .stroke_path(commands, paint, xform, self.scale),
-            PaintingStyle::FillNonZero => {
-                self.recorder
-                    .fill_path(commands, paint, xform, self.scale, FillRule::NonZero)
-            }
-            PaintingStyle::FillEvenOdd => {
-                self.recorder
-                    .fill_path(commands, paint, xform, self.scale, FillRule::EvenOdd)
-            }
+            PaintingStyle::Stroke => self.recorder.stroke(cmd, paint, t, self.scale),
+            PaintingStyle::FillNonZero => self.recorder.fill_non_zero(cmd, paint, t, self.scale),
+            PaintingStyle::FillEvenOdd => self.recorder.fill_even_odd(cmd, paint, t, self.scale),
         }
     }
 

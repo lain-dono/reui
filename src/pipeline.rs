@@ -84,7 +84,7 @@ impl Batch {
 
     #[inline]
     pub fn push(&mut self, vertex: Vertex) {
-        self.vertices.push(vertex)
+        self.vertices.push(vertex);
     }
 
     #[inline]
@@ -140,29 +140,30 @@ pub struct BatchUpload {
 impl BatchUpload {
     pub fn new(device: &wgpu::Device) -> Self {
         Self {
-            indices: UploadBuffer::new(device, wgpu::BufferUsage::INDEX, 128, "reui indices"),
-            vertices: UploadBuffer::new(device, wgpu::BufferUsage::VERTEX, 128, "reui vertices"),
-            instances: UploadBuffer::new(device, wgpu::BufferUsage::VERTEX, 128, "reui instances"),
+            indices: UploadBuffer::new(device, wgpu::BufferUsages::INDEX, 128, "reui indices"),
+            vertices: UploadBuffer::new(device, wgpu::BufferUsages::VERTEX, 128, "reui vertices"),
+            instances: UploadBuffer::new(device, wgpu::BufferUsages::VERTEX, 128, "reui instances"),
         }
     }
+
     pub fn init(device: &wgpu::Device, batch: &Batch) -> Self {
         let indices = UploadBuffer::init(
             device,
-            wgpu::BufferUsage::INDEX,
+            wgpu::BufferUsages::INDEX,
             batch.indices.as_ref(),
             "reui index buffer",
         );
 
         let vertices = UploadBuffer::init(
             device,
-            wgpu::BufferUsage::VERTEX,
+            wgpu::BufferUsages::VERTEX,
             batch.vertices.as_ref(),
             "reui vertex buffer",
         );
 
         let instances = UploadBuffer::init(
             device,
-            wgpu::BufferUsage::VERTEX,
+            wgpu::BufferUsages::VERTEX,
             batch.instances.as_ref(),
             "reui instance buffer",
         );
@@ -240,16 +241,16 @@ impl Pipeline {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler {
                         comparison: false,
-                        filtering: false,
+                        filtering: true,
                     },
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: false },
                         view_dimension: wgpu::TextureViewDimension::D2,
@@ -274,7 +275,6 @@ impl Pipeline {
             module: device.create_shader_module(&wgpu::ShaderModuleDescriptor {
                 label: Some("reui shader"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-                flags: wgpu::ShaderFlags::all(),
             }),
         };
 
@@ -358,9 +358,9 @@ impl<'a> Builder<'a> {
     fn base(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
         self.pipeline(
             "main",
-            wgpu::ColorWrite::ALL,
+            wgpu::ColorWrites::ALL,
             Some(wgpu::Face::Back),
-            stencil.clone(),
+            stencil,
             stencil,
             false,
         )
@@ -369,9 +369,9 @@ impl<'a> Builder<'a> {
     fn even_odd(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
         self.pipeline(
             "main",
-            wgpu::ColorWrite::ALL,
+            wgpu::ColorWrites::ALL,
             Some(wgpu::Face::Back),
-            stencil.clone(),
+            stencil,
             stencil,
             true,
         )
@@ -380,9 +380,9 @@ impl<'a> Builder<'a> {
     fn image(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
         self.pipeline(
             "image",
-            wgpu::ColorWrite::ALL,
+            wgpu::ColorWrites::ALL,
             Some(wgpu::Face::Back),
-            stencil.clone(),
+            stencil,
             stencil,
             false,
         )
@@ -396,7 +396,7 @@ impl<'a> Builder<'a> {
     ) -> wgpu::RenderPipeline {
         self.pipeline(
             "stencil",
-            wgpu::ColorWrite::empty(),
+            wgpu::ColorWrites::empty(),
             cull_mode,
             front,
             back,
@@ -407,7 +407,7 @@ impl<'a> Builder<'a> {
     fn pipeline(
         &self,
         entry_point: &str,
-        write_mask: wgpu::ColorWrite,
+        write_mask: wgpu::ColorWrites,
         cull_mode: Option<wgpu::Face>,
         front: wgpu::StencilFaceState,
         back: wgpu::StencilFaceState,
@@ -433,12 +433,12 @@ impl<'a> Builder<'a> {
         let buffers = &[
             wgpu::VertexBufferLayout {
                 array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-                step_mode: wgpu::InputStepMode::Vertex,
+                step_mode: wgpu::VertexStepMode::Vertex,
                 attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Unorm16x2],
             },
             wgpu::VertexBufferLayout {
                 array_stride: std::mem::size_of::<Instance>() as wgpu::BufferAddress,
-                step_mode: wgpu::InputStepMode::Instance,
+                step_mode: wgpu::VertexStepMode::Instance,
                 attributes: &wgpu::vertex_attr_array![
                     2 => Float32x4,
                     3 => Unorm8x4,
@@ -472,6 +472,7 @@ impl<'a> Builder<'a> {
                     cull_mode,
                     polygon_mode: wgpu::PolygonMode::Fill,
                     conservative: false,
+                    clamp_depth: false,
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: self.target.depth,
@@ -483,7 +484,6 @@ impl<'a> Builder<'a> {
                         read_mask: stencil_mask,
                         write_mask: stencil_mask,
                     },
-                    clamp_depth: false,
                     bias: wgpu::DepthBiasState::default(),
                 }),
 

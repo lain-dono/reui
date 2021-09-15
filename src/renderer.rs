@@ -43,7 +43,7 @@ impl HostImage {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsage::COPY_DST | wgpu::TextureUsage::SAMPLED,
+            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
         });
 
         queue.write_texture(
@@ -51,6 +51,7 @@ impl HostImage {
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
             },
             &texels,
             wgpu::ImageDataLayout {

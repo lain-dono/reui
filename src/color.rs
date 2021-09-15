@@ -1,6 +1,6 @@
 use palette::{LinSrgb, LinSrgba, Pixel, Srgb, Srgba};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Color {
     pub red: f32,
     pub green: f32,

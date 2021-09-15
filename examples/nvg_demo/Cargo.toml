@@ -6,7 +6,8 @@ edition = "2018"
 publish = false
 
 [dependencies]
-reui = { path = "../..", features = ["standalone"] }
+reui = { path = "../.." }
+reui-app = { path = "../../reui-app" }
 
 tracing = "0.1"
 tracing-subscriber = "0.2"

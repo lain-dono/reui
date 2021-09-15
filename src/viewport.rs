@@ -15,7 +15,7 @@ impl TargetDescriptor {
                 label: Some("reui::Target.layout"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStage::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -97,19 +97,11 @@ impl Viewport {
         height: u32,
         scale: f32,
     ) -> Self {
-        tracing::info!(
-            "Create viewport {}x{} {:?} {:?}",
-            width,
-            height,
-            target.color,
-            target.depth,
-        );
-
         let contents = Self::convert_viewport(width as f32, height as f32, scale);
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("reui::Viewport.buffer"),
             contents: bytes_of(&contents),
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -186,7 +178,7 @@ impl Viewport {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Depth24PlusStencil8,
-                usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             })
             .create_view(&wgpu::TextureViewDescriptor::default())
     }

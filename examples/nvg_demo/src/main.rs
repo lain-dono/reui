@@ -6,10 +6,8 @@ mod canvas;
 
 mod time;
 
-use reui::{
-    app::{self, ControlFlow, Spawner, WindowEvent},
-    wgpu, Offset, Recorder, Rect, Renderer, Viewport,
-};
+use reui::{text, wgpu, Offset, Recorder, Rect, Renderer, Viewport};
+use reui_app::{self as app, ControlFlow, Spawner, WindowEvent};
 
 pub fn main() {
     tracing_subscriber::fmt::init();
@@ -30,6 +28,9 @@ struct Demo {
     counter: crate::time::Counter,
     image: u32,
     blowup: bool,
+
+    db: reui::text::FontDatabase,
+    font: reui::text::Font,
 }
 
 impl app::Application for Demo {
@@ -40,13 +41,37 @@ impl app::Application for Demo {
         height: u32,
         scale: f32,
     ) -> Self {
-        let mut vg = Renderer::new(&device);
+        let mut vg = Renderer::new(device);
         let viewport = vg.pipeline.create_viewport(device, width, height, scale);
         let recorder = Recorder::default();
 
         let image = vg
             .open_image(device, queue, "examples/rust-jerk.jpg")
             .unwrap();
+
+        let mut db = reui::text::FontDatabase::new();
+        db.load_system_fonts();
+        db.load_fonts_dir("./assets/fonts/");
+
+        let font = {
+            use reui::text::{FontStretch, FontStyle, FontWeight, Query};
+            let font = db
+                .query(&Query {
+                    families: &["Roboto"],
+                    weight: FontWeight::NORMAL,
+                    stretch: FontStretch::Normal,
+                    style: FontStyle::Normal,
+                })
+                .unwrap();
+
+            db.load_font(font).unwrap()
+        };
+
+        let mut families = std::collections::HashMap::new();
+        for (id, face) in db.faces() {
+            *families.entry(face.family.clone()).or_insert(0) += 1;
+        }
+        println!("{:#?}", families);
 
         Self {
             vg,
@@ -56,11 +81,14 @@ impl app::Application for Demo {
             counter: crate::time::Counter::new(),
             image,
             blowup: false,
+
+            db,
+            font,
         }
     }
 
     fn update(&mut self, event: WindowEvent, control_flow: &mut ControlFlow) {
-        use reui::app::winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
+        use reui_app::winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
         match event {
             WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
             WindowEvent::CursorMoved { position, .. } => {
@@ -83,7 +111,7 @@ impl app::Application for Demo {
 
     fn render(
         &mut self,
-        frame: &wgpu::SwapChainTexture,
+        frame: &wgpu::SurfaceTexture,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         _spawner: &Spawner,
@@ -92,6 +120,7 @@ impl app::Application for Demo {
         height: u32,
         scale: f32,
     ) {
+        let scale = scale;
         self.viewport.resize(device, queue, width, height, scale);
 
         let time = self.counter.update();
@@ -110,10 +139,57 @@ impl app::Application for Demo {
         ctx.draw_image_rect(self.image, Rect::from_size(wsize.x, wsize.y));
         canvas::render_demo(&mut ctx, mouse, wsize, time, self.blowup);
 
-        let target = self.viewport.target(&frame.view);
+        if false {
+            use reui::text::{Paragraph, TextAnchor, TextStyle};
+            let mut style = TextStyle {
+                color: reui::Color::BLACK,
+                font: self.font,
+                font_size: 50.0,
+                decoration: reui::text::TextDecoration::default(),
+                letter_spacing: 0.0,
+                word_spacing: 0.0,
+            };
+
+            let width = 500.0;
+
+            let mut paragraph = Paragraph::new(TextAnchor::Start, style.clone());
+            paragraph.add_text("Hello ");
+            style.color = reui::Color::GREEN;
+            paragraph.push_style(style.clone());
+            paragraph.add_text("ÊWorldΐΊ");
+            paragraph.add_text(" ");
+            paragraph.add_text("金糸");
+            paragraph.pop_style();
+            paragraph.add_text("雀");
+            style.color = reui::Color::RED;
+            style.letter_spacing = 0.0;
+            paragraph.push_style(style.clone());
+            paragraph.add_text(" ");
+            //paragraph.add_text(concat!["א", "ב", "ג", "a", "b", "c",]);
+            paragraph.add_text("12345");
+            paragraph.add_text("\n");
+            paragraph.push_style(style);
+            paragraph.add_text("The word العربية al-arabiyyah");
+            paragraph.add_text("\n");
+            paragraph.add_text("12345");
+
+            ctx.save();
+            ctx.translate(50.0, 200.0);
+            ctx.draw_line(
+                Offset::zero(),
+                Offset::new(width, 0.0),
+                reui::Paint::stroke(reui::Color::WHITE),
+            );
+            paragraph.draw(&self.db, width, &mut ctx);
+            ctx.restore();
+        }
+
+        let attachment = frame.texture.create_view(&Default::default());
+
+        let target = self.viewport.target(&attachment);
         let bundle =
             self.recorder
-                .finish(&mut encoder, staging_belt, &device, &mut self.vg, &target);
+                .finish(&mut encoder, staging_belt, device, &mut self.vg, &target);
         {
             let mut rpass = target.rpass(
                 &mut encoder,

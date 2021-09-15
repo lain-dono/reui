@@ -61,32 +61,6 @@ pub enum Command {
 }
 
 impl Command {
-    #[inline]
-    fn from_raw(raw: Raw, coords: &[Offset]) -> Self {
-        match raw {
-            Raw::MoveTo => Self::MoveTo(coords[0]),
-            Raw::LineTo => Self::LineTo(coords[0]),
-            Raw::BezierTo => Self::BezierTo(coords[0], coords[1], coords[2]),
-            Raw::Solid => Self::Solid,
-            Raw::Hole => Self::Hole,
-            Raw::Close => Self::Close,
-        }
-    }
-
-    #[inline]
-    fn from_raw_transformed(raw: Raw, coords: &[Offset], t: Transform) -> Self {
-        match raw {
-            Raw::MoveTo => Self::MoveTo(t.apply(coords[0])),
-            Raw::LineTo => Self::LineTo(t.apply(coords[0])),
-            Raw::BezierTo => {
-                Self::BezierTo(t.apply(coords[0]), t.apply(coords[1]), t.apply(coords[2]))
-            }
-            Raw::Solid => Self::Solid,
-            Raw::Hole => Self::Hole,
-            Raw::Close => Self::Close,
-        }
-    }
-
     fn to_raw(self, array: &mut [Offset; 3]) -> (Raw, &[Offset]) {
         match self {
             Command::MoveTo(p) => (Raw::MoveTo, {
@@ -136,9 +110,15 @@ impl<'a> Iterator for PathIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(&raw) = self.index.next() {
             let (coords, next) = self.coord.split_at(raw.num_points());
-            let cmd = Command::from_raw(raw, coords);
             self.coord = next;
-            Some(cmd)
+            Some(match raw {
+                Raw::MoveTo => Command::MoveTo(coords[0]),
+                Raw::LineTo => Command::LineTo(coords[0]),
+                Raw::BezierTo => Command::BezierTo(coords[0], coords[1], coords[2]),
+                Raw::Solid => Command::Solid,
+                Raw::Hole => Command::Hole,
+                Raw::Close => Command::Close,
+            })
         } else {
             None
         }
@@ -161,9 +141,19 @@ impl<'a> Iterator for PathTransformIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(&raw) = self.index.next() {
             let (coords, next) = self.coord.split_at(raw.num_points());
-            let cmd = Command::from_raw_transformed(raw, coords, self.transform);
             self.coord = next;
-            Some(cmd)
+            Some(match raw {
+                Raw::MoveTo => Command::MoveTo(self.transform.apply(coords[0])),
+                Raw::LineTo => Command::LineTo(self.transform.apply(coords[0])),
+                Raw::BezierTo => Command::BezierTo(
+                    self.transform.apply(coords[0]),
+                    self.transform.apply(coords[1]),
+                    self.transform.apply(coords[2]),
+                ),
+                Raw::Solid => Command::Solid,
+                Raw::Hole => Command::Hole,
+                Raw::Close => Command::Close,
+            })
         } else {
             None
         }
@@ -175,7 +165,7 @@ impl<'a> Iterator for PathTransformIter<'a> {
 pub struct Path {
     index: Vec<Raw>,
     coord: Vec<Offset>,
-    distance_tolerance: f32,
+    pub(crate) distance_tolerance: f32,
 }
 
 impl<'a> IntoIterator for &'a Path {
@@ -226,12 +216,26 @@ impl Path {
         self.coord.clear();
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.index.is_empty()
     }
 
+    pub fn iter(&self) -> PathIter {
+        PathIter {
+            index: self.index.iter(),
+            coord: &self.coord,
+        }
+    }
+
+    pub(crate) fn transform_inplace(&mut self, tx: f32, ty: f32, scale: f32) {
+        let t = Transform::compose(tx, ty, 0.0, scale);
+        for coord in &mut self.coord {
+            *coord = t.apply(*coord);
+        }
+    }
+
     /// Returns a copy of the [`Path`] with all the segments of every sub-path transformed by the given matrix.
-    pub fn transform(&self, transform: Transform) -> PathTransformIter {
+    pub fn transform_iter(&self, transform: Transform) -> PathTransformIter {
         PathTransformIter {
             transform,
             index: self.index.iter(),
@@ -404,9 +408,10 @@ impl Path {
                 Offset::new(negative_radius.x, negative_kappa.y),
                 Offset::new(negative_radius.x, center.y),
             ],
-        )
+        );
     }
 
+    #[inline]
     fn append(&mut self, cmd: &[Raw], coord: &[Offset]) {
         self.index.extend_from_slice(cmd);
         self.coord.extend_from_slice(coord);

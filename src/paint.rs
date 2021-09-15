@@ -90,6 +90,14 @@ impl Paint {
         }
     }
 
+    pub fn fill_even_odd(color: Color) -> Self {
+        Self {
+            style: PaintingStyle::FillEvenOdd,
+            color,
+            ..Self::default()
+        }
+    }
+
     pub fn stroke(color: Color) -> Self {
         Self {
             style: PaintingStyle::Stroke,
@@ -277,7 +285,7 @@ impl RawPaint {
         )
     }
 
-    pub fn to_instance(&self, width: f32, fringe: f32, stroke_thr: f32) -> Instance {
+    pub fn to_instance(self, width: f32, fringe: f32, stroke_thr: f32) -> Instance {
         Instance {
             paint_mat: self.xform.inverse().into(),
 

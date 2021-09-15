@@ -8,13 +8,11 @@
     clippy::cast_precision_loss,
     clippy::items_after_statements,
     clippy::too_many_lines,
-    clippy::too_many_arguments
+    clippy::too_many_arguments,
+    clippy::cast_lossless
 )]
 
 pub use wgpu;
-
-#[cfg(feature = "standalone")]
-pub mod app;
 
 mod canvas;
 mod color;
@@ -27,18 +25,17 @@ mod renderer;
 mod tessellator;
 mod upload_buffer;
 
-//mod glyph;
-//mod glyph_cache;
 mod viewport;
 
-//mod text;
+pub mod image;
+pub mod text;
 
 pub use self::{
     canvas::Canvas,
     color::Color,
     geom::{Corners, Offset, RRect, Rect, Size, Transform},
     paint::{Gradient, LineCap, LineJoin, Paint, PaintingStyle},
-    path::{Path, Solidity},
+    path::{Path, PathIter, PathTransformIter, Solidity},
     picture::{Picture, Recorder},
     renderer::Renderer,
     tessellator::Tessellator,

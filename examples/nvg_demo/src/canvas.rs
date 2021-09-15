@@ -245,14 +245,14 @@ pub fn draw_window(ctx: &mut Canvas, bounds: Rect, content: impl FnOnce(&mut Can
     // Drop shadow
     {
         let mut path = Path::new();
-        path.rect(bounds.inflate(10.0));
+        path.rect(bounds.inflate(20.0));
         path.rrect(bounds, Corners::all_same(corner_radius));
         path.solidity(Solidity::Hole);
         let shadow_paint = Paint::box_gradient(
             bounds,
             corner_radius,
-            10.0,
-            Color::hex(0x88_000000),
+            20.0,
+            Color::hex(0xF8_FF00FF),
             Color::hex(0x00_000000),
         );
         ctx.draw_path(&path, shadow_paint);

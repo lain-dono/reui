@@ -8,8 +8,7 @@ pub fn bytes_of<T>(data: &[T]) -> &[u8] {
 
 pub struct UploadBuffer<T> {
     buffer: wgpu::Buffer,
-    usage: wgpu::BufferUsage,
-    len: usize,
+    usage: wgpu::BufferUsages,
     capacity: usize,
     label: &'static str,
     marker: PhantomData<T>,
@@ -24,22 +23,21 @@ impl<T> AsRef<wgpu::Buffer> for UploadBuffer<T> {
 impl<T> UploadBuffer<T> {
     pub fn new(
         device: &wgpu::Device,
-        usage: wgpu::BufferUsage,
+        usage: wgpu::BufferUsages,
         capacity: usize,
         label: &'static str,
     ) -> Self {
-        assert_ne!(size_of::<T>(), 0);
+        debug_assert_ne!(size_of::<T>(), 0);
 
         Self {
             buffer: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
                 size: size_of::<T>() as u64 * capacity as u64,
-                usage: usage | wgpu::BufferUsage::COPY_DST,
+                usage: usage | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }),
             usage,
             capacity,
-            len: 0,
             label,
             marker: PhantomData,
         }
@@ -47,34 +45,23 @@ impl<T> UploadBuffer<T> {
 
     pub fn init(
         device: &wgpu::Device,
-        usage: wgpu::BufferUsage,
+        usage: wgpu::BufferUsages,
         data: &[T],
         label: &'static str,
     ) -> Self {
-        assert_ne!(size_of::<T>(), 0);
+        debug_assert_ne!(size_of::<T>(), 0);
 
         Self {
             buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
                 contents: bytes_of(data),
-                usage: usage | wgpu::BufferUsage::COPY_DST,
+                usage: usage | wgpu::BufferUsages::COPY_DST,
             }),
             usage,
             capacity: data.len(),
-            len: 0,
             label,
             marker: PhantomData,
         }
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.len
     }
 
     pub fn slice<S: RangeBounds<wgpu::BufferAddress>>(&self, bounds: S) -> wgpu::BufferSlice {
@@ -89,7 +76,6 @@ impl<T> UploadBuffer<T> {
         data: &[T],
     ) {
         if data.is_empty() {
-            self.len = 0;
             return;
         }
 
@@ -97,7 +83,7 @@ impl<T> UploadBuffer<T> {
             self.buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(self.label),
                 size: size_of::<T>() as u64 * data.len() as u64,
-                usage: self.usage | wgpu::BufferUsage::COPY_DST,
+                usage: self.usage | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
             self.capacity = data.len();
@@ -109,7 +95,5 @@ impl<T> UploadBuffer<T> {
                 .write_buffer(encoder, &self.buffer, 0, size, device)
                 .copy_from_slice(src);
         }
-
-        self.len = data.len();
     }
 }

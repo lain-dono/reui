@@ -159,12 +159,9 @@ impl Offset {
         Self::new(self.x.ceil(), self.y.ceil())
     }
 
-    /*
     pub fn magnitude(self) -> f32 {
-        //self.x.hypot(self.y)
-        self.magnitude_sq().sqrt()
+        self.x.hypot(self.y)
     }
-    */
 
     pub fn magnitude_sq(self) -> f32 {
         self.x.mul_add(self.x, self.y * self.y)

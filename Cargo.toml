@@ -3,7 +3,8 @@ name = "reui"
 version = "0.0.0"
 authors = ["Lain-dono <lain.dono@gmail.com>"]
 license = "MPL-2.0"
-edition = "2018"
+edition = "2021"
+resolver = "2"
 
 description = "Renderer for User Interface"
 homepage = "https://github.com/lain-dono/reui"
@@ -13,42 +14,52 @@ exclude = ["Cargo.lock", "examples/**/*", "tests/**/*", "target/**/*"]
 
 [workspace]
 members = [
+    "reui-app",
     "examples/nvg_demo",
 ]
 
 [dependencies]
-#wgpu = "0.7.1"
-wgpu = { git = 'https://github.com/gfx-rs/wgpu-rs' }
+wgpu = "0.10.0"
 
 bitflags = "1.2"
-palette = "0.5.0"
+palette = "0.6.0"
 
 image = { version = "0.23.13", default-features = false, features = ["jpeg", "png"] }
 
-winit = { version = "0.24.0", optional = true }
-futures = { version = "0.3", optional = true }
-
 glyph_brush = "0.7"
 
-tracing = "0.1"
+#tracing = "0.1"
 
 # text
-#fnv = "1.0.7"
-#owned_ttf_parser = "0.12.0"
-#rustybuzz = "0.3.0"
-#unicode-bidi = "0.3.4"
-#unicode-segmentation = "1.6.0"
-#generational-arena = "0.2.8"
-#lru = { version = "0.6.3", default-features = false }
+fnv = "1.0.7"
+ttf-parser = "0.12"
+rustybuzz = "0.4"
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-async-executor = { version = "1.0", optional = true }
-pollster = { version = "0.2", optional = true }
-wgpu-subscriber = { version = "0.1", optional = true }
+approx = "0.5"
 
-[features]
-default = []
-standalone = ["winit", "futures", "async-executor", "pollster", "wgpu-subscriber"]
+#fontdb = "0.5"
 
-#[patch.crates-io]
-#wgpu = { git = 'https://github.com/gfx-rs/wgpu-rs' }
+#rust_icu_ubrk = "1"
+#rust_icu_sys = "1"
+
+unicode-bidi = "0.3"
+unicode-segmentation = "1.6"
+unicode-linebreak = "0.1.1"
+unic-emoji-char = "0.9"
+unicode-vo = "0.1"
+unicode-script = "0.5"
+
+
+hyphenation = "0.8.3"
+generational-arena = "0.2"
+lru = { version = "0.6.3", default-features = false }
+
+bytemuck = { version = "1", features = ["derive"] }
+
+# image cache
+guillotiere = "0.6"
+etagere = "0.2"
+
+log = "0.4"
+memmap2 = "0.3"
+slotmap = "1"
