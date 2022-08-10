@@ -1,4 +1,4 @@
-use reui::{Canvas, Color, Corners, LineCap, LineJoin, Offset, Paint, Path, Rect, Solidity};
+use reui::{Canvas, Color, LineCap, LineJoin, Offset, Paint, Path, Rect, Rounding, Solidity};
 use std::f32::consts::PI;
 
 pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, blowup: bool) {
@@ -17,6 +17,8 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
         draw_widths(ctx, 10.0, 50.0, 30.0);
         // Line caps
         draw_caps(ctx, 10.0, 400.0, 30.0);
+
+        draw_fills(ctx, width - 200.0, height - 100.0);
 
         if blowup {
             ctx.rotate((time * 0.3).sin() * 5.0 / 180.0 * PI);
@@ -84,13 +86,13 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
 
         ctx.draw_rect(
             Rect::from_ltwh(50.0, 50.0, 100.0, 100.0),
-            Paint::fill(Color::BLACK),
+            Paint::fill_non_zero(Color::BLACK),
         );
-        let radius = Corners::all_same(15.0);
+        let radius = Rounding::same(15.0);
         ctx.draw_rrect(
             Rect::new(Offset::new(50.0, 50.0), Offset::new(100.0, 100.0)),
             radius,
-            Paint::fill(Color::hex(0xFF_CC0000)),
+            Paint::fill_non_zero(Color::hex(0xFF_CC0000)),
         );
 
         ctx.draw_line(
@@ -106,7 +108,7 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
         // blending test
 
         fn srgba_fill(c: u32) -> Paint {
-            Paint::fill(Color::hex(c))
+            Paint::fill_non_zero(Color::hex(c))
         }
 
         let x = 260.0;
@@ -114,7 +116,7 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
         let width = 85.0;
         let height = 40.0;
 
-        let bg_paint = Paint::fill(Color::hex(0xFF_FFFFFF));
+        let bg_paint = Paint::fill_non_zero(Color::hex(0xFF_FFFFFF));
         ctx.draw_rect(Rect::from_ltwh(x, y, width, height), bg_paint);
 
         let vg = srgba_fill(0xFF_18EA22);
@@ -175,7 +177,10 @@ fn draw_palette(ctx: &mut Canvas, offset: Offset) {
 
         let x = offset.x + 1.25 * size * x as f32;
         let y = offset.y + 1.25 * size * y as f32;
-        ctx.draw_rect(Rect::from_ltwh(x, y, size, size), Paint::fill(color))
+        ctx.draw_rect(
+            Rect::from_ltwh(x, y, size, size),
+            Paint::fill_non_zero(color),
+        )
     }
 
     let grad: &[[u32; 2]] = &[
@@ -220,33 +225,33 @@ pub fn draw_window(ctx: &mut Canvas, bounds: Rect, content: impl FnOnce(&mut Can
     {
         // body
         let rect = Rect::from_ltwh(left, top + header_height, width, height - header_height);
-        let radius = Corners::bottom(corner_radius);
-        ctx.draw_rrect(rect, radius, Paint::fill(body_bg));
+        let radius = Rounding::bottom(corner_radius);
+        ctx.draw_rrect(rect, radius, Paint::fill_non_zero(body_bg));
 
         content(ctx, rect);
     }
 
     {
         // header
-        let header_paint = Paint::fill(header_bg);
+        let header_paint = Paint::fill_non_zero(header_bg);
 
-        let radius = Corners::top(corner_radius);
+        let radius = Rounding::top(corner_radius);
         let rect = Rect::from_ltwh(left, top, width, header_height);
         ctx.draw_rrect(rect, radius, header_paint);
 
         let radius = 5.0;
         let center = Offset::new(left, top) + Offset::new(header_height, header_height) / 2.0;
         let off = Offset::new(radius * 3.0, 0.0);
-        ctx.draw_circle(center + off * 0.0, radius, Paint::fill(btn_r));
-        ctx.draw_circle(center + off * 1.0, radius, Paint::fill(btn_y));
-        ctx.draw_circle(center + off * 2.0, radius, Paint::fill(btn_g));
+        ctx.draw_circle(center + off * 0.0, radius, Paint::fill_non_zero(btn_r));
+        ctx.draw_circle(center + off * 1.0, radius, Paint::fill_non_zero(btn_y));
+        ctx.draw_circle(center + off * 2.0, radius, Paint::fill_non_zero(btn_g));
     }
 
     // Drop shadow
     {
         let mut path = Path::new();
         path.rect(bounds.inflate(20.0));
-        path.rrect(bounds, Corners::all_same(corner_radius));
+        path.rrect(bounds, Rounding::same(corner_radius));
         path.solidity(Solidity::Hole);
         let shadow_paint = Paint::box_gradient(
             bounds,
@@ -262,7 +267,7 @@ pub fn draw_window(ctx: &mut Canvas, bounds: Rect, content: impl FnOnce(&mut Can
 pub fn draw_search_box(ctx: &mut Canvas, rect: Rect) {
     let [left, top, width, height] = rect.to_xywh();
 
-    let corner_radius = Corners::all_same(height / 2.0 - 1.0);
+    let corner_radius = Rounding::same(height / 2.0 - 1.0);
 
     let paint = Paint::box_gradient(
         Rect::from_ltwh(left, top + 1.5, width, height),
@@ -282,10 +287,10 @@ pub fn draw_button(ctx: &mut Canvas, rr: Rect, col: u32) {
     let col = Color::hex(col);
     let alpha = if col == Color::TRANSPARENT { 16 } else { 32 };
 
-    let radius = Corners::all_same(corner_radius - 1.0);
+    let radius = Rounding::same(corner_radius - 1.0);
     let rrect = Rect::from_ltwh(x + 1.0, y + 1.0, w - 2.0, h - 2.0);
     if col != Color::TRANSPARENT {
-        ctx.draw_rrect(rrect, radius, Paint::fill(col));
+        ctx.draw_rrect(rrect, radius, Paint::fill_non_zero(col));
     }
     let rgb = 127;
     let inner_color = Color::new_srgba8(rgb, rgb, rgb, alpha);
@@ -293,7 +298,7 @@ pub fn draw_button(ctx: &mut Canvas, rr: Rect, col: u32) {
     let paint = Paint::linear_gradient([x, y], [x, y + h], inner_color, outer_color);
     ctx.draw_rrect(rrect, radius, paint);
 
-    let radius = Corners::all_same(corner_radius - 0.5);
+    let radius = Rounding::same(corner_radius - 0.5);
     let rrect = Rect::from_ltwh(x + 0.5, y + 0.5, w - 1.0, h - 1.0);
     ctx.draw_rrect(rrect, radius, Paint::stroke(Color::hex(0x30_000000)));
 }
@@ -301,7 +306,7 @@ pub fn draw_button(ctx: &mut Canvas, rr: Rect, col: u32) {
 pub fn draw_checkbox(ctx: &mut Canvas, rr: Rect) {
     let [x, y, _, h] = rr.to_xywh();
 
-    let radius = Corners::all_same(3.0);
+    let radius = Rounding::same(3.0);
     let rect = Rect::from_ltwh(x + 1.0, y + (h * 0.5).floor() - 9.0, 18.0, 18.0);
     let paint = Paint::box_gradient(
         Rect::from_ltwh(x + 1.0, y + (h * 0.5).floor() - 9.0 + 1.0, 18.0, 18.0),
@@ -319,7 +324,7 @@ pub fn draw_drop_down(ctx: &mut Canvas, bounds: Rect) {
     let corner_radius = 4.0;
 
     let rect = Rect::from_ltwh(x + 1.0, y + 1.0, w - 2.0, h - 2.0);
-    let radius = Corners::all_same(corner_radius - 1.0);
+    let radius = Rounding::same(corner_radius - 1.0);
     let paint = Paint::linear_gradient(
         bounds.min.into(),
         [x, y + h],
@@ -329,7 +334,7 @@ pub fn draw_drop_down(ctx: &mut Canvas, bounds: Rect) {
     ctx.draw_rrect(rect, radius, paint);
 
     let rect = Rect::from_ltwh(x + 0.5, y + 0.5, w - 1.0, h - 1.0);
-    let radius = Corners::all_same(corner_radius - 0.5);
+    let radius = Rounding::same(corner_radius - 0.5);
     ctx.draw_rrect(rect, radius, Paint::stroke(Color::hex(0x30_000000)));
 }
 
@@ -364,7 +369,7 @@ pub fn draw_eyes(ctx: &mut Canvas, rr: Rect, mouse: Offset, time: f32) {
     ctx.draw_oval(Rect::from_oval(lx, ly, ex, ey), bg);
     ctx.draw_oval(Rect::from_oval(rx, ry, ex, ey), bg);
 
-    let eye_paint = Paint::fill(Color::hex(0xFF_202020));
+    let eye_paint = Paint::fill_non_zero(Color::hex(0xFF_202020));
 
     let mut dx = (mx - rx) / (ex * 10.0);
     let mut dy = (my - ry) / (ey * 10.0);
@@ -498,12 +503,12 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
         ctx.draw_circle(
             [sx[i], sy[i]].into(),
             4.0,
-            Paint::fill(Color::hex(0xFF_00A0C0)),
+            Paint::fill_non_zero(Color::hex(0xFF_00A0C0)),
         );
         ctx.draw_circle(
             [sx[i], sy[i]].into(),
             2.0,
-            Paint::fill(Color::hex(0xFF_DCDCDC)),
+            Paint::fill_non_zero(Color::hex(0xFF_DCDCDC)),
         );
     }
 }
@@ -525,11 +530,11 @@ pub fn draw_caps(ctx: &mut Canvas, x: f32, y: f32, width: f32) {
 
     ctx.draw_rect(
         Rect::from_ltwh(x - line_width / 2.0, y, width + line_width, 40.0),
-        Paint::fill(Color::hex(0x20_FFFFFF)),
+        Paint::fill_non_zero(Color::hex(0x20_FFFFFF)),
     );
     ctx.draw_rect(
         Rect::from_ltwh(x, y, width, 40.0),
-        Paint::fill(Color::hex(0x20_FFFFFF)),
+        Paint::fill_non_zero(Color::hex(0x20_FFFFFF)),
     );
 
     let paint = Paint::stroke(Color::BLACK).stroke_width(line_width);
@@ -601,11 +606,11 @@ fn draw_edit_box_base(ctx: &mut Canvas, rr: Rect) {
     );
 
     let rect = Rect::from_ltwh(left + 1.0, top + 1.0, width - 2.0, height - 2.0);
-    let radius = Corners::all_same(4.0 - 1.0);
+    let radius = Rounding::same(4.0 - 1.0);
     ctx.draw_rrect(rect, radius, bg);
 
     let rect = Rect::from_ltwh(left + 0.5, top + 0.5, width - 1.0, height - 1.0);
-    let radius = Corners::all_same(4.0 - 0.5);
+    let radius = Rounding::same(4.0 - 0.5);
     ctx.draw_rrect(rect, radius, Paint::stroke(Color::hex(0x30_000000)));
 }
 
@@ -627,7 +632,7 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, rect: Rect) {
     // Slot
     ctx.draw_rrect(
         Rect::from_ltwh(x, cy - 2.0, w, 4.0),
-        Corners::all_same(2.0),
+        Rounding::same(2.0),
         Paint::box_gradient(
             Rect::from_ltwh(x, cy - 2.0 + 1.0, w, 4.0),
             2.0,
@@ -667,7 +672,11 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, rect: Rect) {
     );
 
     let center = [x + (pos * w).floor(), cy].into();
-    ctx.draw_circle(center, kr - 1.0, Paint::fill(Color::hex(0xFF_282B30)));
+    ctx.draw_circle(
+        center,
+        kr - 1.0,
+        Paint::fill_non_zero(Color::hex(0xFF_282B30)),
+    );
     ctx.draw_circle(center, kr - 1.0, knob);
     ctx.draw_circle(center, kr - 0.5, Paint::stroke(Color::hex(0x5C_000000)));
 }
@@ -782,4 +791,39 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     ctx.draw_path(&path, paint);
 
     ctx.restore();
+}
+
+fn draw_fills(canvas: &mut Canvas, x: f32, y: f32) {
+    canvas.save();
+    canvas.translate(x, y);
+
+    let color = Color::hex(0x78_DCDCDC);
+
+    let mut path = Path::new();
+    //path.solidity(Solidity::Solid);
+    path.move_to(Offset::new(50.0, 0.0));
+    path.line_to(Offset::new(21.0, 90.0));
+    path.line_to(Offset::new(98.0, 35.0));
+    path.line_to(Offset::new(2.0, 35.0));
+    path.line_to(Offset::new(79.0, 90.0));
+    path.close();
+
+    let paint = Paint::fill_even_odd(color);
+    canvas.draw_path(&path, paint);
+
+    canvas.translate(100.0, 0.0);
+
+    let mut path = Path::new();
+    //path.solidity(Solidity::Hole);
+    path.move_to(Offset::new(50.0, 0.0));
+    path.line_to(Offset::new(21.0, 90.0));
+    path.line_to(Offset::new(98.0, 35.0));
+    path.line_to(Offset::new(2.0, 35.0));
+    path.line_to(Offset::new(79.0, 90.0));
+    path.close();
+
+    let paint = Paint::fill_non_zero(color);
+    canvas.draw_path(&path, paint);
+
+    canvas.restore();
 }

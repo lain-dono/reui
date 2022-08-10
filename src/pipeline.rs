@@ -6,7 +6,7 @@ use crate::{
 use std::ops::Range;
 
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Vertex {
     pub pos: [f32; 2],
     pub uv: [u16; 2],
@@ -28,7 +28,7 @@ impl Vertex {
 }
 
 #[repr(C, align(4))]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Instance {
     pub paint_mat: [f32; 4],
     pub inner_color: [u8; 4],
@@ -140,38 +140,17 @@ pub struct BatchUpload {
 impl BatchUpload {
     pub fn new(device: &wgpu::Device) -> Self {
         Self {
-            indices: UploadBuffer::new(device, wgpu::BufferUsages::INDEX, 128, "reui indices"),
-            vertices: UploadBuffer::new(device, wgpu::BufferUsages::VERTEX, 128, "reui vertices"),
-            instances: UploadBuffer::new(device, wgpu::BufferUsages::VERTEX, 128, "reui instances"),
+            indices: UploadBuffer::new_index(device, 128),
+            vertices: UploadBuffer::new_vertex(device, 128),
+            instances: UploadBuffer::new_vertex(device, 128),
         }
     }
 
     pub fn init(device: &wgpu::Device, batch: &Batch) -> Self {
-        let indices = UploadBuffer::init(
-            device,
-            wgpu::BufferUsages::INDEX,
-            batch.indices.as_ref(),
-            "reui index buffer",
-        );
-
-        let vertices = UploadBuffer::init(
-            device,
-            wgpu::BufferUsages::VERTEX,
-            batch.vertices.as_ref(),
-            "reui vertex buffer",
-        );
-
-        let instances = UploadBuffer::init(
-            device,
-            wgpu::BufferUsages::VERTEX,
-            batch.instances.as_ref(),
-            "reui instance buffer",
-        );
-
         Self {
-            indices,
-            vertices,
-            instances,
+            indices: UploadBuffer::init_index(device, batch.indices.as_ref()),
+            vertices: UploadBuffer::init_vertex(device, batch.vertices.as_ref()),
+            instances: UploadBuffer::init_vertex(device, batch.instances.as_ref()),
         }
     }
 
@@ -242,17 +221,14 @@ impl Pipeline {
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler {
-                        comparison: false,
-                        filtering: true,
-                    },
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
@@ -272,7 +248,7 @@ impl Pipeline {
             target: &target,
             layout,
 
-            module: device.create_shader_module(&wgpu::ShaderModuleDescriptor {
+            module: device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("reui shader"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
             }),
@@ -413,7 +389,7 @@ impl<'a> Builder<'a> {
         back: wgpu::StencilFaceState,
         one_mask: bool,
     ) -> wgpu::RenderPipeline {
-        let targets = &[wgpu::ColorTargetState {
+        let targets = &[Some(wgpu::ColorTargetState {
             format: self.target.color,
             write_mask,
             blend: Some(wgpu::BlendState {
@@ -428,7 +404,7 @@ impl<'a> Builder<'a> {
                     operation: wgpu::BlendOperation::Add,
                 },
             }),
-        }];
+        })];
 
         let buffers = &[
             wgpu::VertexBufferLayout {
@@ -470,9 +446,7 @@ impl<'a> Builder<'a> {
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Ccw,
                     cull_mode,
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    conservative: false,
-                    clamp_depth: false,
+                    ..wgpu::PrimitiveState::default()
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: self.target.depth,
@@ -491,6 +465,7 @@ impl<'a> Builder<'a> {
                     count: 1,
                     ..wgpu::MultisampleState::default()
                 },
+                multiview: None,
             })
     }
 }

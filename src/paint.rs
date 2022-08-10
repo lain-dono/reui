@@ -23,8 +23,8 @@ pub enum LineJoin {
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PaintingStyle {
-    FillNonZero,
-    FillEvenOdd,
+    NonZero,
+    EvenOdd,
     Stroke,
 }
 
@@ -68,7 +68,7 @@ pub struct Paint {
 impl Default for Paint {
     fn default() -> Self {
         Self {
-            style: PaintingStyle::FillNonZero,
+            style: PaintingStyle::NonZero,
             color: Color::BLACK,
             cap_start: LineCap::Butt,
             cap_end: LineCap::Butt,
@@ -82,9 +82,9 @@ impl Default for Paint {
 }
 
 impl Paint {
-    pub fn fill(color: Color) -> Self {
+    pub fn fill_non_zero(color: Color) -> Self {
         Self {
-            style: PaintingStyle::FillNonZero,
+            style: PaintingStyle::NonZero,
             color,
             ..Self::default()
         }
@@ -92,7 +92,7 @@ impl Paint {
 
     pub fn fill_even_odd(color: Color) -> Self {
         Self {
-            style: PaintingStyle::FillEvenOdd,
+            style: PaintingStyle::EvenOdd,
             color,
             ..Self::default()
         }

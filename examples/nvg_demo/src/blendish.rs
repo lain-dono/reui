@@ -1,4 +1,4 @@
-use reui::{Canvas, Color, Corners, Offset, Paint, Rect, Transform};
+use reui::{Canvas, Color, Offset, Paint, Rect, Rounding, Transform};
 
 const HOVER_SHADE: i32 = 15;
 
@@ -126,26 +126,33 @@ pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
         let pos = bounds.center();
         let rect = Rect::from_size(4.0, 4.0).translate(pos);
 
-        ctx.draw_rect(rect, Paint::fill(Color::hex(0xFF_CC0000)));
+        ctx.draw_rect(rect, Paint::fill_non_zero(Color::hex(0xFF_CC0000)));
 
         let tr = Transform::rotation(time);
         let pos = tr.apply(Offset::new(20.0, 0.0));
 
-        ctx.draw_rect(rect.translate(pos), Paint::fill(Color::hex(0x99_CC0000)));
+        ctx.draw_rect(
+            rect.translate(pos),
+            Paint::fill_non_zero(Color::hex(0x99_CC0000)),
+        );
     }
 }
 
 pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {
-    ctx.draw_rect(bounds, Paint::fill(Color::hex(theme.background)));
+    ctx.draw_rect(bounds, Paint::fill_non_zero(Color::hex(theme.background)));
 
     let rect = bounds.deflate(3.0);
-    let radius = Corners::all_same(3.0);
+    let radius = Rounding::same(3.0);
 
     let mut left_scroll = rect;
     left_scroll.min.x = rect.max.x - 5.0;
     left_scroll.max.y = rect.max.y - 50.0;
 
-    ctx.draw_rrect(left_scroll, radius, Paint::fill(Color::hex(0xFF_676767)));
+    ctx.draw_rrect(
+        left_scroll,
+        radius,
+        Paint::fill_non_zero(Color::hex(0xFF_676767)),
+    );
     //ctx.draw_rrect(left_scroll.add(1.0), Paint::stroke(0xFF_424242));
     //ctx.draw_rrect(left_scroll, Paint::stroke(0xFF_373737).stroke_width(0.5));
 }
@@ -157,12 +164,12 @@ pub fn draw_option(ctx: &mut Canvas, bounds: Rect, theme: &WidgetTheme, state: S
         State::Active => Color::hex(theme.active),
     };
 
-    let radius = Corners::all_same(theme.radius);
+    let radius = Rounding::same(theme.radius);
     let a = Offset::new(2.5, 6.0);
     let b = Offset::new(5.5, 9.0);
     let c = Offset::new(10.5, 3.5);
 
-    ctx.draw_rrect(bounds, radius, Paint::fill(bg));
+    ctx.draw_rrect(bounds, radius, Paint::fill_non_zero(bg));
     ctx.draw_rrect(
         bounds.inflate(0.5),
         radius,
@@ -172,7 +179,7 @@ pub fn draw_option(ctx: &mut Canvas, bounds: Rect, theme: &WidgetTheme, state: S
     if state == State::Active {
         ctx.draw_lines(
             &[bounds.min + a, bounds.min + b, bounds.min + c],
-            Paint::fill(Color::hex(0xFF_E6E6E6)).stroke_width(2.0),
+            Paint::fill_non_zero(Color::hex(0xFF_E6E6E6)).stroke_width(2.0),
         )
     }
 }
@@ -190,51 +197,51 @@ pub fn draw_num(
         State::Active => Color::hex(theme.active),
     };
 
-    let mut radius = Corners::all_same(theme.radius);
+    let mut radius = Rounding::same(theme.radius);
     match gropped {
         Gropped::None => (),
         Gropped::StartVertical => {
-            radius.bl = 0.0;
-            radius.br = 0.0;
+            radius.se = 0.0;
+            radius.sw = 0.0;
         }
         Gropped::StartHorizontal => {
-            radius.br = 0.0;
-            radius.tr = 0.0;
+            radius.sw = 0.0;
+            radius.ne = 0.0;
         }
         Gropped::Middle => {
-            radius.bl = 0.0;
-            radius.br = 0.0;
-            radius.tl = 0.0;
-            radius.tr = 0.0;
+            radius.se = 0.0;
+            radius.sw = 0.0;
+            radius.nw = 0.0;
+            radius.ne = 0.0;
         }
         Gropped::EndVertical => {
-            radius.tl = 0.0;
-            radius.tr = 0.0;
+            radius.nw = 0.0;
+            radius.ne = 0.0;
         }
         Gropped::EndHorizontal => {
-            radius.tl = 0.0;
-            radius.bl = 0.0;
+            radius.nw = 0.0;
+            radius.se = 0.0;
         }
     };
 
     let paint = Paint::stroke(Color::hex(theme.outline)).stroke_width(1.0);
     ctx.draw_rrect(bounds.inflate(0.1), radius, paint);
-    ctx.draw_rrect(bounds, radius, Paint::fill(bg));
+    ctx.draw_rrect(bounds, radius, Paint::fill_non_zero(bg));
 
     let arr = 13.0;
 
     let (mut left, mut left_radius) = (bounds, radius);
     left.max.x = bounds.min.x + arr;
-    left_radius.tr = 0.0;
-    left_radius.br = 0.0;
+    left_radius.ne = 0.0;
+    left_radius.sw = 0.0;
 
     let (mut right, mut right_radius) = (bounds, radius);
     right.min.x = bounds.max.x - arr;
-    right_radius.tl = 0.0;
-    right_radius.bl = 0.0;
+    right_radius.nw = 0.0;
+    right_radius.se = 0.0;
 
     if state == State::Hovered {
-        let paint = Paint::fill(shade(Color::hex(theme.background), HOVER_SHADE));
+        let paint = Paint::fill_non_zero(shade(Color::hex(theme.background), HOVER_SHADE));
         ctx.draw_rrect(left, left_radius, paint);
         ctx.draw_rrect(right, right_radius, paint);
     }
@@ -242,7 +249,7 @@ pub fn draw_num(
     let l_arrow = left.center();
     let r_arrow = right.center();
 
-    let paint = Paint::fill(Color::hex(0xFF_E6E6E6)).stroke_width(1.0);
+    let paint = Paint::fill_non_zero(Color::hex(0xFF_E6E6E6)).stroke_width(1.0);
 
     let a = Offset::new(1.5, -3.0);
     let b = Offset::new(1.5, 0.0);

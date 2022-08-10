@@ -2,9 +2,8 @@
 name = "reui"
 version = "0.0.0"
 authors = ["Lain-dono <lain.dono@gmail.com>"]
-license = "MPL-2.0"
+license = "MIT OR Apache-2.0"
 edition = "2021"
-resolver = "2"
 
 description = "Renderer for User Interface"
 homepage = "https://github.com/lain-dono/reui"
@@ -19,12 +18,12 @@ members = [
 ]
 
 [dependencies]
-wgpu = "0.10.0"
+wgpu = "0.13.1"
 
 bitflags = "1.2"
 palette = "0.6.0"
 
-image = { version = "0.23.13", default-features = false, features = ["jpeg", "png"] }
+image = { version = "0.24", default-features = false, features = ["jpeg", "png"] }
 
 glyph_brush = "0.7"
 
@@ -32,8 +31,8 @@ glyph_brush = "0.7"
 
 # text
 fnv = "1.0.7"
-ttf-parser = "0.12"
-rustybuzz = "0.4"
+ttf-parser = "0.15"
+rustybuzz = "0.5"
 
 approx = "0.5"
 
@@ -52,7 +51,7 @@ unicode-script = "0.5"
 
 hyphenation = "0.8.3"
 generational-arena = "0.2"
-lru = { version = "0.6.3", default-features = false }
+lru = { version = "0.7.1", default-features = false }
 
 bytemuck = { version = "1", features = ["derive"] }
 
@@ -61,5 +60,9 @@ guillotiere = "0.6"
 etagere = "0.2"
 
 log = "0.4"
-memmap2 = "0.3"
+memmap2 = "0.5"
 slotmap = "1"
+
+
+ab_glyph = "0.2.11"
+ahash = { version = "0.7", default-features = false, features = ["std"] }

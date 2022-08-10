@@ -1,4 +1,4 @@
-use {crate::upload_buffer::bytes_of, wgpu::util::DeviceExt};
+use wgpu::util::DeviceExt as _;
 
 pub struct TargetDescriptor {
     pub color: wgpu::TextureFormat,
@@ -53,14 +53,14 @@ impl<'a> Target<'a> {
 
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("reui::RenderPass"),
-            color_attachments: &[wgpu::RenderPassColorAttachment {
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: self.color,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: clear_color.map_or(wgpu::LoadOp::Load, wgpu::LoadOp::Clear),
                     store: true,
                 },
-            }],
+            })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: self.depth,
                 depth_ops: Some(wgpu::Operations { load: depth, store }),
@@ -100,7 +100,7 @@ impl Viewport {
         let contents = Self::convert_viewport(width as f32, height as f32, scale);
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("reui::Viewport.buffer"),
-            contents: bytes_of(&contents),
+            contents: bytemuck::bytes_of(&contents),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -152,13 +152,18 @@ impl Viewport {
         height: u32,
         scale: f32,
     ) {
+        if self.width != width || self.height != height {
+            self.depth_stencil = Self::create_depth_texture(device, width, height);
+        }
+
+        if self.width != width || self.height != height || self.scale.to_bits() != scale.to_bits() {
+            let viewport = Self::convert_viewport(width as f32, height as f32, scale);
+            queue.write_buffer(&self.buffer, 0, bytemuck::bytes_of(&viewport));
+        }
+
         self.width = width;
         self.height = height;
         self.scale = scale;
-
-        let viewport = Self::convert_viewport(width as f32, height as f32, scale);
-        queue.write_buffer(&self.buffer, 0, bytes_of(&viewport));
-        self.depth_stencil = Self::create_depth_texture(device, width, height);
     }
 
     fn convert_viewport(width: f32, height: f32, scale: f32) -> [f32; 4] {

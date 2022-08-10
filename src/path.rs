@@ -1,4 +1,4 @@
-use crate::geom::{Corners, Offset, Rect, Transform};
+use crate::geom::{Offset, Rect, Rounding, Transform};
 
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.
 const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
@@ -165,7 +165,6 @@ impl<'a> Iterator for PathTransformIter<'a> {
 pub struct Path {
     index: Vec<Raw>,
     coord: Vec<Offset>,
-    pub(crate) distance_tolerance: f32,
 }
 
 impl<'a> IntoIterator for &'a Path {
@@ -206,7 +205,6 @@ impl Path {
         Self {
             index: Vec::new(),
             coord: Vec::new(),
-            distance_tolerance: 0.01,
         }
     }
 
@@ -274,7 +272,7 @@ impl Path {
     /// Adds a cubic Bézier curve to the [`Path`] given its two control points and its end point.
     pub fn cubic_to(&mut self, p1: Offset, p2: Offset, p3: Offset) {
         self.index.push(Raw::BezierTo);
-        self.coord.extend(std::array::IntoIter::new([p1, p2, p3]));
+        self.coord.extend([p1, p2, p3]);
     }
 
     /// Closes the current sub-path in the [`Path`] with a straight line to the starting point.
@@ -332,16 +330,16 @@ impl Path {
     }
 
     /// Adds [`Rect`] with [`Corners`] to the [`Path`].
-    pub fn rrect(&mut self, rect: Rect, radius: Corners) {
+    pub fn rrect(&mut self, rect: Rect, radius: Rounding) {
         let (w, h) = rect.size().into();
         let Rect { min, max } = rect;
         let half_w = w.abs() * 0.5;
         let half_h = h.abs() * 0.5;
         let sign = w.signum();
-        let bl = Offset::new(half_w.min(radius.bl), half_h.min(radius.bl)) * sign;
-        let br = Offset::new(half_w.min(radius.br), half_h.min(radius.br)) * sign;
-        let tr = Offset::new(half_w.min(radius.tr), half_h.min(radius.tr)) * sign;
-        let tl = Offset::new(half_w.min(radius.tl), half_h.min(radius.tl)) * sign;
+        let bl = Offset::new(half_w.min(radius.se), half_h.min(radius.se)) * sign;
+        let br = Offset::new(half_w.min(radius.sw), half_h.min(radius.sw)) * sign;
+        let tr = Offset::new(half_w.min(radius.ne), half_h.min(radius.ne)) * sign;
+        let tl = Offset::new(half_w.min(radius.nw), half_h.min(radius.nw)) * sign;
         let kappa = 1.0 - KAPPA90;
 
         self.append(

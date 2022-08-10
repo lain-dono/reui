@@ -620,7 +620,7 @@ impl Tessellator {
 
             for i in 0..points.len() {
                 let p0 = if i == 0 {
-                    points.get(points.len() - 1).cloned().unwrap()
+                    points.last().cloned().unwrap()
                 } else {
                     points.get(i - 1).cloned().unwrap()
                 };

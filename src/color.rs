@@ -1,4 +1,4 @@
-use palette::{LinSrgb, LinSrgba, Pixel, Srgb, Srgba};
+use palette::{GammaSrgba, Hsla, IntoColor, LinSrgb, LinSrgba, Pixel, Srgb, Srgba};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Color {
@@ -33,7 +33,7 @@ impl Color {
     pub const GREEN: Self = Self::new(0.0, 1.0, 0.0, 1.0);
     pub const BLUE: Self = Self::new(0.0, 0.0, 1.0, 1.0);
 
-    const fn new(red: f32, green: f32, blue: f32, alpha: f32) -> Self {
+    pub const fn new(red: f32, green: f32, blue: f32, alpha: f32) -> Self {
         Self {
             red,
             green,
@@ -72,40 +72,14 @@ impl Color {
     /// Returns color value specified by hue, saturation and lightness and alpha.
     /// HSL values are all in range [0..1], alpha in range [0..1]
     pub fn hsla(hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Self {
-        #[inline]
-        fn channel(h: f32, m1: f32, m2: f32) -> f32 {
-            let h = h.rem_euclid(1.0);
+        use palette::encoding::{Linear, Srgb};
 
-            if h < 1.0 / 6.0 {
-                m1 + (m2 - m1) * h * 6.0
-            } else if h < 3.0 / 6.0 {
-                m2
-            } else if h < 4.0 / 6.0 {
-                m1 + (m2 - m1) * (2.0 / 3.0 - h) * 6.0
-            } else {
-                m1
-            }
-        }
-
-        let hue = hue.rem_euclid(1.0);
-        let saturation = saturation.clamp(0.0, 1.0);
-        let lightness = lightness.clamp(0.0, 1.0);
-
-        let m2 = if lightness <= 0.5 {
-            lightness * (1.0 + saturation)
-        } else {
-            lightness + saturation - lightness * saturation
-        };
-
-        let m1 = 2.0 * lightness - m2;
-
-        let red = channel(hue + 1.0 / 3.0, m1, m2);
-        let green = channel(hue, m1, m2);
-        let blue = channel(hue - 1.0 / 3.0, m1, m2);
-
-        //let color = Srgb::new(red, green, blue);
-        //Self::from_srgba(Srgba { color, alpha })
-        let color = LinSrgb::new(red, green, blue);
-        Self::from_linear(LinSrgba { color, alpha })
+        let hsla: Hsla<Linear<Srgb>, f32> = Hsla::from_components((
+            (hue.rem_euclid(1.0) * std::f32::consts::TAU).to_degrees(),
+            saturation.clamp(0.0, 1.0),
+            lightness.clamp(0.0, 1.0),
+            alpha,
+        ));
+        Self::from_linear(hsla.into_color())
     }
 }

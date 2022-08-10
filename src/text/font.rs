@@ -10,7 +10,7 @@ impl Database {
         self.with_face_data(id, |data, face_index| -> Option<Font> {
             let font = ttf_parser::Face::from_slice(data, face_index).ok()?;
 
-            let units_per_em = NonZeroU16::new(font.units_per_em()?)?;
+            let units_per_em = NonZeroU16::new(font.units_per_em())?;
 
             let ascent = font.ascender();
             let descent = font.descender();
@@ -33,7 +33,7 @@ impl Database {
             let line_through = font.strikeout_metrics();
             let line_through_position = match line_through {
                 Some(metrics) => metrics.position,
-                None => x_height.get() as i16 / 2,
+                None => (x_height.get() / 2) as i16,
             };
 
             let (underline_position, underline_thickness) = match font.underline_metrics() {
@@ -47,7 +47,7 @@ impl Database {
                     (metrics.position, thickness)
                 }
                 None => (
-                    -(units_per_em.get() as i16) / 9,
+                    -((units_per_em.get() / 9) as i16),
                     NonZeroU16::new(units_per_em.get() / 12).unwrap(),
                 ),
             };

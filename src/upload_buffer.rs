@@ -1,16 +1,10 @@
-use core::{marker::PhantomData, mem::size_of, ops::RangeBounds, slice::from_raw_parts};
+use core::{marker::PhantomData, mem::size_of, ops::RangeBounds};
 use wgpu::util::DeviceExt as _;
-
-pub fn bytes_of<T>(data: &[T]) -> &[u8] {
-    debug_assert_ne!(size_of::<T>(), 0);
-    unsafe { from_raw_parts(data.as_ptr().cast(), data.len() * size_of::<T>()) }
-}
 
 pub struct UploadBuffer<T> {
     buffer: wgpu::Buffer,
     usage: wgpu::BufferUsages,
     capacity: usize,
-    label: &'static str,
     marker: PhantomData<T>,
 }
 
@@ -20,46 +14,50 @@ impl<T> AsRef<wgpu::Buffer> for UploadBuffer<T> {
     }
 }
 
-impl<T> UploadBuffer<T> {
-    pub fn new(
-        device: &wgpu::Device,
-        usage: wgpu::BufferUsages,
-        capacity: usize,
-        label: &'static str,
-    ) -> Self {
+impl<T: bytemuck::Pod> UploadBuffer<T> {
+    pub fn new_index(device: &wgpu::Device, capacity: usize) -> Self {
+        Self::new(device, wgpu::BufferUsages::INDEX, capacity)
+    }
+
+    pub fn new_vertex(device: &wgpu::Device, capacity: usize) -> Self {
+        Self::new(device, wgpu::BufferUsages::VERTEX, capacity)
+    }
+
+    pub fn new(device: &wgpu::Device, usage: wgpu::BufferUsages, capacity: usize) -> Self {
         debug_assert_ne!(size_of::<T>(), 0);
 
         Self {
             buffer: device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(label),
+                label: None,
                 size: size_of::<T>() as u64 * capacity as u64,
                 usage: usage | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }),
             usage,
             capacity,
-            label,
             marker: PhantomData,
         }
     }
 
-    pub fn init(
-        device: &wgpu::Device,
-        usage: wgpu::BufferUsages,
-        data: &[T],
-        label: &'static str,
-    ) -> Self {
+    pub fn init_index(device: &wgpu::Device, data: &[T]) -> Self {
+        Self::init(device, wgpu::BufferUsages::INDEX, data)
+    }
+
+    pub fn init_vertex(device: &wgpu::Device, data: &[T]) -> Self {
+        Self::init(device, wgpu::BufferUsages::VERTEX, data)
+    }
+
+    pub fn init(device: &wgpu::Device, usage: wgpu::BufferUsages, data: &[T]) -> Self {
         debug_assert_ne!(size_of::<T>(), 0);
 
         Self {
             buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
-                contents: bytes_of(data),
+                contents: bytemuck::cast_slice(data),
                 usage: usage | wgpu::BufferUsages::COPY_DST,
             }),
             usage,
             capacity: data.len(),
-            label,
             marker: PhantomData,
         }
     }
@@ -80,16 +78,16 @@ impl<T> UploadBuffer<T> {
         }
 
         if data.len() > self.capacity {
+            self.capacity = data.len() * 2;
             self.buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(self.label),
-                size: size_of::<T>() as u64 * data.len() as u64,
+                label: None,
+                size: size_of::<T>() as u64 * self.capacity as u64,
                 usage: self.usage | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
-            self.capacity = data.len();
         }
 
-        let src = bytes_of(data);
+        let src = bytemuck::cast_slice(data);
         if let Some(size) = wgpu::BufferSize::new(src.len() as u64) {
             staging_belt
                 .write_buffer(encoder, &self.buffer, 0, size, device)

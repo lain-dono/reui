@@ -1,4 +1,4 @@
-use std::ops::{Add, Div, Mul, Rem, Sub};
+use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
 use std::ops::{AddAssign, DivAssign, MulAssign, RemAssign, SubAssign};
 
 #[inline]
@@ -69,7 +69,7 @@ macro_rules! impl_conv {
     };
 }
 
-impl std::ops::Neg for Offset {
+impl Neg for Offset {
     type Output = Self;
     #[inline]
     fn neg(self) -> Self {
@@ -105,7 +105,7 @@ impl_assign!(MulAssign<f32> for Size fn mul_assign(*=));
 impl_assign!(DivAssign<f32> for Size fn div_assign(/=));
 impl_assign!(RemAssign<f32> for Size fn rem_assign(%=));
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, PartialEq, Default, Debug)]
 pub struct Offset {
     pub x: f32,
     pub y: f32,
@@ -187,7 +187,7 @@ impl Offset {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Default, Debug)]
 pub struct Size {
     pub x: f32,
     pub y: f32,
@@ -230,17 +230,21 @@ impl Size {
     }
 }
 
-#[derive(Clone, Copy, Default)]
-pub struct Corners {
-    pub tl: f32,
-    pub tr: f32,
-    pub br: f32,
-    pub bl: f32,
+#[derive(Clone, Copy, PartialEq, Default, Debug)]
+pub struct Rounding {
+    /// Radius of the rounding of the North-West (left top) corner.
+    pub nw: f32,
+    /// Radius of the rounding of the North-East (right top) corner.
+    pub ne: f32,
+    /// Radius of the rounding of the South-West (left bottom) corner.
+    pub sw: f32,
+    /// Radius of the rounding of the South-East (right bottom) corner.
+    pub se: f32,
 }
 
-impl Corners {
-    pub const fn new(tl: f32, tr: f32, br: f32, bl: f32) -> Self {
-        Self { tl, tr, br, bl }
+impl Rounding {
+    pub const fn new(nw: f32, ne: f32, sw: f32, se: f32) -> Self {
+        Self { nw, ne, sw, se }
     }
 
     pub const fn zero() -> Self {
@@ -263,17 +267,17 @@ impl Corners {
         Self::new(radius, 0.0, radius, 0.0)
     }
 
-    pub const fn all_same(radius: f32) -> Self {
+    pub const fn same(radius: f32) -> Self {
         Self {
-            tr: radius,
-            tl: radius,
-            br: radius,
-            bl: radius,
+            ne: radius,
+            nw: radius,
+            sw: radius,
+            se: radius,
         }
     }
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, PartialEq, Default, Debug)]
 pub struct Rect {
     pub min: Offset,
     pub max: Offset,
@@ -392,50 +396,7 @@ impl Rect {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct RRect {
-    pub rect: Rect,
-    pub radius: Corners,
-}
-
-impl RRect {
-    pub fn from_rect_and_radius(rect: Rect, radius: f32) -> Self {
-        let radius = Corners::all_same(radius);
-        Self { rect, radius }
-    }
-
-    pub fn new(o: Offset, s: Offset, radius: f32) -> Self {
-        Self::from_rect_and_radius(Rect::from_points(o, o + s), radius)
-    }
-
-    pub fn rect(&self) -> Rect {
-        self.rect
-    }
-
-    pub fn dx(&self) -> f32 {
-        self.rect.dx()
-    }
-
-    pub fn dy(&self) -> f32 {
-        self.rect.dy()
-    }
-
-    pub fn inflate(self, v: f32) -> Self {
-        Self {
-            rect: self.rect.inflate(v),
-            ..self
-        }
-    }
-
-    pub fn deflate(self, v: f32) -> Self {
-        Self {
-            rect: self.rect.deflate(v),
-            ..self
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Transform {
     pub re: f32,
     pub im: f32,
@@ -456,7 +417,7 @@ impl From<Transform> for [f32; 4] {
     }
 }
 
-impl std::ops::Mul<Self> for Transform {
+impl Mul<Self> for Transform {
     type Output = Self;
     #[inline]
     fn mul(self, other: Self) -> Self {
@@ -470,7 +431,7 @@ impl std::ops::Mul<Self> for Transform {
     }
 }
 
-impl std::ops::MulAssign<Self> for Transform {
+impl MulAssign<Self> for Transform {
     #[inline]
     fn mul_assign(&mut self, other: Self) {
         *self = *self * other;

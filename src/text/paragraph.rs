@@ -71,7 +71,7 @@ impl Paragraph {
 
         let mut paint = crate::Paint::fill_even_odd(crate::Color::BLACK);
 
-        let text_width = Self::text_width(&clusters);
+        let _text_width = Self::text_width(&clusters);
         /*
         let mut x = match self.anchor {
             TextAnchor::Start => 0.0, // Nothing.

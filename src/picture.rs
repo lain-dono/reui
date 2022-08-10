@@ -169,26 +169,6 @@ impl Recorder {
         });
     }
 
-    pub(crate) fn fill_even_odd(
-        &mut self,
-        commands: PathIter,
-        paint: &Paint,
-        xform: Transform,
-        scale: f32,
-    ) {
-        self.fill(commands, paint, xform, scale, FillRule::EvenOdd);
-    }
-
-    pub(crate) fn fill_non_zero(
-        &mut self,
-        commands: PathIter,
-        paint: &Paint,
-        xform: Transform,
-        scale: f32,
-    ) {
-        self.fill(commands, paint, xform, scale, FillRule::NonZero);
-    }
-
     pub(crate) fn fill(
         &mut self,
         commands: PathIter,
@@ -301,13 +281,14 @@ impl Recorder {
 
         let mut rpass = device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
             label: Some("reui::Picture bundle encoder"),
-            color_formats: &[wgpu::TextureFormat::Bgra8UnormSrgb],
+            color_formats: &[Some(wgpu::TextureFormat::Bgra8UnormSrgb)],
             depth_stencil: Some(wgpu::RenderBundleDepthStencil {
                 format: wgpu::TextureFormat::Depth24PlusStencil8,
                 depth_read_only: false,
                 stencil_read_only: false,
             }),
             sample_count: 1,
+            multiview: None,
         });
 
         Self::encode(

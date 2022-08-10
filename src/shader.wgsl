@@ -1,34 +1,34 @@
-[[block]] struct Viewport {
-    inv_size: vec2<f32>;
-};
+struct Viewport {
+    inv_size: vec2<f32>,
+}
 
 struct Input {
-    [[location(0)]] position: vec2<f32>;
-    [[location(1)]] texcoord: vec2<f32>;
-    [[location(2)]] transform: vec4<f32>;
-    [[location(3)]] inner_color: vec4<f32>;
-    [[location(4)]] outer_color: vec4<f32>;
-    [[location(5)]] erf: vec4<f32>;
-    [[location(6)]] stroke: vec2<f32>;
-};
+    @location(0) position: vec2<f32>,
+    @location(1) texcoord: vec2<f32>,
+    @location(2) transform: vec4<f32>,
+    @location(3) inner_color: vec4<f32>,
+    @location(4) outer_color: vec4<f32>,
+    @location(5) erf: vec4<f32>,
+    @location(6) stroke: vec2<f32>,
+}
 
 struct Variable {
-    [[builtin(position)]] vertex_position: vec4<f32>;
+    @builtin(position) vertex_position: vec4<f32>,
 
-    [[location(0)]] position: vec2<f32>;
-    [[location(1)]] texcoord: vec2<f32>;
-    [[location(2)]] transform: vec4<f32>;
-    [[location(3)]] inner_color: vec4<f32>;
-    [[location(4)]] outer_color: vec4<f32>;
-    [[location(5)]] erf: vec4<f32>;
-    [[location(6)]] stroke: vec2<f32>;
-};
+    @location(0) position: vec2<f32>,
+    @location(1) texcoord: vec2<f32>,
+    @location(2) transform: vec4<f32>,
+    @location(3) inner_color: vec4<f32>,
+    @location(4) outer_color: vec4<f32>,
+    @location(5) erf: vec4<f32>,
+    @location(6) stroke: vec2<f32>,
+}
 
-[[group(0), binding(0)]] var<uniform> viewport: Viewport;
-[[group(1), binding(0)]] var s_color: sampler;
-[[group(1), binding(1)]] var t_color: texture_2d<f32>;
+@group(0) @binding(0) var<uniform> viewport: Viewport;
+@group(1) @binding(0) var s_color: sampler;
+@group(1) @binding(1) var t_color: texture_2d<f32>;
 
-[[stage(vertex)]]
+@vertex
 fn vertex(in: Input) -> Variable {
     var out: Variable;
 
@@ -51,8 +51,8 @@ fn sdroundrect(pt: vec2<f32>, ext: vec2<f32>, rad: f32) -> f32 {
     return min(max(d.x, d.y), 0.0) + length(max(d, vec2<f32>(0.0, 0.0))) - rad;
 }
 
-[[stage(fragment)]]
-fn main(in: Input) -> [[location(0)]] vec4<f32> {
+@fragment
+fn main(in: Input) -> @location(0) vec4<f32> {
     var uv: vec2<f32> = in.texcoord;
     var scale: f32 = in.stroke.x;
     var limit: f32 = in.stroke.y;
@@ -82,11 +82,13 @@ fn main(in: Input) -> [[location(0)]] vec4<f32> {
     return color;
 }
 
-[[stage(fragment)]]
-fn stencil() {}
+@fragment
+fn stencil(in: Input) -> @location(0) vec4<f32> {
+    return vec4<f32>(0.0);
+}
 
-[[stage(fragment)]]
-fn image(in: Input) -> [[location(0)]] vec4<f32> {
+@fragment
+fn image(in: Input) -> @location(0) vec4<f32> {
     var tex: vec4<f32> = textureSample(t_color, s_color, in.texcoord);
     return tex * in.inner_color;
 }

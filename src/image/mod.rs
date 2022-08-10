@@ -2,10 +2,8 @@ mod atlas;
 
 pub mod raster;
 
-use crate::Transform;
 pub use atlas::Atlas;
 use bytemuck::{Pod, Zeroable};
-use std::{cell::RefCell, mem};
 
 #[repr(C)]
 #[derive(Clone, Copy, Zeroable, Pod)]

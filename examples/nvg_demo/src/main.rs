@@ -114,7 +114,7 @@ impl app::Application for Demo {
         frame: &wgpu::SurfaceTexture,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        _spawner: &Spawner,
+        spawner: &Spawner,
         staging_belt: &mut wgpu::util::StagingBelt,
         width: u32,
         height: u32,
@@ -128,7 +128,7 @@ impl app::Application for Demo {
         let wsize = Offset::new(width as f32, height as f32) / scale;
 
         if self.counter.index == 0 {
-            tracing::info!("average frame time: {}ms", self.counter.average_ms());
+            //tracing::info!("average frame time: {}ms", self.counter.average_ms());
         }
 
         let mut encoder = device.create_command_encoder(&Default::default());
@@ -206,6 +206,8 @@ impl app::Application for Demo {
         }
 
         staging_belt.finish();
-        queue.submit(Some(encoder.finish()));
+        queue.submit(std::iter::once(encoder.finish()));
+        //spawner.spawn_local(staging_belt.recall());
+        staging_belt.recall();
     }
 }

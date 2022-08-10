@@ -1,7 +1,7 @@
 use crate::{
-    geom::{Corners, Offset, Rect, Transform},
+    geom::{Offset, Rect, Rounding, Transform},
     paint::{Paint, PaintingStyle},
-    path::{Command, Path},
+    path::{Command, FillRule, Path},
     picture::Recorder,
     renderer::Renderer,
 };
@@ -74,19 +74,19 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    fn force_stroke(&mut self, paint: &Paint) {
-        let xform = self.states.transform();
-        let commands = self.path.into_iter();
-        self.recorder.stroke(commands, paint, xform, self.scale);
-    }
-
-    fn fill_or_stroke(&mut self, paint: &Paint) {
+    fn fill_or_stroke(&mut self, paint: &Paint, style: PaintingStyle) {
         let t = self.states.transform();
-        let cmd = self.path.into_iter();
-        match paint.style {
-            PaintingStyle::Stroke => self.recorder.stroke(cmd, paint, t, self.scale),
-            PaintingStyle::FillNonZero => self.recorder.fill_non_zero(cmd, paint, t, self.scale),
-            PaintingStyle::FillEvenOdd => self.recorder.fill_even_odd(cmd, paint, t, self.scale),
+        let commands = self.path.into_iter();
+        match style {
+            PaintingStyle::Stroke => self.recorder.stroke(commands, paint, t, self.scale),
+            PaintingStyle::NonZero => {
+                self.recorder
+                    .fill(commands, paint, t, self.scale, FillRule::NonZero);
+            }
+            PaintingStyle::EvenOdd => {
+                self.recorder
+                    .fill(commands, paint, t, self.scale, FillRule::EvenOdd);
+            }
         }
     }
 
@@ -153,7 +153,7 @@ impl<'a> Canvas<'a> {
     pub fn draw_circle(&mut self, center: Offset, radius: f32, paint: Paint) {
         self.path.clear();
         self.path.circle(center, radius);
-        self.fill_or_stroke(&paint);
+        self.fill_or_stroke(&paint, paint.style);
     }
 
     /*
@@ -182,7 +182,7 @@ impl<'a> Canvas<'a> {
         self.path.clear();
         self.path.move_to(p0);
         self.path.line_to(p1);
-        self.force_stroke(&paint);
+        self.fill_or_stroke(&paint, PaintingStyle::Stroke);
     }
 
     pub fn draw_lines(&mut self, points: &[Offset], paint: Paint) {
@@ -192,7 +192,7 @@ impl<'a> Canvas<'a> {
             for &p in &points[1..] {
                 self.path.line_to(p);
             }
-            self.force_stroke(&paint);
+            self.fill_or_stroke(&paint, PaintingStyle::Stroke);
         }
     }
 
@@ -201,7 +201,7 @@ impl<'a> Canvas<'a> {
     pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
         self.path.clear();
         self.path.oval(rect);
-        self.fill_or_stroke(&paint);
+        self.fill_or_stroke(&paint, paint.style);
     }
 
     /*
@@ -218,7 +218,7 @@ impl<'a> Canvas<'a> {
     pub fn draw_path(&mut self, path_iter: impl IntoIterator<Item = Command>, paint: Paint) {
         self.path.clear();
         self.path.extend(path_iter);
-        self.fill_or_stroke(&paint);
+        self.fill_or_stroke(&paint, paint.style);
     }
 
     /*
@@ -238,19 +238,19 @@ impl<'a> Canvas<'a> {
     pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
         self.path.clear();
         self.path.rect(rect);
-        self.fill_or_stroke(&paint);
+        self.fill_or_stroke(&paint, paint.style);
     }
 
     /// Draws a rounded rectangle with the given Paint.
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
-    pub fn draw_rrect(&mut self, rect: Rect, radius: Corners, paint: Paint) {
+    pub fn draw_rrect(&mut self, rect: Rect, radius: Rounding, paint: Paint) {
         self.path.clear();
-        if radius.tl <= 0.0 && radius.tr <= 0.0 && radius.br <= 0.0 && radius.bl <= 0.0 {
+        if radius.nw <= 0.0 && radius.ne <= 0.0 && radius.sw <= 0.0 && radius.se <= 0.0 {
             self.path.rect(rect);
         } else {
             self.path.rrect(rect, radius);
         }
-        self.fill_or_stroke(&paint);
+        self.fill_or_stroke(&paint, paint.style);
     }
 
     /*
