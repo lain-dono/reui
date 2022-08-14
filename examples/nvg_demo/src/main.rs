@@ -6,8 +6,8 @@ mod canvas;
 
 mod time;
 
-use reui::{text, wgpu, Offset, Recorder, Rect, Renderer, Viewport};
-use reui_app::{self as app, ControlFlow, Spawner, WindowEvent};
+use reui::{text, wgpu, BatchUpload, Canvas, Images, Offset, Pipeline, Recorder, Rect, Viewport};
+use reui_app::{self as app, ControlFlow, WindowEvent};
 
 pub fn main() {
     tracing_subscriber::fmt::init();
@@ -21,7 +21,8 @@ pub fn main() {
 }
 
 struct Demo {
-    vg: Renderer,
+    batch: BatchUpload,
+    pipeline: Pipeline,
     viewport: Viewport,
     recorder: Recorder,
     mouse: Offset,
@@ -31,6 +32,9 @@ struct Demo {
 
     db: reui::text::FontDatabase,
     font: reui::text::Font,
+
+    staging_belt: wgpu::util::StagingBelt,
+    images: Images,
 }
 
 impl app::Application for Demo {
@@ -41,12 +45,14 @@ impl app::Application for Demo {
         height: u32,
         scale: f32,
     ) -> Self {
-        let mut vg = Renderer::new(device);
-        let viewport = vg.pipeline.create_viewport(device, width, height, scale);
+        let mut images = Images::new(device);
+        let batch = BatchUpload::new(device);
+        let pipeline = Pipeline::new(device, &images);
+        let viewport = pipeline.create_viewport(device, width, height, scale);
         let recorder = Recorder::default();
 
-        let image = vg
-            .open_image(device, queue, "examples/rust-jerk.jpg")
+        let image = images
+            .open(device, queue, "examples/rust-jerk.jpg")
             .unwrap();
 
         let mut db = reui::text::FontDatabase::new();
@@ -73,8 +79,11 @@ impl app::Application for Demo {
         }
         println!("{:#?}", families);
 
+        let staging_belt = wgpu::util::StagingBelt::new(0x20_0000);
+
         Self {
-            vg,
+            batch,
+            pipeline,
             viewport,
             recorder,
             mouse: Offset::zero(),
@@ -84,6 +93,8 @@ impl app::Application for Demo {
 
             db,
             font,
+            staging_belt,
+            images,
         }
     }
 
@@ -102,9 +113,7 @@ impl app::Application for Demo {
                         ..
                     },
                 ..
-            } => {
-                self.blowup = !self.blowup;
-            }
+            } => self.blowup = !self.blowup,
             _ => {}
         }
     }
@@ -114,18 +123,16 @@ impl app::Application for Demo {
         frame: &wgpu::SurfaceTexture,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        spawner: &Spawner,
-        staging_belt: &mut wgpu::util::StagingBelt,
         width: u32,
         height: u32,
         scale: f32,
     ) {
-        let scale = scale;
+        let inv_scale = scale.recip();
         self.viewport.resize(device, queue, width, height, scale);
 
         let time = self.counter.update();
-        let mouse = self.mouse / scale;
-        let wsize = Offset::new(width as f32, height as f32) / scale;
+        let mouse = self.mouse * inv_scale;
+        let wsize = Offset::new(width as f32, height as f32) * inv_scale;
 
         if self.counter.index == 0 {
             //tracing::info!("average frame time: {}ms", self.counter.average_ms());
@@ -134,9 +141,10 @@ impl app::Application for Demo {
         let mut encoder = device.create_command_encoder(&Default::default());
 
         self.recorder.clear();
-        let mut ctx = self.vg.begin_frame(&self.viewport, &mut self.recorder);
 
-        ctx.draw_image_rect(self.image, Rect::from_size(wsize.x, wsize.y));
+        let mut ctx = Canvas::new(&mut self.recorder, self.viewport.scale());
+
+        ctx.draw_image_rect(&self.images, self.image, Rect::from_size(wsize.x, wsize.y));
         canvas::render_demo(&mut ctx, mouse, wsize, time, self.blowup);
 
         if false {
@@ -187,9 +195,15 @@ impl app::Application for Demo {
         let attachment = frame.texture.create_view(&Default::default());
 
         let target = self.viewport.target(&attachment);
-        let bundle =
-            self.recorder
-                .finish(&mut encoder, staging_belt, device, &mut self.vg, &target);
+        let bundle = self.recorder.finish(
+            &mut encoder,
+            &mut self.staging_belt,
+            device,
+            &mut self.batch,
+            &self.pipeline,
+            &target,
+            &self.images,
+        );
         {
             let mut rpass = target.rpass(
                 &mut encoder,
@@ -205,9 +219,8 @@ impl app::Application for Demo {
             rpass.execute_bundles(bundle.into_iter());
         }
 
-        staging_belt.finish();
+        self.staging_belt.finish();
         queue.submit(std::iter::once(encoder.finish()));
-        //spawner.spawn_local(staging_belt.recall());
-        staging_belt.recall();
+        self.staging_belt.recall();
     }
 }

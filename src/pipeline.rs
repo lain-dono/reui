@@ -1,7 +1,8 @@
 use crate::{
     geom::{Offset, Transform},
+    image::Images,
     upload_buffer::UploadBuffer,
-    viewport::{TargetDescriptor, Viewport},
+    viewport::Viewport,
 };
 use std::ops::Range;
 
@@ -36,7 +37,7 @@ pub struct Instance {
 
     pub extent: [f32; 2],
     pub radius: f32,
-    pub feather: f32,
+    pub inv_feather: f32,
 
     pub stroke_mul: f32, // scale
     pub stroke_thr: f32, // threshold
@@ -89,8 +90,9 @@ impl Batch {
 
     #[inline]
     pub(crate) fn instance(&mut self, instance: Instance) -> u32 {
+        let index = self.instances.len();
         self.instances.push(instance);
-        self.instances.len() as u32 - 1
+        index as u32
     }
 
     #[inline]
@@ -132,41 +134,39 @@ impl Batch {
 }
 
 pub struct BatchUpload {
-    indices: UploadBuffer<u32>,
-    vertices: UploadBuffer<Vertex>,
-    instances: UploadBuffer<Instance>,
+    pub indices: UploadBuffer<u32>,
+    pub vertices: UploadBuffer<Vertex>,
+    pub instances: UploadBuffer<Instance>,
 }
 
 impl BatchUpload {
     pub fn new(device: &wgpu::Device) -> Self {
         Self {
-            indices: UploadBuffer::new_index(device, 128),
-            vertices: UploadBuffer::new_vertex(device, 128),
-            instances: UploadBuffer::new_vertex(device, 128),
+            indices: UploadBuffer::new(device, wgpu::BufferUsages::INDEX, 128),
+            vertices: UploadBuffer::new(device, wgpu::BufferUsages::VERTEX, 128),
+            instances: UploadBuffer::new(device, wgpu::BufferUsages::VERTEX, 128),
         }
     }
 
-    pub fn init(device: &wgpu::Device, batch: &Batch) -> Self {
-        Self {
-            indices: UploadBuffer::init_index(device, batch.indices.as_ref()),
-            vertices: UploadBuffer::init_vertex(device, batch.vertices.as_ref()),
-            instances: UploadBuffer::init_vertex(device, batch.instances.as_ref()),
-        }
+    pub fn upload_queue(&mut self, queue: &wgpu::Queue, device: &wgpu::Device, batch: &Batch) {
+        self.indices.upload_queue(queue, device, &batch.indices);
+        self.vertices.upload_queue(queue, device, &batch.vertices);
+        self.instances.upload_queue(queue, device, &batch.instances);
     }
 
-    pub fn upload(
+    pub fn upload_staging(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
-        staging_belt: &mut wgpu::util::StagingBelt,
+        belt: &mut wgpu::util::StagingBelt,
         device: &wgpu::Device,
         batch: &Batch,
     ) {
         self.indices
-            .upload(encoder, staging_belt, device, &batch.indices);
+            .upload_staging(encoder, belt, device, &batch.indices);
         self.vertices
-            .upload(encoder, staging_belt, device, &batch.vertices);
+            .upload_staging(encoder, belt, device, &batch.vertices);
         self.instances
-            .upload(encoder, staging_belt, device, &batch.instances);
+            .upload_staging(encoder, belt, device, &batch.instances);
     }
 
     pub fn bind<'rpass>(&'rpass self, rpass: &mut impl wgpu::util::RenderEncoder<'rpass>) {
@@ -177,6 +177,8 @@ impl BatchUpload {
 }
 
 pub struct Pipeline {
+    pub view_layout: wgpu::BindGroupLayout,
+
     pub image: wgpu::RenderPipeline,
 
     pub convex: wgpu::RenderPipeline,
@@ -190,72 +192,43 @@ pub struct Pipeline {
 
     pub stroke_base: wgpu::RenderPipeline,
     pub stroke_stencil: wgpu::RenderPipeline,
-
-    target: TargetDescriptor,
-    image_layout: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
 }
 
 impl Pipeline {
-    pub fn new(device: &wgpu::Device) -> Self {
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("reui default sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
-            lod_min_clamp: 0.0,
-            lod_max_clamp: 100.0,
-            compare: None,
-            anisotropy_clamp: None,
-            border_color: None,
+    pub fn new(device: &wgpu::Device, images: &Images) -> Self {
+        let view_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("reui::view_layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(std::mem::size_of::<f32>() as u64 * 4),
+                },
+                count: None,
+            }],
         });
 
-        let target = TargetDescriptor::new(device);
-
-        let image_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("reui image bind group"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        let image_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("reui pipeline layout"),
-            bind_group_layouts: &[&target.layout, &image_layout],
+            bind_group_layouts: &[&view_layout, &images.layout],
             push_constant_ranges: &[],
         });
 
-        let builder = Builder {
-            device,
-            target: &target,
-            layout,
+        let paint_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("reui pipeline layout"),
+            bind_group_layouts: &[&view_layout],
+            push_constant_ranges: &[],
+        });
 
-            module: device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("reui shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-            }),
-        };
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("reui shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        });
 
-        macro_rules! stencil_face {
-            ($comp:ident, Fail::$fail:ident, Pass::$pass:ident) => {
+        macro_rules! stencil {
+            ($comp:ident, $fail:ident, $pass:ident) => {
                 wgpu::StencilFaceState {
                     compare: wgpu::CompareFunction::$comp,
                     fail_op: wgpu::StencilOperation::$fail,
@@ -265,29 +238,33 @@ impl Pipeline {
             };
         }
 
-        const ALWAYS_ZERO: wgpu::StencilFaceState = stencil_face!(Always, Fail::Zero, Pass::Zero);
-        const INCR_WRAP: wgpu::StencilFaceState =
-            stencil_face!(Always, Fail::Keep, Pass::IncrementWrap);
-        const DECR_WRAP: wgpu::StencilFaceState =
-            stencil_face!(Always, Fail::Keep, Pass::DecrementWrap);
+        const ALWAYS_ZERO: wgpu::StencilFaceState = stencil!(Always, Zero, Zero);
+        const ALWAYS_KEEP: wgpu::StencilFaceState = stencil!(Always, Keep, Keep);
+        const NE_ZERO: wgpu::StencilFaceState = stencil!(NotEqual, Zero, Zero);
+        const EQ_KEEP: wgpu::StencilFaceState = stencil!(Equal, Keep, Keep);
+        const INCR_CLAMP: wgpu::StencilFaceState = stencil!(Equal, Keep, IncrementClamp);
+        const INCR_WRAP: wgpu::StencilFaceState = stencil!(Always, Keep, IncrementWrap);
+        const DECR_WRAP: wgpu::StencilFaceState = stencil!(Always, Keep, DecrementWrap);
+
+        let image = Builder::new("image", device, &image_layout, &module);
+        let main = Builder::new("main", device, &paint_layout, &module);
+        let stencil = Builder::new("stencil", device, &paint_layout, &module);
 
         Self {
-            image: builder.image(stencil_face!(Always, Fail::Keep, Pass::Keep)),
-            convex: builder.base(stencil_face!(Always, Fail::Keep, Pass::Keep)),
+            view_layout,
 
-            fill_stencil: builder.stencil(None, INCR_WRAP, DECR_WRAP),
-            fill_quad_non_zero: builder.base(stencil_face!(NotEqual, Fail::Zero, Pass::Zero)),
-            fill_quad_even_odd: builder.even_odd(stencil_face!(NotEqual, Fail::Zero, Pass::Zero)),
+            image: image.pipeline(true, true, 0xFF, ALWAYS_KEEP, ALWAYS_KEEP),
+            convex: main.pipeline(true, true, 0xFF, ALWAYS_KEEP, ALWAYS_KEEP),
 
-            stroke_base: builder.base(stencil_face!(Equal, Fail::Keep, Pass::IncrementClamp)),
-            stroke_stencil: builder.stencil(Some(wgpu::Face::Back), ALWAYS_ZERO, ALWAYS_ZERO),
+            fill_stencil: stencil.pipeline(false, false, 0xFF, INCR_WRAP, DECR_WRAP),
+            fill_quad_non_zero: main.pipeline(true, true, 0xFF, NE_ZERO, NE_ZERO),
+            fill_quad_even_odd: main.pipeline(true, true, 0x01, NE_ZERO, NE_ZERO),
 
-            fringes_non_zero: builder.base(stencil_face!(Equal, Fail::Keep, Pass::Keep)),
-            fringes_even_odd: builder.even_odd(stencil_face!(Equal, Fail::Keep, Pass::Keep)),
+            stroke_base: main.pipeline(true, true, 0xFF, INCR_CLAMP, INCR_CLAMP),
+            stroke_stencil: stencil.pipeline(false, true, 0xFF, ALWAYS_ZERO, ALWAYS_ZERO),
 
-            target,
-            image_layout,
-            sampler,
+            fringes_non_zero: main.pipeline(true, true, 0xFF, EQ_KEEP, EQ_KEEP),
+            fringes_even_odd: main.pipeline(true, true, 0x01, EQ_KEEP, EQ_KEEP),
         }
     }
 
@@ -298,113 +275,51 @@ impl Pipeline {
         height: u32,
         scale: f32,
     ) -> Viewport {
-        Viewport::new(device, &self.target, width, height, scale)
-    }
-
-    pub fn bind_texture_view(
-        &self,
-        device: &wgpu::Device,
-        view: &wgpu::TextureView,
-    ) -> wgpu::BindGroup {
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("image bind group"),
-            layout: &self.image_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(view),
-                },
-            ],
-        })
+        Viewport::new(device, &self.view_layout, width, height, scale)
     }
 }
 
 struct Builder<'a> {
+    entry_point: &'a str,
     device: &'a wgpu::Device,
-    target: &'a TargetDescriptor,
-    layout: wgpu::PipelineLayout,
-    module: wgpu::ShaderModule,
+    layout: &'a wgpu::PipelineLayout,
+    module: &'a wgpu::ShaderModule,
 }
 
 impl<'a> Builder<'a> {
-    fn base(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
-        self.pipeline(
-            "main",
-            wgpu::ColorWrites::ALL,
-            Some(wgpu::Face::Back),
-            stencil,
-            stencil,
-            false,
-        )
-    }
-
-    fn even_odd(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
-        self.pipeline(
-            "main",
-            wgpu::ColorWrites::ALL,
-            Some(wgpu::Face::Back),
-            stencil,
-            stencil,
-            true,
-        )
-    }
-
-    fn image(&self, stencil: wgpu::StencilFaceState) -> wgpu::RenderPipeline {
-        self.pipeline(
-            "image",
-            wgpu::ColorWrites::ALL,
-            Some(wgpu::Face::Back),
-            stencil,
-            stencil,
-            false,
-        )
-    }
-
-    fn stencil(
-        &self,
-        cull_mode: Option<wgpu::Face>,
-        front: wgpu::StencilFaceState,
-        back: wgpu::StencilFaceState,
-    ) -> wgpu::RenderPipeline {
-        self.pipeline(
-            "stencil",
-            wgpu::ColorWrites::empty(),
-            cull_mode,
-            front,
-            back,
-            false,
-        )
+    fn new(
+        entry_point: &'a str,
+        device: &'a wgpu::Device,
+        layout: &'a wgpu::PipelineLayout,
+        module: &'a wgpu::ShaderModule,
+    ) -> Self {
+        Self {
+            entry_point,
+            device,
+            layout,
+            module,
+        }
     }
 
     fn pipeline(
         &self,
-        entry_point: &str,
-        write_mask: wgpu::ColorWrites,
-        cull_mode: Option<wgpu::Face>,
+        write_color: bool,
+        back_culling: bool,
+        stencil_mask: u32,
         front: wgpu::StencilFaceState,
         back: wgpu::StencilFaceState,
-        one_mask: bool,
     ) -> wgpu::RenderPipeline {
-        let targets = &[Some(wgpu::ColorTargetState {
-            format: self.target.color,
-            write_mask,
-            blend: Some(wgpu::BlendState {
-                color: wgpu::BlendComponent {
-                    src_factor: wgpu::BlendFactor::SrcAlpha,
-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                    operation: wgpu::BlendOperation::Add,
-                },
-                alpha: wgpu::BlendComponent {
-                    src_factor: wgpu::BlendFactor::One,
-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                    operation: wgpu::BlendOperation::Add,
-                },
-            }),
-        })];
+        let target = wgpu::ColorTargetState {
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            write_mask: if write_color {
+                wgpu::ColorWrites::all()
+            } else {
+                wgpu::ColorWrites::empty()
+            },
+            blend: write_color.then_some(wgpu::BlendState::ALPHA_BLENDING),
+        };
+
+        let cull_mode = back_culling.then_some(wgpu::Face::Back);
 
         let buffers = &[
             wgpu::VertexBufferLayout {
@@ -425,47 +340,51 @@ impl<'a> Builder<'a> {
             },
         ];
 
-        let stencil_mask = if one_mask { 0x01 } else { 0xFF };
+        let Self {
+            device,
+            layout,
+            module,
+            entry_point,
+        } = self;
 
-        self.device
-            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(entry_point),
-                layout: Some(&self.layout),
-                vertex: wgpu::VertexState {
-                    module: &self.module,
-                    entry_point: "vertex",
-                    buffers,
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(entry_point),
+            layout: Some(layout),
+            vertex: wgpu::VertexState {
+                module,
+                entry_point: "vertex",
+                buffers,
+            },
+            fragment: Some(wgpu::FragmentState {
+                module,
+                entry_point,
+                targets: &[Some(target)],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode,
+                ..wgpu::PrimitiveState::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth24PlusStencil8,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: wgpu::StencilState {
+                    front,
+                    back,
+                    read_mask: stencil_mask,
+                    write_mask: stencil_mask,
                 },
-                fragment: Some(wgpu::FragmentState {
-                    module: &self.module,
-                    entry_point,
-                    targets,
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode,
-                    ..wgpu::PrimitiveState::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: self.target.depth,
-                    depth_write_enabled: false,
-                    depth_compare: wgpu::CompareFunction::Always,
-                    stencil: wgpu::StencilState {
-                        front,
-                        back,
-                        read_mask: stencil_mask,
-                        write_mask: stencil_mask,
-                    },
-                    bias: wgpu::DepthBiasState::default(),
-                }),
+                bias: wgpu::DepthBiasState::default(),
+            }),
 
-                multisample: wgpu::MultisampleState {
-                    count: 1,
-                    ..wgpu::MultisampleState::default()
-                },
-                multiview: None,
-            })
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                ..wgpu::MultisampleState::default()
+            },
+            multiview: None,
+        })
     }
 }

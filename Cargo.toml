@@ -15,9 +15,15 @@ exclude = ["Cargo.lock", "examples/**/*", "tests/**/*", "target/**/*"]
 members = [
     "reui-app",
     "examples/nvg_demo",
+    "examples/bevy_reui",
 ]
 
+[features]
+default = ["bevy"]
+
 [dependencies]
+bevy = { version = "0.8", optional = true }
+
 wgpu = "0.13.1"
 
 bitflags = "1.2"

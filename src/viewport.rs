@@ -1,40 +1,10 @@
 use wgpu::util::DeviceExt as _;
 
-pub struct TargetDescriptor {
-    pub color: wgpu::TextureFormat,
-    pub depth: wgpu::TextureFormat,
-    pub layout: wgpu::BindGroupLayout,
-}
-
-impl TargetDescriptor {
-    pub fn new(device: &wgpu::Device) -> Self {
-        Self {
-            color: wgpu::TextureFormat::Bgra8UnormSrgb,
-            depth: wgpu::TextureFormat::Depth24PlusStencil8,
-            layout: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("reui::Target.layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(
-                            std::mem::size_of::<f32>() as u64 * 4,
-                        ),
-                    },
-                    count: None,
-                }],
-            }),
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 pub struct Target<'a> {
-    color: &'a wgpu::TextureView,
-    depth: &'a wgpu::TextureView,
-    bind_group: &'a wgpu::BindGroup,
+    pub color: &'a wgpu::TextureView,
+    pub depth: &'a wgpu::TextureView,
+    pub bind_group: &'a wgpu::BindGroup,
 }
 
 impl<'a> Target<'a> {
@@ -92,7 +62,7 @@ pub struct Viewport {
 impl Viewport {
     pub fn new(
         device: &wgpu::Device,
-        target: &TargetDescriptor,
+        layout: &wgpu::BindGroupLayout,
         width: u32,
         height: u32,
         scale: f32,
@@ -106,7 +76,7 @@ impl Viewport {
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("reui::Viewport.bind_group"),
-            layout: &target.layout,
+            layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: buffer.as_entire_binding(),

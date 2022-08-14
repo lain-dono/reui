@@ -77,8 +77,6 @@ impl Neg for Offset {
     }
 }
 
-impl_op!(Add<Size> for Offset fn add(+) -> Self);
-
 impl_conv!(Offset);
 impl_op!(Add<Self> for Offset fn add(+) -> Self);
 impl_op!(Sub<Self> for Offset fn sub(-) -> Self);
@@ -91,19 +89,6 @@ impl_assign!(SubAssign<Self> for Offset fn sub_assign(-=));
 impl_assign!(MulAssign<f32> for Offset fn mul_assign(*=));
 impl_assign!(DivAssign<f32> for Offset fn div_assign(/=));
 impl_assign!(RemAssign<f32> for Offset fn rem_assign(%=));
-
-impl_conv!(Size);
-impl_op!(Add<Offset> for Size fn add(+) -> Self);
-impl_op!(Sub<Self> for Size fn sub(-) -> Offset);
-impl_op!(Mul<f32> for Size fn mul(*) -> Self);
-impl_op!(Div<f32> for Size fn div(/) -> Self);
-impl_op!(Rem<f32> for Size fn rem(%) -> Self);
-
-impl_assign!(AddAssign<Offset> for Size fn add_assign(+=));
-impl_assign!(SubAssign<Self> for Size fn sub_assign(-=));
-impl_assign!(MulAssign<f32> for Size fn mul_assign(*=));
-impl_assign!(DivAssign<f32> for Size fn div_assign(/=));
-impl_assign!(RemAssign<f32> for Size fn rem_assign(%=));
 
 #[derive(Clone, Copy, PartialEq, Default, Debug)]
 pub struct Offset {
@@ -135,28 +120,24 @@ impl Offset {
     }
 
     #[inline]
-    pub fn dot(self, other: Self) -> f32 {
-        // sx * ox + (sy * oy)
-        self.x.mul_add(other.x, self.y * other.y)
-    }
-
-    #[inline]
     pub fn cross(self, other: Self) -> f32 {
         // sx * oy + -(ox * sy)
         self.x.mul_add(other.y, -(other.x * self.y))
     }
 
-    pub fn from_direction(d: f32) -> Self {
-        let (y, x) = d.sin_cos();
-        Self::new(x, y)
-    }
-
+    #[inline]
     pub fn floor(self) -> Self {
-        Self::new(self.x.floor(), self.y.floor())
+        self.map(f32::floor)
     }
 
+    #[inline]
     pub fn ceil(self) -> Self {
-        Self::new(self.x.ceil(), self.y.ceil())
+        self.map(f32::ceil)
+    }
+
+    #[inline]
+    pub fn round(self) -> Self {
+        self.map(f32::round)
     }
 
     pub fn magnitude(self) -> f32 {
@@ -165,10 +146,6 @@ impl Offset {
 
     pub fn magnitude_sq(self) -> f32 {
         self.x.mul_add(self.x, self.y * self.y)
-    }
-
-    pub fn direction(self) -> f32 {
-        self.y.atan2(self.x)
     }
 
     pub fn scale(self, x: f32, y: f32) -> Self {
@@ -185,48 +162,10 @@ impl Offset {
     pub fn is_finite(self) -> bool {
         self.x.is_finite() && self.y.is_finite()
     }
-}
 
-#[derive(Clone, Copy, PartialEq, Default, Debug)]
-pub struct Size {
-    pub x: f32,
-    pub y: f32,
-}
-
-impl Size {
-    pub const fn new(x: f32, y: f32) -> Self {
-        Self { x, y }
-    }
-
-    pub const fn zero() -> Self {
-        Self::new(0.0, 0.0)
-    }
-
-    pub const fn infinity() -> Self {
-        Self::new(f32::INFINITY, f32::INFINITY)
-    }
-
-    pub fn floor(self) -> Self {
-        Self::new(self.x.floor(), self.y.floor())
-    }
-
-    pub fn ceil(self) -> Self {
-        Self::new(self.x.ceil(), self.y.ceil())
-    }
-
-    pub const fn flipped(self) -> Self {
-        Self::new(self.y, self.x)
-    }
-
-    pub fn lerp(a: Self, b: Self, t: f32) -> Self {
-        Self {
-            x: lerp(a.x, b.x, t),
-            y: lerp(a.y, b.y, t),
-        }
-    }
-
-    pub fn is_finite(self) -> bool {
-        self.x.is_finite() && self.y.is_finite()
+    #[inline(always)]
+    fn map(self, map: impl Fn(f32) -> f32) -> Self {
+        Self::new(map(self.x), map(self.y))
     }
 }
 
@@ -496,4 +435,63 @@ impl Transform {
             ty: (self.re * self.ty - self.im * self.tx) * id,
         }
     }
+}
+
+pub trait Bezier32:
+    Copy + Add<Output = Self> + Mul<f32, Output = Self> + Div<f32, Output = Self>
+{
+    #[inline]
+    fn conic(p: [Self; 3], w: f32, t: f32) -> Self {
+        let h = 1.0 - t;
+        let [a, b, c] = [h * h, h * t * 2.0 * w, t * t];
+        (p[0] * a + p[1] * b + p[2] * c) / (a + b + c)
+    }
+
+    #[inline]
+    fn bezier2(p: [Self; 3], t: f32) -> Self {
+        let h = 1.0 - t;
+        let [a, b, c] = [h * h, h * t * 2.0, t * t];
+        p[0] * a + p[1] * b + p[2] * c
+    }
+
+    #[inline]
+    fn rational2(p: [Self; 3], w: [f32; 3], t: f32) -> Self {
+        let h = 1.0 - t;
+        let [a, b, c] = [h * h, h * t * 2.0, t * t];
+        let [a, b, c] = [a * w[0], b * w[1], c * w[2]];
+        (p[0] * a + p[1] * b + p[2] * c) / (a + b + c)
+    }
+
+    #[inline]
+    fn bezier3(p: [Self; 4], t: f32) -> Self {
+        let [a, b, c, d] = Self::bezier_args3(t);
+        p[0] * a + p[1] * b + p[2] * c + p[3] * d
+    }
+
+    #[inline]
+    fn rational3(p: [Self; 4], w: [f32; 4], t: f32) -> Self {
+        let [a, b, c, d] = Self::bezier_args3(t);
+        let [a, b, c, d] = [a * w[0], b * w[1], c * w[2], d * w[3]];
+        (p[0] * a + p[1] * b + p[2] * c + p[3] * d) / (a + b + c + d)
+    }
+
+    #[inline(always)]
+    fn bezier_args3(t: f32) -> [f32; 4] {
+        let h = 1.0 - t;
+
+        let tt = t * t;
+        let hh = h * h;
+
+        let a = hh * h;
+        let b = hh * t;
+        let c = tt * h;
+        let d = tt * t;
+
+        [a, b * 3.0, c * 3.0, d]
+    }
+}
+
+impl<T> Bezier32 for T where
+    T: Copy + Add<Output = Self> + Mul<f32, Output = Self> + Div<f32, Output = Self>
+{
 }

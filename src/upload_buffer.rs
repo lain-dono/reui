@@ -15,14 +15,6 @@ impl<T> AsRef<wgpu::Buffer> for UploadBuffer<T> {
 }
 
 impl<T: bytemuck::Pod> UploadBuffer<T> {
-    pub fn new_index(device: &wgpu::Device, capacity: usize) -> Self {
-        Self::new(device, wgpu::BufferUsages::INDEX, capacity)
-    }
-
-    pub fn new_vertex(device: &wgpu::Device, capacity: usize) -> Self {
-        Self::new(device, wgpu::BufferUsages::VERTEX, capacity)
-    }
-
     pub fn new(device: &wgpu::Device, usage: wgpu::BufferUsages, capacity: usize) -> Self {
         debug_assert_ne!(size_of::<T>(), 0);
 
@@ -37,14 +29,6 @@ impl<T: bytemuck::Pod> UploadBuffer<T> {
             capacity,
             marker: PhantomData,
         }
-    }
-
-    pub fn init_index(device: &wgpu::Device, data: &[T]) -> Self {
-        Self::init(device, wgpu::BufferUsages::INDEX, data)
-    }
-
-    pub fn init_vertex(device: &wgpu::Device, data: &[T]) -> Self {
-        Self::init(device, wgpu::BufferUsages::VERTEX, data)
     }
 
     pub fn init(device: &wgpu::Device, usage: wgpu::BufferUsages, data: &[T]) -> Self {
@@ -66,7 +50,26 @@ impl<T: bytemuck::Pod> UploadBuffer<T> {
         self.buffer.slice(bounds)
     }
 
-    pub fn upload(
+    pub fn upload_queue(&mut self, queue: &wgpu::Queue, device: &wgpu::Device, data: &[T]) {
+        if data.is_empty() {
+            return;
+        }
+
+        if data.len() > self.capacity {
+            self.capacity = data.len() * 2;
+            self.buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: size_of::<T>() as u64 * self.capacity as u64,
+                usage: self.usage | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+
+        let src = bytemuck::cast_slice(data);
+        queue.write_buffer(&self.buffer, 0, src);
+    }
+
+    pub fn upload_staging(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         staging_belt: &mut wgpu::util::StagingBelt,

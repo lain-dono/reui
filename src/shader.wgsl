@@ -73,9 +73,9 @@ fn main(in: Input) -> @location(0) vec4<f32> {
     var feather: f32 = in.erf.w;
 
     // Calculate gradient color using box gradient
-    var d: f32 = sdroundrect(pt, extent, radius) / feather + 0.5;
+    var d: f32 = sdroundrect(pt, extent, radius) * feather + 0.5;
     var d: f32 = clamp(d, 0.0, 1.0);
-    var color: vec4<f32> = mix(in.inner_color, in.outer_color, vec4<f32>(d, d, d, d));
+    var color: vec4<f32> = mix(in.inner_color, in.outer_color, vec4<f32>(d));
 
     // Combine alpha
     color.a = color.a * stroke_alpha;
@@ -91,4 +91,5 @@ fn stencil(in: Input) -> @location(0) vec4<f32> {
 fn image(in: Input) -> @location(0) vec4<f32> {
     var tex: vec4<f32> = textureSample(t_color, s_color, in.texcoord);
     return tex * in.inner_color;
+    //return vec4<f32>(1.0);
 }

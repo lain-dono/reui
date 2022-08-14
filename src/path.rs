@@ -5,6 +5,7 @@ const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
 
 /// The fill rule used when filling paths: `EvenOdd`, `NonZero` (default).
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
 pub enum FillRule {
     NonZero,
     EvenOdd,
@@ -17,7 +18,7 @@ impl Default for FillRule {
 }
 
 /// Used to specify Solid/Hole when adding shapes to a path.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Solidity {
     Solid,
     Hole,
@@ -29,7 +30,7 @@ impl Default for Solidity {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug)]
 #[repr(u8)]
 enum Raw {
     MoveTo,
@@ -61,26 +62,27 @@ pub enum Command {
 }
 
 impl Command {
-    fn to_raw(self, array: &mut [Offset; 3]) -> (Raw, &[Offset]) {
+    #[inline]
+    fn to_raw(self, array: &mut [Offset; 3]) -> (Raw, usize) {
         match self {
-            Command::MoveTo(p) => (Raw::MoveTo, {
+            Command::MoveTo(p) => {
                 array[0] = p;
-                &array[..1]
-            }),
-            Command::LineTo(p) => (Raw::LineTo, {
+                (Raw::MoveTo, 1)
+            }
+            Command::LineTo(p) => {
                 array[0] = p;
-                &array[..1]
-            }),
-            Command::BezierTo(p1, p2, p3) => (Raw::BezierTo, {
+                (Raw::LineTo, 1)
+            }
+            Command::BezierTo(p1, p2, p3) => {
                 array[0] = p1;
                 array[1] = p2;
                 array[2] = p3;
-                &array[..]
-            }),
+                (Raw::BezierTo, 3)
+            }
 
-            Command::Solid => (Raw::Solid, &array[0..0]),
-            Command::Hole => (Raw::Hole, &array[0..0]),
-            Command::Close => (Raw::Close, &array[0..0]),
+            Command::Solid => (Raw::Solid, 0),
+            Command::Hole => (Raw::Hole, 0),
+            Command::Close => (Raw::Close, 0),
         }
     }
 }
@@ -181,21 +183,53 @@ impl<'a> IntoIterator for &'a Path {
 
 impl std::iter::Extend<Command> for Path {
     fn extend<T: IntoIterator<Item = Command>>(&mut self, iter: T) {
-        let mut tmp = [Offset::zero(); 3];
+        let mut coord = [Offset::zero(); 3];
         for cmd in iter {
-            let (cmd, coord) = cmd.to_raw(&mut tmp);
-            self.append(&[cmd], coord);
+            let (cmd, len) = cmd.to_raw(&mut coord);
+            self.index.push(cmd);
+            self.coord.extend_from_slice(&coord[..len]);
         }
     }
 }
 
 impl<'a> std::iter::Extend<&'a Command> for Path {
     fn extend<T: IntoIterator<Item = &'a Command>>(&mut self, iter: T) {
-        let mut tmp = [Offset::zero(); 3];
+        let mut coord = [Offset::zero(); 3];
         for cmd in iter {
-            let (cmd, coord) = cmd.to_raw(&mut tmp);
-            self.append(&[cmd], coord);
+            let (cmd, len) = cmd.to_raw(&mut coord);
+            self.index.push(cmd);
+            self.coord.extend_from_slice(&coord[..len]);
         }
+    }
+}
+
+impl Path {
+    pub fn iter(&self) -> PathIter {
+        PathIter {
+            index: self.index.iter(),
+            coord: &self.coord,
+        }
+    }
+
+    pub(crate) fn transform_inplace(&mut self, tx: f32, ty: f32, scale: f32) {
+        let t = Transform::compose(tx, ty, 0.0, scale);
+        for coord in &mut self.coord {
+            *coord = t.apply(*coord);
+        }
+    }
+
+    /// Returns a copy of the [`Path`] with all the segments of every sub-path transformed by the given matrix.
+    pub(crate) fn transform_iter(&self, transform: Transform) -> PathTransformIter {
+        PathTransformIter {
+            transform,
+            index: self.index.iter(),
+            coord: &self.coord,
+        }
+    }
+
+    pub(crate) fn extend_with_path(&mut self, other: &Self) {
+        self.index.extend_from_slice(&other.index);
+        self.coord.extend_from_slice(&other.coord);
     }
 }
 
@@ -214,36 +248,9 @@ impl Path {
         self.coord.clear();
     }
 
+    /// Returns `true` if the [`Path`] does not contain any drawing commands.
     pub fn is_empty(&self) -> bool {
         self.index.is_empty()
-    }
-
-    pub fn iter(&self) -> PathIter {
-        PathIter {
-            index: self.index.iter(),
-            coord: &self.coord,
-        }
-    }
-
-    pub(crate) fn transform_inplace(&mut self, tx: f32, ty: f32, scale: f32) {
-        let t = Transform::compose(tx, ty, 0.0, scale);
-        for coord in &mut self.coord {
-            *coord = t.apply(*coord);
-        }
-    }
-
-    /// Returns a copy of the [`Path`] with all the segments of every sub-path transformed by the given matrix.
-    pub fn transform_iter(&self, transform: Transform) -> PathTransformIter {
-        PathTransformIter {
-            transform,
-            index: self.index.iter(),
-            coord: &self.coord,
-        }
-    }
-
-    pub fn extend_with_path(&mut self, other: &Self) {
-        self.index.extend_from_slice(&other.index);
-        self.coord.extend_from_slice(&other.coord);
     }
 
     /// Moves the starting point of a new sub-path to the given [`Offset`].
@@ -299,7 +306,7 @@ impl Path {
     pub fn add_arc(Rect oval, double startAngle, double sweepAngle) -> void
     */
 
-    /// Adds a new sub-path that consists of a curve that forms the ellipse that fills the given rectangle. [...]
+    /// Adds a new sub-path that consists of a curve that forms the ellipse that fills the given rectangle.
     pub fn oval(&mut self, rect: Rect) {
         self.ellipse(rect.center(), rect.size() / 2.0);
     }
@@ -312,69 +319,71 @@ impl Path {
     /// Adds [`Rect`] to the [`Path`].
     pub fn rect(&mut self, rect: Rect) {
         let Rect { min, max } = rect;
-        self.append(
-            &[
-                Raw::MoveTo,
-                Raw::LineTo,
-                Raw::LineTo,
-                Raw::LineTo,
-                Raw::Close,
-            ],
-            &[
-                Offset::new(min.x, min.y),
-                Offset::new(min.x, max.y),
-                Offset::new(max.x, max.y),
-                Offset::new(max.x, min.y),
-            ],
-        );
+        self.index.extend([
+            Raw::MoveTo,
+            Raw::LineTo,
+            Raw::LineTo,
+            Raw::LineTo,
+            Raw::Close,
+        ]);
+        self.coord.extend([
+            Offset::new(min.x, min.y),
+            Offset::new(min.x, max.y),
+            Offset::new(max.x, max.y),
+            Offset::new(max.x, min.y),
+        ]);
     }
 
-    /// Adds [`Rect`] with [`Corners`] to the [`Path`].
+    /// Adds [`Rect`] with [`Rounding`] to the [`Path`].
     pub fn rrect(&mut self, rect: Rect, radius: Rounding) {
-        let (w, h) = rect.size().into();
         let Rect { min, max } = rect;
-        let half_w = w.abs() * 0.5;
-        let half_h = h.abs() * 0.5;
-        let sign = w.signum();
-        let bl = Offset::new(half_w.min(radius.se), half_h.min(radius.se)) * sign;
-        let br = Offset::new(half_w.min(radius.sw), half_h.min(radius.sw)) * sign;
-        let tr = Offset::new(half_w.min(radius.ne), half_h.min(radius.ne)) * sign;
-        let tl = Offset::new(half_w.min(radius.nw), half_h.min(radius.nw)) * sign;
         let kappa = 1.0 - KAPPA90;
 
-        self.append(
-            &[
-                Raw::MoveTo,
-                Raw::LineTo,
-                Raw::BezierTo,
-                Raw::LineTo,
-                Raw::BezierTo,
-                Raw::LineTo,
-                Raw::BezierTo,
-                Raw::LineTo,
-                Raw::BezierTo,
-                Raw::Close,
-            ],
-            &[
-                Offset::new(min.x, min.y + tl.y),         // move
-                Offset::new(min.x, max.y - bl.y),         // line
-                Offset::new(min.x, max.y - bl.y * kappa), // curve
-                Offset::new(min.x + bl.x * kappa, max.y),
-                Offset::new(min.x + bl.x, max.y),
-                Offset::new(max.x - br.x, max.y),         // line
-                Offset::new(max.x - br.x * kappa, max.y), // curve
-                Offset::new(max.x, max.y - br.y * kappa),
-                Offset::new(max.x, max.y - br.y),
-                Offset::new(max.x, min.y + tr.y),         // line
-                Offset::new(max.x, min.y + tr.y * kappa), // curve
-                Offset::new(max.x - tr.x * kappa, min.y),
-                Offset::new(max.x - tr.x, min.y),
-                Offset::new(min.x + tl.x, min.y),         // line
-                Offset::new(min.x + tl.x * kappa, min.y), // curve
-                Offset::new(min.x, min.y + tl.y * kappa),
-                Offset::new(min.x, min.y + tl.y),
-            ],
-        );
+        let sw = Offset::new(radius.sw, radius.sw);
+        let se = Offset::new(radius.se, radius.se);
+        let ne = Offset::new(radius.ne, radius.ne);
+        let nw = Offset::new(radius.nw, radius.nw);
+
+        self.move_to(Offset::new(min.x, min.y + nw.y));
+
+        self.line_to(Offset::new(min.x, max.y - sw.y));
+
+        if radius.sw > 0.0 {
+            self.cubic_to(
+                Offset::new(min.x, max.y - sw.y * kappa),
+                Offset::new(min.x + sw.x * kappa, max.y),
+                Offset::new(min.x + sw.x, max.y),
+            );
+        }
+
+        self.line_to(Offset::new(max.x - se.x, max.y));
+        if radius.se > 0.0 {
+            self.cubic_to(
+                Offset::new(max.x - se.x * kappa, max.y),
+                Offset::new(max.x, max.y - se.y * kappa),
+                Offset::new(max.x, max.y - se.y),
+            );
+        }
+
+        self.line_to(Offset::new(max.x, min.y + ne.y));
+        if radius.ne > 0.0 {
+            self.cubic_to(
+                Offset::new(max.x, min.y + ne.y * kappa),
+                Offset::new(max.x - ne.x * kappa, min.y),
+                Offset::new(max.x - ne.x, min.y),
+            );
+        }
+
+        self.line_to(Offset::new(min.x + nw.x, min.y));
+        if radius.nw > 0.0 {
+            self.cubic_to(
+                Offset::new(min.x + nw.x * kappa, min.y),
+                Offset::new(min.x, min.y + nw.y * kappa),
+                Offset::new(min.x, min.y + nw.y),
+            );
+        }
+
+        self.close();
     }
 
     #[inline]
@@ -382,37 +391,31 @@ impl Path {
         let kappa = radius * KAPPA90;
         let (positive_radius, positive_kappa) = (center + radius, center + kappa);
         let (negative_radius, negative_kappa) = (center - radius, center - kappa);
-        self.append(
-            &[
-                Raw::MoveTo,
-                Raw::BezierTo,
-                Raw::BezierTo,
-                Raw::BezierTo,
-                Raw::BezierTo,
-                Raw::Close,
-            ],
-            &[
-                Offset::new(negative_radius.x, center.y),         // move
-                Offset::new(negative_radius.x, positive_kappa.y), // curve
-                Offset::new(negative_kappa.x, positive_radius.y),
-                Offset::new(center.x, positive_radius.y),
-                Offset::new(positive_kappa.x, positive_radius.y), // curve
-                Offset::new(positive_radius.x, positive_kappa.y),
-                Offset::new(positive_radius.x, center.y),
-                Offset::new(positive_radius.x, negative_kappa.y), // curve
-                Offset::new(positive_kappa.x, negative_radius.y),
-                Offset::new(center.x, negative_radius.y),
-                Offset::new(negative_kappa.x, negative_radius.y), // curve
-                Offset::new(negative_radius.x, negative_kappa.y),
-                Offset::new(negative_radius.x, center.y),
-            ],
-        );
-    }
 
-    #[inline]
-    fn append(&mut self, cmd: &[Raw], coord: &[Offset]) {
-        self.index.extend_from_slice(cmd);
-        self.coord.extend_from_slice(coord);
+        self.index.extend([
+            Raw::MoveTo,
+            Raw::BezierTo,
+            Raw::BezierTo,
+            Raw::BezierTo,
+            Raw::BezierTo,
+            Raw::Close,
+        ]);
+
+        self.coord.extend([
+            Offset::new(negative_radius.x, center.y),         // move
+            Offset::new(negative_radius.x, positive_kappa.y), // curve
+            Offset::new(negative_kappa.x, positive_radius.y),
+            Offset::new(center.x, positive_radius.y),
+            Offset::new(positive_kappa.x, positive_radius.y), // curve
+            Offset::new(positive_radius.x, positive_kappa.y),
+            Offset::new(positive_radius.x, center.y),
+            Offset::new(positive_radius.x, negative_kappa.y), // curve
+            Offset::new(positive_kappa.x, negative_radius.y),
+            Offset::new(center.x, negative_radius.y),
+            Offset::new(negative_kappa.x, negative_radius.y), // curve
+            Offset::new(negative_radius.x, negative_kappa.y),
+            Offset::new(negative_radius.x, center.y),
+        ]);
     }
 
     /*
@@ -472,8 +475,10 @@ impl Path {
             (point, tan)
         };
 
+        let inv_ndivs = (ndivs as f32).recip();
+
         for i in 1..ndivs + 1 {
-            let a = a0 + da * (i as f32 / ndivs as f32);
+            let a = a0 + da * (i as f32 * inv_ndivs);
             let (dy, dx) = a.sin_cos();
             let point = Offset::new(center.x + dx * radius, center.y + dy * radius);
             let tan = Offset::new(-dy * radius * kappa, dx * radius * kappa);

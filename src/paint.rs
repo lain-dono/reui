@@ -202,87 +202,94 @@ pub struct RawPaint {
 }
 
 impl RawPaint {
-    pub fn convert(paint: &Paint, xform: Transform) -> Self {
+    pub fn convert(paint: &Paint, transform: Transform) -> Self {
         paint.gradient.map_or_else(
-            || Self {
-                xform: Transform::identity(),
-                extent: [0.0, 0.0],
-                radius: 0.0,
-                feather: 1.0,
-                inner_color: paint.color,
-                outer_color: paint.color,
-            },
-            |gradient| match gradient {
-                Gradient::Linear {
-                    from,
-                    to,
-                    inner_color,
-                    outer_color,
-                } => {
-                    let [sx, sy] = from;
-                    let [ex, ey] = to;
-
-                    let large = 1e5;
-
-                    // Calculate transform aligned to the line
-                    let dx = ex - sx;
-                    let dy = ey - sy;
-                    let d = (dx * dx + dy * dy).sqrt();
-                    let (im, re) = if d > 0.0001 {
-                        (-dx / d, dy / d)
-                    } else {
-                        (0.0, 1.0)
-                    };
-
-                    let tx = sx + im * large;
-                    let ty = sy - re * large;
-
-                    Self {
-                        xform: xform * Transform { re, im, tx, ty },
-                        extent: [large, large + d * 0.5],
-                        radius: 0.0,
-                        feather: d.max(1.0),
-                        inner_color,
-                        outer_color,
-                    }
-                }
-                Gradient::Box {
-                    rect,
-                    radius,
-                    feather,
-                    inner_color,
-                    outer_color,
-                } => {
-                    let center = rect.center();
-                    Self {
-                        xform: xform * Transform::translation(center.x, center.y),
-                        extent: [rect.dx() * 0.5, rect.dy() * 0.5],
-                        radius,
-                        feather: feather.max(1.0),
-                        inner_color,
-                        outer_color,
-                    }
-                }
-                Gradient::Radial {
-                    center,
-                    inr,
-                    outr,
-                    inner_color,
-                    outer_color,
-                } => {
-                    let radius = (inr + outr) * 0.5;
-                    let feather = (outr - inr).max(1.0);
-                    Self {
-                        xform: xform * Transform::translation(center[0], center[1]),
-                        extent: [radius, radius],
-                        radius,
-                        feather,
-                        inner_color,
-                        outer_color,
-                    }
-                }
-            },
+            || Self::flat(paint.color, transform),
+            |gradient| Self::gradient(gradient, transform),
         )
+    }
+
+    pub fn flat(color: Color, transform: Transform) -> Self {
+        Self {
+            xform: transform,
+            extent: [0.0, 0.0],
+            radius: 0.0,
+            feather: 1.0,
+            inner_color: color,
+            outer_color: color,
+        }
+    }
+
+    pub fn gradient(gradient: Gradient, transform: Transform) -> Self {
+        match gradient {
+            Gradient::Linear {
+                from,
+                to,
+                inner_color,
+                outer_color,
+            } => {
+                let [sx, sy] = from;
+                let [ex, ey] = to;
+
+                let large = 1e5;
+
+                // Calculate transform aligned to the line
+                let dx = ex - sx;
+                let dy = ey - sy;
+                let d = (dx * dx + dy * dy).sqrt();
+                let (im, re) = if d > 0.0001 {
+                    (-dx / d, dy / d)
+                } else {
+                    (0.0, 1.0)
+                };
+
+                let tx = sx + im * large;
+                let ty = sy - re * large;
+
+                Self {
+                    xform: transform * Transform { re, im, tx, ty },
+                    extent: [large, large + d * 0.5],
+                    radius: 0.0,
+                    feather: d.max(1.0),
+                    inner_color,
+                    outer_color,
+                }
+            }
+            Gradient::Box {
+                rect,
+                radius,
+                feather,
+                inner_color,
+                outer_color,
+            } => {
+                let center = rect.center();
+                Self {
+                    xform: transform * Transform::translation(center.x, center.y),
+                    extent: [rect.dx() * 0.5, rect.dy() * 0.5],
+                    radius,
+                    feather: feather.max(1.0),
+                    inner_color,
+                    outer_color,
+                }
+            }
+            Gradient::Radial {
+                center,
+                inr,
+                outr,
+                inner_color,
+                outer_color,
+            } => {
+                let radius = (inr + outr) * 0.5;
+                Self {
+                    xform: transform * Transform::translation(center[0], center[1]),
+                    extent: [radius, radius],
+                    radius,
+                    feather: (outr - inr).max(1.0),
+                    inner_color,
+                    outer_color,
+                }
+            }
+        }
     }
 
     pub fn to_instance(self, width: f32, fringe: f32, stroke_thr: f32) -> Instance {
@@ -294,7 +301,7 @@ impl RawPaint {
 
             extent: self.extent,
             radius: self.radius,
-            feather: self.feather,
+            inv_feather: self.feather.recip(),
 
             stroke_mul: (width * 0.5 + fringe * 0.5) / fringe,
             stroke_thr,

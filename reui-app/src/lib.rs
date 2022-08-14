@@ -1,4 +1,3 @@
-use std::future::Future;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::{Duration, Instant};
 
@@ -38,8 +37,6 @@ pub trait Application: 'static + Sized {
         frame: &wgpu::SurfaceTexture,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        spawner: &Spawner,
-        staging_belt: &mut wgpu::util::StagingBelt,
         width: u32,
         height: u32,
         scale: f32,
@@ -193,27 +190,20 @@ fn start<App: Application>(
         queue,
     }: Setup,
 ) -> ! {
-    let spawner = Spawner::new();
     /*
     let format = surface
         .get_preferred_format(&adapter)
         .unwrap_or(wgpu::TextureFormat::Bgra8UnormSrgb);
     */
 
-    let format = wgpu::TextureFormat::Bgra8UnormSrgb;
-
-    assert_eq!(format, wgpu::TextureFormat::Bgra8UnormSrgb);
-
     let mut sc_desc = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format,
+        format: wgpu::TextureFormat::Bgra8UnormSrgb,
         width: size.width,
         height: size.height,
         present_mode: wgpu::PresentMode::AutoNoVsync,
     };
     surface.configure(&device, &sc_desc);
-
-    let mut staging_belt = wgpu::util::StagingBelt::new(0x20_0000);
 
     tracing::info!("Initializing the app...");
     let mut state = App::init(
@@ -299,8 +289,6 @@ fn start<App: Application>(
                     &frame,
                     &device,
                     &queue,
-                    &spawner,
-                    &mut staging_belt,
                     width,
                     height,
                     window.scale_factor() as f32,
@@ -329,11 +317,8 @@ fn start<App: Application>(
                             Instant::now() + target_frametime - time_since_last_frame,
                         );
                     }
-
-                    spawner.run_until_stalled();
                 } else {
                     window.request_redraw();
-                    spawner.run_until_stalled();
                 }
 
                 #[cfg(target_arch = "wasm32")]
@@ -368,44 +353,6 @@ fn trace_start_cause(start_cause: StartCause, start_time: Instant) {
                 requested_resume.map(|i| i.duration_since(start_time))
             )
         }
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub struct Spawner<'a> {
-    executor: async_executor::LocalExecutor<'a>,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl<'a> Spawner<'a> {
-    const fn new() -> Self {
-        Self {
-            executor: async_executor::LocalExecutor::new(),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn spawn_local(&self, future: impl Future<Output = ()> + 'a) {
-        self.executor.spawn(future).detach();
-    }
-
-    fn run_until_stalled(&self) {
-        while self.executor.try_tick() {}
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-pub struct Spawner {}
-
-#[cfg(target_arch = "wasm32")]
-impl Spawner {
-    fn new() -> Self {
-        Self {}
-    }
-
-    #[allow(dead_code)]
-    pub fn spawn_local(&self, future: impl Future<Output = ()> + 'static) {
-        wasm_bindgen_futures::spawn_local(future);
     }
 }
 

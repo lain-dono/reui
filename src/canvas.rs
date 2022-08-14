@@ -1,9 +1,9 @@
 use crate::{
     geom::{Offset, Rect, Rounding, Transform},
+    image::Images,
     paint::{Paint, PaintingStyle},
     path::{Command, FillRule, Path},
     picture::Recorder,
-    renderer::Renderer,
 };
 
 #[derive(Default)]
@@ -32,7 +32,6 @@ impl TransformStack {
 }
 
 pub struct Canvas<'a> {
-    ctx: &'a mut Renderer,
     recorder: &'a mut Recorder,
     states: TransformStack,
     path: Path,
@@ -40,10 +39,9 @@ pub struct Canvas<'a> {
 }
 
 impl<'a> Canvas<'a> {
-    pub fn new(ctx: &'a mut Renderer, recorder: &'a mut Recorder, scale: f32) -> Self {
+    pub fn new(recorder: &'a mut Recorder, scale: f32) -> Self {
         let transform = Transform::default();
         Self {
-            ctx,
             recorder,
             states: TransformStack(transform, Vec::with_capacity(16)),
             path: Path::new(),
@@ -55,22 +53,22 @@ impl<'a> Canvas<'a> {
         self.scale
     }
 
-    pub fn draw_image_rect(&mut self, image: u32, rect: Rect) {
-        if self.ctx.images.get(image).is_some() {
-            self.recorder
-                .push_image(rect, self.states.transform(), image, [255; 4]);
+    pub fn draw_image_rect(&mut self, images: &Images, image: u32, rect: Rect) {
+        if images.get(image).is_some() {
+            let transform = self.states.transform();
+            self.recorder.draw_image(rect, transform, image, [255; 4]);
         }
     }
 
-    pub fn draw_image(&mut self, image: u32, offset: Offset) {
-        if let Some(image_bind) = self.ctx.images.get(image) {
-            let p0 = offset;
-            let p1 = Offset::new(
-                p0.x + image_bind.size.width as f32 / self.scale,
-                p0.y + image_bind.size.height as f32 / self.scale,
-            );
-            self.recorder
-                .push_image(Rect::new(p0, p1), self.states.transform(), image, [255; 4]);
+    pub fn draw_image(&mut self, images: &Images, image: u32, offset: Offset) {
+        if let Some(image_bind) = images.get(image) {
+            let size = image_bind.size;
+            let rect = Rect {
+                min: offset,
+                max: offset + Offset::new(size.width as f32, size.height as f32) / self.scale,
+            };
+            let transform = self.states.transform();
+            self.recorder.draw_image(rect, transform, image, [255; 4]);
         }
     }
 
@@ -78,14 +76,14 @@ impl<'a> Canvas<'a> {
         let t = self.states.transform();
         let commands = self.path.into_iter();
         match style {
-            PaintingStyle::Stroke => self.recorder.stroke(commands, paint, t, self.scale),
+            PaintingStyle::Stroke => self.recorder.stroke_path(commands, paint, t, self.scale),
             PaintingStyle::NonZero => {
                 self.recorder
-                    .fill(commands, paint, t, self.scale, FillRule::NonZero);
+                    .fill_path(commands, paint, t, self.scale, FillRule::NonZero);
             }
             PaintingStyle::EvenOdd => {
                 self.recorder
-                    .fill(commands, paint, t, self.scale, FillRule::EvenOdd);
+                    .fill_path(commands, paint, t, self.scale, FillRule::EvenOdd);
             }
         }
     }
@@ -245,11 +243,7 @@ impl<'a> Canvas<'a> {
     /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
     pub fn draw_rrect(&mut self, rect: Rect, radius: Rounding, paint: Paint) {
         self.path.clear();
-        if radius.nw <= 0.0 && radius.ne <= 0.0 && radius.sw <= 0.0 && radius.se <= 0.0 {
-            self.path.rect(rect);
-        } else {
-            self.path.rrect(rect, radius);
-        }
+        self.path.rrect(rect, radius);
         self.fill_or_stroke(&paint, paint.style);
     }
 

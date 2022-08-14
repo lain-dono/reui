@@ -19,6 +19,7 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
         draw_caps(ctx, 10.0, 400.0, 30.0);
 
         draw_fills(ctx, width - 200.0, height - 100.0);
+        draw_rrect(ctx, width - 500.0, height - 100.0);
 
         if blowup {
             ctx.rotate((time * 0.3).sin() * 5.0 / 180.0 * PI);
@@ -791,6 +792,58 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     ctx.draw_path(&path, paint);
 
     ctx.restore();
+}
+
+fn draw_rrect(canvas: &mut Canvas, x: f32, y: f32) {
+    canvas.save();
+    canvas.translate(x, y);
+
+    let color = Color::hex(0x78_DCDCDC);
+    let paint = Paint::fill_non_zero(color);
+
+    let r = 10.0;
+
+    // North-West (left top)
+    canvas.draw_rrect(
+        Rect::from_center(Offset::new(0.0, 0.0), 20.0, 20.0),
+        Rounding {
+            nw: r,
+            ..Default::default()
+        },
+        paint,
+    );
+
+    // North-East (right top)
+    canvas.draw_rrect(
+        Rect::from_center(Offset::new(30.0, 0.0), 20.0, 20.0),
+        Rounding {
+            ne: r,
+            ..Default::default()
+        },
+        paint,
+    );
+
+    // South-West (left bottom)
+    canvas.draw_rrect(
+        Rect::from_center(Offset::new(0.0, 30.0), 20.0, 20.0),
+        Rounding {
+            sw: r,
+            ..Default::default()
+        },
+        paint,
+    );
+
+    // South-East (right bottom)
+    canvas.draw_rrect(
+        Rect::from_center(Offset::new(30.0, 30.0), 20.0, 20.0),
+        Rounding {
+            se: r,
+            ..Default::default()
+        },
+        paint,
+    );
+
+    canvas.restore();
 }
 
 fn draw_fills(canvas: &mut Canvas, x: f32, y: f32) {
