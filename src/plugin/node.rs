@@ -1,4 +1,4 @@
-use crate::{integration::ViewDepthStencilTexture, picture::Picture};
+use crate::{picture::Picture, plugin::ViewDepthStencilTexture};
 use bevy::{
     prelude::*,
     render::{
@@ -58,6 +58,8 @@ impl Node for ReuiPassNode {
             &target.view,
             &depth.view,
             picture,
+            None,
+            true,
         );
 
         Ok(())

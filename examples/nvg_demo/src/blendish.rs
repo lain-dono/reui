@@ -126,20 +126,17 @@ pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
         let pos = bounds.center();
         let rect = Rect::from_size(4.0, 4.0).translate(pos);
 
-        ctx.draw_rect(rect, Paint::fill_non_zero(Color::hex(0xFF_CC0000)));
+        ctx.fill_rect(rect, Color::hex(0xFF_CC0000));
 
         let tr = Transform::rotation(time);
         let pos = tr.apply(Offset::new(20.0, 0.0));
 
-        ctx.draw_rect(
-            rect.translate(pos),
-            Paint::fill_non_zero(Color::hex(0x99_CC0000)),
-        );
+        ctx.fill_rect(rect.translate(pos), Color::hex(0x99_CC0000));
     }
 }
 
 pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {
-    ctx.draw_rect(bounds, Paint::fill_non_zero(Color::hex(theme.background)));
+    ctx.fill_rect(bounds, Color::hex(theme.background));
 
     let rect = bounds.deflate(3.0);
     let radius = Rounding::same(2.5);
@@ -148,11 +145,7 @@ pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {
     left_scroll.min.x = rect.max.x - 5.0;
     left_scroll.max.y = rect.max.y - 50.0;
 
-    ctx.draw_rrect(
-        left_scroll,
-        radius,
-        Paint::fill_non_zero(Color::hex(0xFF_676767)),
-    );
+    ctx.fill_rrect(left_scroll, radius, Color::hex(0xFF_676767));
     //ctx.draw_rrect(left_scroll.add(1.0), Paint::stroke(0xFF_424242));
     //ctx.draw_rrect(left_scroll, Paint::stroke(0xFF_373737).stroke_width(0.5));
 }
@@ -169,17 +162,18 @@ pub fn draw_option(ctx: &mut Canvas, bounds: Rect, theme: &WidgetTheme, state: S
     let b = Offset::new(5.5, 9.0);
     let c = Offset::new(10.5, 3.5);
 
-    ctx.draw_rrect(bounds, radius, Paint::fill_non_zero(bg));
-    ctx.draw_rrect(
+    ctx.fill_rrect(bounds, radius, bg);
+    ctx.stroke_rrect(
         bounds.inflate(0.5),
         radius,
-        Paint::stroke(Color::hex(theme.outline)).stroke_width(1.0),
+        Paint::color(Color::hex(theme.outline)).stroke_width(1.0),
     );
 
     if state == State::Active {
-        ctx.draw_lines(
+        ctx.stroke_polyline(
             &[bounds.min + a, bounds.min + b, bounds.min + c],
-            Paint::fill_non_zero(Color::hex(0xFF_E6E6E6)).stroke_width(2.0),
+            false,
+            Paint::color(Color::hex(0xFF_E6E6E6)).stroke_width(2.0),
         )
     }
 }
@@ -224,9 +218,9 @@ pub fn draw_num(
         }
     };
 
-    let paint = Paint::stroke(Color::hex(theme.outline)).stroke_width(1.0);
-    ctx.draw_rrect(bounds.inflate(0.1), radius, paint);
-    ctx.draw_rrect(bounds, radius, Paint::fill_non_zero(bg));
+    let paint = Paint::color(Color::hex(theme.outline)).stroke_width(1.0);
+    ctx.stroke_rrect(bounds.inflate(0.1), radius, paint);
+    ctx.fill_rrect(bounds, radius, bg);
 
     let arr = 13.0;
 
@@ -241,20 +235,20 @@ pub fn draw_num(
     right_radius.se = 0.0;
 
     if state == State::Hovered {
-        let paint = Paint::fill_non_zero(shade(Color::hex(theme.background), HOVER_SHADE));
-        ctx.draw_rrect(left, left_radius, paint);
-        ctx.draw_rrect(right, right_radius, paint);
+        let paint = shade(Color::hex(theme.background), HOVER_SHADE);
+        ctx.fill_rrect(left, left_radius, paint);
+        ctx.fill_rrect(right, right_radius, paint);
     }
 
     let l_arrow = left.center();
     let r_arrow = right.center();
 
-    let paint = Paint::fill_non_zero(Color::hex(0xFF_E6E6E6)).stroke_width(1.0);
+    let paint = Paint::color(Color::hex(0xFF_E6E6E6)).stroke_width(1.0);
 
     let a = Offset::new(1.5, -3.0);
     let b = Offset::new(1.5, 0.0);
     let c = Offset::new(1.5, 3.0);
 
-    ctx.draw_lines(&[l_arrow + a, l_arrow - b, l_arrow + c], paint);
-    ctx.draw_lines(&[r_arrow - a, r_arrow + b, r_arrow - c], paint);
+    ctx.stroke_polyline(&[l_arrow + a, l_arrow - b, l_arrow + c], false, paint);
+    ctx.stroke_polyline(&[r_arrow - a, r_arrow + b, r_arrow - c], false, paint);
 }

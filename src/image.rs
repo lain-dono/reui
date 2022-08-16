@@ -1,9 +1,3 @@
-use crate::{
-    canvas::Canvas,
-    picture::Recorder,
-    pipeline::{BatchUpload, Pipeline},
-    viewport::Viewport,
-};
 use std::collections::HashMap;
 
 pub struct ImageBind {
@@ -11,79 +5,22 @@ pub struct ImageBind {
     pub size: wgpu::Extent3d,
 }
 
-pub struct HostImage {
-    pub texture: wgpu::Texture,
-    pub size: wgpu::Extent3d,
-}
-
-impl HostImage {
-    fn open_rgba(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        path: impl AsRef<std::path::Path>,
-    ) -> image::ImageResult<Self> {
-        let path = path.as_ref();
-        let m = image::open(path)?;
-
-        let m = m.to_rgba8();
-        let width = m.width();
-        let height = m.height();
-        let texels = m.into_raw();
-
-        let size = wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        };
-
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: path.to_str(),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
-        });
-
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &texels,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: std::num::NonZeroU32::new(4 * width),
-                rows_per_image: None,
-            },
-            size,
-        );
-
-        Ok(Self { texture, size })
-    }
-}
-
-pub struct Images {
-    pub(crate) images: HashMap<u32, ImageBind>,
-    idx: u32,
-
+pub struct Images<Key> {
+    pub images: HashMap<Key, ImageBind>,
     pub layout: wgpu::BindGroupLayout,
-    pub sampler: wgpu::Sampler,
+    pub default_sampler: wgpu::Sampler,
 }
 
-impl std::ops::Index<u32> for Images {
+impl<Key: Eq + std::hash::Hash> std::ops::Index<Key> for Images<Key> {
     type Output = ImageBind;
-    fn index(&self, index: u32) -> &Self::Output {
+    fn index(&self, index: Key) -> &Self::Output {
         &self.images[&index]
     }
 }
 
-impl Images {
+impl<Key: Eq + std::hash::Hash> Images<Key> {
     pub fn new(device: &wgpu::Device) -> Self {
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        let default_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("reui default sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
@@ -122,35 +59,38 @@ impl Images {
 
         Self {
             images: HashMap::default(),
-            idx: 0,
-            sampler,
+            default_sampler,
             layout,
         }
     }
 
-    pub fn get(&self, image: u32) -> Option<&ImageBind> {
-        self.images.get(&image)
+    pub fn get(&self, image: &Key) -> Option<&ImageBind> {
+        self.images.get(image)
     }
 
-    pub fn create(&mut self, bind: ImageBind) -> u32 {
-        let idx = self.idx;
-        drop(self.images.insert(idx, bind));
-        self.idx += 1;
-        idx
+    pub fn remove(&mut self, key: Key) -> Option<ImageBind> {
+        self.images.remove(&key)
     }
 
-    pub fn bind_texture_view(
+    pub fn insert(&mut self, key: Key, bind: ImageBind) -> Option<ImageBind> {
+        self.images.insert(key, bind)
+    }
+
+    pub fn bind(
         &self,
         device: &wgpu::Device,
         view: &wgpu::TextureView,
+        sampler: Option<&wgpu::Sampler>,
     ) -> wgpu::BindGroup {
+        let sampler = sampler.unwrap_or(&self.default_sampler);
+
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("image bind group"),
             layout: &self.layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    resource: wgpu::BindingResource::Sampler(sampler),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -158,23 +98,5 @@ impl Images {
                 },
             ],
         })
-    }
-
-    /// # Errors
-    pub fn open(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        path: impl AsRef<std::path::Path>,
-    ) -> image::ImageResult<u32> {
-        let image = HostImage::open_rgba(device, queue, path)?;
-
-        let desc = wgpu::TextureViewDescriptor::default();
-        let view = image.texture.create_view(&desc);
-        let bind_group = self.bind_texture_view(device, &view);
-
-        let size = image.size;
-
-        Ok(self.create(ImageBind { bind_group, size }))
     }
 }

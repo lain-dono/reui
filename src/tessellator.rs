@@ -1,14 +1,9 @@
 use crate::{
-    geom::{Offset, Rect},
-    paint::{LineCap, LineJoin},
-    path::{Command, FillRule, Solidity},
+    path::Command,
     pipeline::{Batch, Vertex},
+    FillRule, LineCap, LineJoin, Offset, Rect, Solidity,
 };
-use std::{
-    cmp::Ordering,
-    f32::consts::{PI, TAU},
-    ops::Range,
-};
+use std::{cmp::Ordering, f32::consts::PI, f32::consts::TAU, ops::Range};
 
 #[inline]
 fn approx_pt_eq(a: Offset, b: Offset, eps: f32) -> bool {
@@ -23,14 +18,13 @@ const DEFAULT_BOUNDS: Rect = Rect {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Convexity {
-    Unknown,
     Concave,
     Convex,
 }
 
 impl Default for Convexity {
     fn default() -> Self {
-        Self::Unknown
+        Self::Concave
     }
 }
 
@@ -110,37 +104,32 @@ pub enum Draw {
     },
 }
 
+#[derive(Default)]
 pub struct Contour {
-    point_range: Range<usize>,
-    bevel: usize,
+    start: u32,
+    end: u32,
     closed: bool,
     solidity: Solidity,
     convexity: Convexity,
 }
 
-impl Default for Contour {
-    fn default() -> Self {
-        Self {
-            point_range: 0..0,
-            closed: false,
-            bevel: 0,
-            solidity: Solidity::default(),
-            convexity: Convexity::default(),
-        }
-    }
-}
-
 impl Contour {
+    #[inline]
     fn point_pairs<'a>(&self, points: &'a [Point]) -> PointPairsIter<'a> {
         PointPairsIter {
-            points: &points[self.point_range.clone()],
+            points: &points[self.range()],
             current: 0,
         }
     }
 
     #[inline]
+    fn range(&self) -> Range<usize> {
+        self.start as usize..self.end as usize
+    }
+
+    #[inline]
     fn len(&self) -> usize {
-        self.point_range.end.saturating_sub(self.point_range.start)
+        self.end.saturating_sub(self.start) as usize
     }
 }
 
@@ -255,7 +244,8 @@ impl Tessellator {
             match cmd {
                 Command::MoveTo(p) => {
                     self.contours.push(Contour {
-                        point_range: self.points.len()..self.points.len(),
+                        start: self.points.len() as u32,
+                        end: self.points.len() as u32,
                         ..Contour::default()
                     });
                     self.add_point(p, dist_tol, PointFlags::CORNER);
@@ -288,14 +278,14 @@ impl Tessellator {
         let bounds = &mut self.bounds;
 
         self.contours.retain_mut(|contour| {
-            let mut points = &mut all_points[contour.point_range.clone()];
+            let mut points = &mut all_points[contour.range()];
 
             // If the first and last points are the same, remove the last, mark as closed contour.
             if let (Some(p0), Some(p1)) = (points.last(), points.first()) {
                 if approx_pt_eq(p0.pos, p1.pos, dist_tol) {
-                    contour.point_range.end -= 1;
+                    contour.end -= 1;
                     contour.closed = true;
-                    points = &mut all_points[contour.point_range.clone()];
+                    points = &mut all_points[contour.range()];
                 }
             }
 
@@ -422,7 +412,7 @@ impl Tessellator {
             stroke = base_index..batch.base_index();
         } else {
             for contour in &mut self.contours {
-                let points = &self.points[contour.point_range.clone()];
+                let points = &self.points[contour.range()];
 
                 let start = batch.base_vertex();
                 for point in points {
@@ -535,7 +525,7 @@ impl Tessellator {
     fn add_point(&mut self, point: Offset, dist_tol: f32, flags: PointFlags) {
         if let Some(contour) = self.contours.last_mut() {
             // If last point equals this new point just OR the flags and ignore the new point
-            if let Some(last_point) = self.points.get_mut(contour.point_range.end) {
+            if let Some(last_point) = self.points.get_mut(contour.end as usize) {
                 if approx_pt_eq(last_point.pos, point, dist_tol) {
                     last_point.flags |= flags;
                     return;
@@ -543,7 +533,7 @@ impl Tessellator {
             }
 
             self.points.push(Point::new(point, flags));
-            contour.point_range.end += 1;
+            contour.end += 1;
         }
     }
 
@@ -551,10 +541,8 @@ impl Tessellator {
         let inv_width = if width > 0.0 { 1.0 / width } else { 0.0 };
 
         for contour in &mut self.contours {
-            let points = &mut self.points[contour.point_range.clone()];
+            let points = &mut self.points[contour.range()];
             let mut nleft = 0;
-
-            contour.bevel = 0;
 
             let mut x_sign = 0;
             let mut y_sign = 0;
@@ -648,11 +636,6 @@ impl Tessellator {
                 {
                     p1.flags |= PointFlags::BEVEL;
                 }
-
-                contour.bevel += p1
-                    .flags
-                    .contains(PointFlags::BEVEL | PointFlags::INNERBEVEL)
-                    as usize;
             }
 
             x_flips += (x_sign != 0 && x_first_sign != 0 && x_sign != x_first_sign) as i32;
@@ -764,11 +747,6 @@ fn choose_bevel(p0: &Point, p1: &Point, w: f32) -> [Offset; 2] {
 }
 
 impl Batch {
-    #[inline(always)]
-    fn emit(&mut self, pos: impl Into<[f32; 2]>, uv: [f32; 2]) {
-        self.push(Vertex::new(pos, uv))
-    }
-
     fn round_join(&mut self, p0: &Point, p1: &Point, [lw, rw, lu, ru]: [f32; 4], ncap: usize) {
         let dl0 = Offset::new(p0.dir.y, -p0.dir.x);
         let dl1 = Offset::new(p1.dir.y, -p1.dir.x);

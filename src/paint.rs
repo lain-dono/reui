@@ -1,8 +1,4 @@
-use crate::{
-    color::Color,
-    geom::{Rect, Transform},
-    pipeline::Instance,
-};
+use crate::{pipeline::Instance, Color, Rect, Transform};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
@@ -18,14 +14,6 @@ pub enum LineJoin {
     Round,
     Bevel,
     Miter,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum PaintingStyle {
-    NonZero,
-    EvenOdd,
-    Stroke,
 }
 
 #[derive(Clone, Copy)]
@@ -54,7 +42,6 @@ pub enum Gradient {
 
 #[derive(Clone, Copy)]
 pub struct Paint {
-    pub style: PaintingStyle,
     pub cap_start: LineCap,
     pub cap_end: LineCap,
     pub join: LineJoin,
@@ -68,7 +55,6 @@ pub struct Paint {
 impl Default for Paint {
     fn default() -> Self {
         Self {
-            style: PaintingStyle::NonZero,
             color: Color::BLACK,
             cap_start: LineCap::Butt,
             cap_end: LineCap::Butt,
@@ -81,26 +67,18 @@ impl Default for Paint {
     }
 }
 
+impl From<Color> for Paint {
+    fn from(color: Color) -> Self {
+        Self {
+            color,
+            ..Self::default()
+        }
+    }
+}
+
 impl Paint {
-    pub fn fill_non_zero(color: Color) -> Self {
+    pub fn color(color: Color) -> Self {
         Self {
-            style: PaintingStyle::NonZero,
-            color,
-            ..Self::default()
-        }
-    }
-
-    pub fn fill_even_odd(color: Color) -> Self {
-        Self {
-            style: PaintingStyle::EvenOdd,
-            color,
-            ..Self::default()
-        }
-    }
-
-    pub fn stroke(color: Color) -> Self {
-        Self {
-            style: PaintingStyle::Stroke,
             color,
             ..Self::default()
         }

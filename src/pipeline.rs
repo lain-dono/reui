@@ -1,9 +1,4 @@
-use crate::{
-    geom::{Offset, Transform},
-    image::Images,
-    upload_buffer::UploadBuffer,
-    viewport::Viewport,
-};
+use crate::{upload_buffer::UploadBuffer, Offset, Transform};
 use std::ops::Range;
 
 #[repr(C)]
@@ -28,7 +23,7 @@ impl Vertex {
     }
 }
 
-#[repr(C, align(4))]
+#[repr(C)]
 #[derive(Clone, Copy, Default, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Instance {
     pub paint_mat: [f32; 4],
@@ -83,9 +78,9 @@ impl Batch {
         self.instances.clear();
     }
 
-    #[inline]
-    pub fn push(&mut self, vertex: Vertex) {
-        self.vertices.push(vertex);
+    #[inline(always)]
+    pub fn emit(&mut self, pos: impl Into<[f32; 2]>, uv: [f32; 2]) {
+        self.vertices.push(Vertex::new(pos, uv))
     }
 
     #[inline]
@@ -133,13 +128,13 @@ impl Batch {
     }
 }
 
-pub struct BatchUpload {
+pub struct GpuBatch {
     pub indices: UploadBuffer<u32>,
     pub vertices: UploadBuffer<Vertex>,
     pub instances: UploadBuffer<Instance>,
 }
 
-impl BatchUpload {
+impl GpuBatch {
     pub fn new(device: &wgpu::Device) -> Self {
         Self {
             indices: UploadBuffer::new(device, wgpu::BufferUsages::INDEX, 128),
@@ -195,7 +190,7 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    pub fn new(device: &wgpu::Device, images: &Images) -> Self {
+    pub fn new(device: &wgpu::Device, image_layout: &wgpu::BindGroupLayout) -> Self {
         let view_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("reui::view_layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -203,8 +198,8 @@ impl Pipeline {
                 visibility: wgpu::ShaderStages::VERTEX,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: wgpu::BufferSize::new(std::mem::size_of::<f32>() as u64 * 4),
+                    has_dynamic_offset: true,
+                    min_binding_size: wgpu::BufferSize::new(std::mem::size_of::<[f32; 4]>() as u64),
                 },
                 count: None,
             }],
@@ -212,7 +207,7 @@ impl Pipeline {
 
         let image_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("reui pipeline layout"),
-            bind_group_layouts: &[&view_layout, &images.layout],
+            bind_group_layouts: &[&view_layout, image_layout],
             push_constant_ranges: &[],
         });
 
@@ -266,16 +261,6 @@ impl Pipeline {
             fringes_non_zero: main.pipeline(true, true, 0xFF, EQ_KEEP, EQ_KEEP),
             fringes_even_odd: main.pipeline(true, true, 0x01, EQ_KEEP, EQ_KEEP),
         }
-    }
-
-    pub fn create_viewport(
-        &self,
-        device: &wgpu::Device,
-        width: u32,
-        height: u32,
-        scale: f32,
-    ) -> Viewport {
-        Viewport::new(device, &self.view_layout, width, height, scale)
     }
 }
 

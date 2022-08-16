@@ -1,49 +1,44 @@
-use crate::{
-    geom::{Offset, Rect, Rounding, Transform},
-    image::Images,
-    paint::{Paint, PaintingStyle},
-    path::{Command, FillRule, Path},
-    picture::Recorder,
-};
+use crate::{Command, FillRule, Images, Offset, Paint, Path, Recorder, Rect, Rounding, Transform};
 
 #[derive(Default)]
-struct TransformStack(Transform, Vec<Transform>);
+pub struct TransformStack(Transform, Vec<Transform>);
 
 impl TransformStack {
     #[inline]
-    fn save(&mut self) {
+    pub fn save(&mut self) {
         self.1.push(self.transform());
     }
 
     #[inline]
-    fn restore(&mut self) -> bool {
+    pub fn restore(&mut self) -> bool {
         self.1.pop().is_some()
     }
 
     #[inline]
-    fn transform(&self) -> Transform {
+    pub fn transform(&self) -> Transform {
         *self.1.last().unwrap_or(&self.0)
     }
 
     #[inline]
-    fn pre_transform(&mut self, m: Transform) {
+    pub fn pre_transform(&mut self, m: Transform) {
         *self.1.last_mut().unwrap_or(&mut self.0) *= m;
     }
 }
 
-pub struct Canvas<'a> {
-    recorder: &'a mut Recorder,
+pub struct Canvas<'a, Key = u32> {
+    recorder: &'a mut Recorder<Key>,
+    images: &'a Images<Key>,
     states: TransformStack,
     path: Path,
     scale: f32,
 }
 
-impl<'a> Canvas<'a> {
-    pub fn new(recorder: &'a mut Recorder, scale: f32) -> Self {
-        let transform = Transform::default();
+impl<'a, Key: Eq + std::hash::Hash> Canvas<'a, Key> {
+    pub fn new(recorder: &'a mut Recorder<Key>, images: &'a Images<Key>, scale: f32) -> Self {
         Self {
             recorder,
-            states: TransformStack(transform, Vec::with_capacity(16)),
+            images,
+            states: TransformStack(Transform::default(), Vec::with_capacity(16)),
             path: Path::new(),
             scale,
         }
@@ -53,15 +48,15 @@ impl<'a> Canvas<'a> {
         self.scale
     }
 
-    pub fn draw_image_rect(&mut self, images: &Images, image: u32, rect: Rect) {
-        if images.get(image).is_some() {
+    pub fn image_rect(&mut self, image: Key, rect: Rect) {
+        if self.images.get(&image).is_some() {
             let transform = self.states.transform();
             self.recorder.draw_image(rect, transform, image, [255; 4]);
         }
     }
 
-    pub fn draw_image(&mut self, images: &Images, image: u32, offset: Offset) {
-        if let Some(image_bind) = images.get(image) {
+    pub fn image(&mut self, image: Key, offset: Offset) {
+        if let Some(image_bind) = self.images.get(&image) {
             let size = image_bind.size;
             let rect = Rect {
                 min: offset,
@@ -69,22 +64,6 @@ impl<'a> Canvas<'a> {
             };
             let transform = self.states.transform();
             self.recorder.draw_image(rect, transform, image, [255; 4]);
-        }
-    }
-
-    fn fill_or_stroke(&mut self, paint: &Paint, style: PaintingStyle) {
-        let t = self.states.transform();
-        let commands = self.path.into_iter();
-        match style {
-            PaintingStyle::Stroke => self.recorder.stroke_path(commands, paint, t, self.scale),
-            PaintingStyle::NonZero => {
-                self.recorder
-                    .fill_path(commands, paint, t, self.scale, FillRule::NonZero);
-            }
-            PaintingStyle::EvenOdd => {
-                self.recorder
-                    .fill_path(commands, paint, t, self.scale, FillRule::EvenOdd);
-            }
         }
     }
 
@@ -99,156 +78,132 @@ impl<'a> Canvas<'a> {
     }
 
     /// Add a rotation to the current transform. The argument is in radians clockwise.
-    pub fn rotate(&mut self, radians: f32) {
-        self.transform(Transform::rotation(radians));
+    pub fn push_rotate(&mut self, radians: f32) {
+        self.push_transform(Transform::rotation(radians));
     }
 
     /// Add an axis-aligned scale to the current transform,
     /// scaling by the first argument in the horizontal direction and the second in the vertical direction. [...]
-    pub fn scale(&mut self, scale: f32) {
-        self.transform(Transform::scale(scale));
+    pub fn push_scale(&mut self, scale: f32) {
+        self.push_transform(Transform::scale(scale));
     }
 
     /// Add a translation to the current transform,
     /// shifting the coordinate space horizontally by the first argument and vertically by the second argument.
-    pub fn translate(&mut self, dx: f32, dy: f32) {
-        self.transform(Transform::translation(dx, dy));
+    pub fn push_translate(&mut self, dx: f32, dy: f32) {
+        self.push_transform(Transform::translation(dx, dy));
     }
 
     /// Multiply the current transform by the specified 4⨉4 transformation matrix specified as a list of values in column-major order.
-    pub fn transform(&mut self, t: Transform) {
+    pub fn push_transform(&mut self, t: Transform) {
         self.states.pre_transform(t);
     }
 }
 
-impl<'a> Canvas<'a> {
-    /*
-    /// Reduces the clip region to the intersection of the current clip and the given Path. [...]
-    clipPath(Path path, { bool doAntiAlias: true }) -> void
-    /// Reduces the clip region to the intersection of the current clip and the given rectangle. [...]
-    clipRect(Rect rect, { ClipOp clipOp: ClipOp.intersect, bool doAntiAlias: true }) -> void
-    /// Reduces the clip region to the intersection of the current clip and the given rounded rectangle. [...]
-    clipRRect(RRect rrect, { bool doAntiAlias: true }) -> void
-    */
-
-    /*
-    /// Draw an arc scaled to fit inside the given rectangle.
-    /// It starts from startAngle radians around the oval up to startAngle + sweepAngle radians around the oval,
-    /// with zero radians being the point on the right hand side of the oval that crosses the horizontal line
-    /// that intersects the center of the rectangle and with positive angles going clockwise around the oval.
-    /// If useCenter is true, the arc is closed back to the center, forming a circle sector.
-    /// Otherwise, the arc is not closed, forming a circle segment. [...]
-    pub fn draw_arc(&mut self, rect: Rect, start_angle: f32, sweep_angle: f32, use_center: bool, paint: Paint) {
-        unimplemented!()
-    }
-    */
-
-    //drawAtlas(Image atlas, List<RSTransform> transforms, List<Rect> rects, List<Color> colors, BlendMode blendMode, Rect cullRect, Paint paint) -> void
-
-    /// Draws a circle centered at the point given by the first argument
-    /// and that has the radius given by the second argument, with the Paint given in the third argument.
-    /// Whether the circle is filled or stroked (or both) is controlled by Paint.style.
-    pub fn draw_circle(&mut self, center: Offset, radius: f32, paint: Paint) {
-        self.path.clear();
-        self.path.circle(center, radius);
-        self.fill_or_stroke(&paint, paint.style);
-    }
-
-    /*
-    /// Paints the given Color onto the canvas, applying the given BlendMode,
-    /// with the given color being the source and the background being the destination.
-    pub fn draw_color(&mut self, color: Color, blend: BlendMode) -> void
-
-    /// Draws a shape consisting of the difference between two rounded rectangles with the given Paint.
-    /// Whether this shape is filled or stroked (or both) is controlled by Paint.style. [...]
-    pub fn draw_drrect(&mut self, RRect outer, RRect inner, Paint paint) -> void
-
-    /// Draws the given Image into the canvas with its top-left corner at the given Offset.
-    /// The image is composited into the canvas using the given Paint.
-    pub fn draw_image(&mut self, Image image, Offset p, Paint paint) -> void
-
-    /// Draws the given Image into the canvas using the given Paint. [...]
-    pub fn draw_image_nine(&mut self, Image image, Rect center, Rect dst, Paint paint) -> void
-    /// Draws the subset of the given image described by the src argument into the canvas
-    /// in the axis-aligned rectangle given by the dst argument. [...]
-    pub fn draw_image_rect(&mut self, Image image, Rect src, Rect dst, Paint paint) -> void
-    */
-
+impl<'a, Key: Eq + std::hash::Hash> Canvas<'a, Key> {
     /// Draws a line between the given points using the given paint.
-    /// The line is stroked, the value of the Paint.style is ignored for this call. [...]
-    pub fn draw_line(&mut self, p0: Offset, p1: Offset, paint: Paint) {
+    /// The line is stroked, the value of the Paint.style is ignored for this call.
+    ///
+    /// The p1 and p2 arguments are interpreted as offsets from the origin.
+    #[inline]
+    pub fn stroke_line(&mut self, p0: Offset, p1: Offset, paint: impl Into<Paint>) {
+        self.stroke(paint, |path| path.line(p0, p1));
+    }
+
+    #[inline]
+    pub fn stroke_polyline(&mut self, points: &[Offset], close: bool, paint: impl Into<Paint>) {
+        self.stroke(paint, |path| path.polyline(points, close))
+    }
+
+    #[inline]
+    pub fn stroke_circle(&mut self, center: Offset, radius: f32, paint: impl Into<Paint>) {
+        self.stroke(paint, |path| path.circle(center, radius));
+    }
+
+    #[inline]
+    pub fn stroke_oval(&mut self, rect: Rect, paint: impl Into<Paint>) {
+        self.stroke(paint, |path| path.oval(rect));
+    }
+
+    #[inline]
+    pub fn stroke_rect(&mut self, rect: Rect, paint: impl Into<Paint>) {
+        self.stroke(paint, |path| path.rect(rect));
+    }
+
+    #[inline]
+    pub fn stroke_rrect(&mut self, rect: Rect, radius: Rounding, paint: impl Into<Paint>) {
+        self.stroke(paint, |path| path.rrect(rect, radius));
+    }
+
+    #[inline]
+    pub fn stroke_path<P>(&mut self, path_iter: P, paint: impl Into<Paint>)
+    where
+        P: IntoIterator<Item = Command>,
+    {
+        self.stroke(paint, |path| path.extend(path_iter))
+    }
+
+    #[inline]
+    pub fn stroke(&mut self, paint: impl Into<Paint>, path: impl FnOnce(&mut Path)) {
         self.path.clear();
-        self.path.move_to(p0);
-        self.path.line_to(p1);
-        self.fill_or_stroke(&paint, PaintingStyle::Stroke);
+        path(&mut self.path);
+
+        let xform = self.states.transform();
+        let scale = self.scale;
+        self.recorder.stroke_path(&self.path, paint, xform, scale)
     }
 
-    pub fn draw_lines(&mut self, points: &[Offset], paint: Paint) {
-        if points.len() >= 2 {
-            self.path.clear();
-            self.path.move_to(points[0]);
-            for &p in &points[1..] {
-                self.path.line_to(p);
-            }
-            self.fill_or_stroke(&paint, PaintingStyle::Stroke);
-        }
+    #[inline]
+    pub fn fill_polyline(&mut self, points: &[Offset], rule: FillRule, paint: impl Into<Paint>) {
+        self.fill(paint, rule, |path| path.polyline(points, true))
     }
 
-    /// Draws an axis-aligned oval that fills the given axis-aligned rectangle with the given Paint.
-    /// Whether the oval is filled or stroked (or both) is controlled by Paint.style.
-    pub fn draw_oval(&mut self, rect: Rect, paint: Paint) {
+    #[inline]
+    pub fn fill_circle(&mut self, center: Offset, radius: f32, paint: impl Into<Paint>) {
+        self.fill_non_zero(paint, |path| path.circle(center, radius));
+    }
+
+    #[inline]
+    pub fn fill_oval(&mut self, rect: Rect, paint: impl Into<Paint>) {
+        self.fill_non_zero(paint, |path| path.oval(rect));
+    }
+
+    #[inline]
+    pub fn fill_rect(&mut self, rect: Rect, paint: impl Into<Paint>) {
+        self.fill_non_zero(paint, |path| path.rect(rect));
+    }
+
+    #[inline]
+    pub fn fill_rrect(&mut self, rect: Rect, radius: Rounding, paint: impl Into<Paint>) {
+        self.fill_non_zero(paint, |path| path.rrect(rect, radius));
+    }
+
+    #[inline]
+    pub fn fill_path<P>(&mut self, path_iter: P, paint: impl Into<Paint>, fill_rule: FillRule)
+    where
+        P: IntoIterator<Item = Command>,
+    {
+        self.fill(paint, fill_rule, |path| path.extend(path_iter))
+    }
+
+    #[inline]
+    pub fn fill_non_zero(&mut self, paint: impl Into<Paint>, path: impl FnOnce(&mut Path)) {
+        self.fill(paint, FillRule::NonZero, path)
+    }
+
+    #[inline]
+    pub fn fill_even_odd(&mut self, paint: impl Into<Paint>, path: impl FnOnce(&mut Path)) {
+        self.fill(paint, FillRule::EvenOdd, path)
+    }
+
+    #[inline]
+    pub fn fill(&mut self, paint: impl Into<Paint>, rule: FillRule, path: impl FnOnce(&mut Path)) {
         self.path.clear();
-        self.path.oval(rect);
-        self.fill_or_stroke(&paint, paint.style);
+        path(&mut self.path);
+
+        let xform = self.states.transform();
+        let scale = self.scale;
+        self.recorder
+            .fill_path(&self.path, paint, xform, scale, rule);
     }
-
-    /*
-    /// Fills the canvas with the given Paint. [...]
-    pub fn draw_paint(&mut self, Paint paint) -> void
-
-    /// Draws the text in the given Paragraph into this canvas at the given Offset. [...]
-    pub fn draw_paragraph(&mut self, Paragraph paragraph, Offset offset) -> void
-    */
-
-    /// Draws the given Path with the given Paint.
-    /// Whether this shape is filled or stroked (or both) is controlled by Paint.style.
-    /// If the path is filled, then sub-paths within it are implicitly closed (see Path.close).
-    pub fn draw_path(&mut self, path_iter: impl IntoIterator<Item = Command>, paint: Paint) {
-        self.path.clear();
-        self.path.extend(path_iter);
-        self.fill_or_stroke(&paint, paint.style);
-    }
-
-    /*
-    /// Draw the given picture onto the canvas. To create a picture, see PictureRecorder.
-    pub fn draw_picture(&mut self, Picture picture) -> void
-    /// Draws a sequence of points according to the given PointMode. [...]
-    pub fn draw_points(&mut self, PointMode pointMode, List<Offset> points, Paint paint) -> void
-
-    pub fn draw_raw_atlas(&mut self, Image atlas, Float32List rstTransforms, Float32List rects, Int32List colors, BlendMode blendMode, Rect cullRect, Paint paint) -> void
-
-    /// Draws a sequence of points according to the given PointMode. [...]
-    pub fn draw_raw_points(&mut self, PointMode pointMode, Float32List points, Paint paint) -> void
-    */
-
-    /// Draws a rectangle with the given Paint.
-    /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
-    pub fn draw_rect(&mut self, rect: Rect, paint: Paint) {
-        self.path.clear();
-        self.path.rect(rect);
-        self.fill_or_stroke(&paint, paint.style);
-    }
-
-    /// Draws a rounded rectangle with the given Paint.
-    /// Whether the rectangle is filled or stroked (or both) is controlled by Paint.style.
-    pub fn draw_rrect(&mut self, rect: Rect, radius: Rounding, paint: Paint) {
-        self.path.clear();
-        self.path.rrect(rect, radius);
-        self.fill_or_stroke(&paint, paint.style);
-    }
-
-    /*
-    /// Draws a shadow for a Path representing the given material elevation. [...]
-    pub fn draw_shadow(&mut self, Path path, Color color, double elevation, bool transparentOccluder) -> void
-    */
 }

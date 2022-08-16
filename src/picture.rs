@@ -1,16 +1,13 @@
 use crate::{
-    geom::{Rect, Transform},
-    image::Images,
-    paint::{LineJoin, Paint, RawPaint},
-    path::{FillRule, PathIter},
-    pipeline::{Batch, BatchUpload, Instance, Pipeline, Vertex},
+    paint::RawPaint,
+    pipeline::{Batch, GpuBatch, Instance, Pipeline, Vertex},
     tessellator::{Draw, Tessellator},
-    viewport::Target,
+    FillRule, Images, LineJoin, Paint, Path, Rect, Transform,
 };
 
 #[derive(Clone, Copy, Debug)]
 #[repr(u32)]
-pub enum DrawCall {
+pub enum DrawCall<Key> {
     Convex {
         start: u32,
         end: u32,
@@ -54,7 +51,7 @@ pub enum DrawCall {
         end: u32,
         base_vertex: i32,
         instance: u32,
-        image: u32,
+        image: Key,
     },
 }
 
@@ -72,12 +69,13 @@ impl<'a> std::iter::IntoIterator for &'a Picture {
 }
 
 impl Picture {
-    pub fn new(
+    pub fn new<Key>(
         device: &wgpu::Device,
         viewport: &wgpu::BindGroup,
+        offset: u32,
         pipeline: &Pipeline,
-        batch: &BatchUpload,
-        calls: &[DrawCall],
+        batch: &GpuBatch,
+        calls: &[DrawCall<Key>],
     ) -> Self {
         let mut rpass = device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
             label: Some("reui::Picture"),
@@ -91,15 +89,15 @@ impl Picture {
             multiview: None,
         });
 
-        rpass.set_bind_group(0, viewport, &[]);
+        rpass.set_bind_group(0, viewport, &[offset]);
 
         rpass.set_index_buffer(batch.indices.slice(..), wgpu::IndexFormat::Uint32);
         rpass.set_vertex_buffer(0, batch.vertices.slice(..));
         rpass.set_vertex_buffer(1, batch.instances.slice(..));
 
-        for &call in calls {
+        for call in calls {
             match call {
-                DrawCall::Convex {
+                &DrawCall::Convex {
                     start,
                     end,
                     base_vertex,
@@ -109,7 +107,7 @@ impl Picture {
                     rpass.draw_indexed(start..end, base_vertex, instance..instance + 1);
                 }
 
-                DrawCall::Stroke {
+                &DrawCall::Stroke {
                     start,
                     end,
                     base_vertex,
@@ -129,7 +127,7 @@ impl Picture {
                     rpass.draw_indexed(start..end, base_vertex, second..second + 1);
                 }
 
-                DrawCall::FillStencil {
+                &DrawCall::FillStencil {
                     start,
                     end,
                     base_vertex,
@@ -139,7 +137,7 @@ impl Picture {
                     rpass.draw_indexed(start..end, base_vertex, instance..instance + 1);
                 }
 
-                DrawCall::FillQuad {
+                &DrawCall::FillQuad {
                     start,
                     end,
                     base_vertex,
@@ -154,7 +152,7 @@ impl Picture {
                 }
 
                 // Draw anti-aliased pixels.
-                DrawCall::FillFringes {
+                &DrawCall::FillFringes {
                     start,
                     end,
                     base_vertex,
@@ -182,14 +180,17 @@ impl Picture {
 
 #[derive(Default)]
 #[cfg_attr(feature = "bevy", derive(bevy::prelude::Component))]
-pub struct Recorder {
-    pub(crate) calls: Vec<DrawCall>,
+pub struct Recorder<Key> {
+    pub(crate) calls: Vec<DrawCall<Key>>,
     pub(crate) batch: Batch,
     pub(crate) cache: Tessellator,
 }
 
-impl Recorder {
-    pub fn new() -> Self {
+impl<Key> Recorder<Key> {
+    pub fn new() -> Self
+    where
+        Key: Default,
+    {
         Self::default()
     }
 
@@ -199,8 +200,16 @@ impl Recorder {
         self.cache.clear();
     }
 
-    pub fn stroke_path(&mut self, commands: PathIter, paint: &Paint, xform: Transform, scale: f32) {
-        let mut raw_paint = RawPaint::convert(paint, xform);
+    pub fn stroke_path(
+        &mut self,
+        path: &Path,
+        paint: impl Into<Paint>,
+        xform: Transform,
+        scale: f32,
+    ) {
+        let paint = paint.into();
+
+        let mut raw_paint = RawPaint::convert(&paint, xform);
 
         let average_scale = (xform.re * xform.re + xform.im * xform.im).sqrt();
         let mut stroke_width = (paint.width * average_scale).max(0.0);
@@ -221,7 +230,7 @@ impl Recorder {
 
         let fringe_width = if paint.antialias { fringe_width } else { 0.0 };
 
-        let commands = commands.transform(xform);
+        let commands = path.transform_iter(xform);
         let tess_tol = 0.25 * inv_scale;
         self.cache.flatten(commands, tess_tol, 0.01 * inv_scale);
 
@@ -255,13 +264,15 @@ impl Recorder {
 
     pub fn fill_path(
         &mut self,
-        commands: PathIter,
-        paint: &Paint,
+        path: &Path,
+        paint: impl Into<Paint>,
         xform: Transform,
         scale: f32,
         fill_rule: FillRule,
     ) {
-        let raw_paint = RawPaint::convert(paint, xform);
+        let paint = paint.into();
+
+        let raw_paint = RawPaint::convert(&paint, xform);
 
         let inv_scale = scale.recip();
 
@@ -271,7 +282,7 @@ impl Recorder {
         let raw = raw_paint.to_instance(fringe_width, fringe_width, -1.0);
         let instance = self.batch.instance(raw);
 
-        let commands = commands.transform(xform);
+        let commands = path.transform_iter(xform);
         let tess_tol = 0.25 * inv_scale;
         self.cache.flatten(commands, tess_tol, 0.01 * inv_scale);
 
@@ -321,7 +332,7 @@ impl Recorder {
         }
     }
 
-    pub fn draw_image(&mut self, rect: Rect, transform: Transform, image: u32, color: [u8; 4]) {
+    pub fn draw_image(&mut self, rect: Rect, transform: Transform, image: Key, color: [u8; 4]) {
         let Rect { min, max } = rect;
         let base_vertex = self.batch.base_vertex();
         let indices = self.batch.push_strip(
@@ -350,11 +361,14 @@ impl Recorder {
         encoder: &mut wgpu::CommandEncoder,
         staging_belt: &mut wgpu::util::StagingBelt,
         device: &wgpu::Device,
-        batch: &mut BatchUpload,
+        batch: &mut GpuBatch,
         pipeline: &Pipeline,
-        target: &Target,
-        images: &Images,
-    ) -> Picture {
+        viewport: &wgpu::BindGroup,
+        images: &Images<Key>,
+    ) -> Picture
+    where
+        Key: Copy + Eq + std::hash::Hash,
+    {
         batch.upload_staging(encoder, staging_belt, device, &self.batch);
 
         let mut rpass = device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
@@ -369,7 +383,8 @@ impl Recorder {
             multiview: None,
         });
 
-        target.bind(&mut rpass);
+        rpass.set_bind_group(0, viewport, &[0]);
+
         batch.bind(&mut rpass);
 
         encode(&mut rpass, self.calls.iter().cloned(), pipeline, images);
@@ -380,11 +395,11 @@ impl Recorder {
     }
 }
 
-fn encode<'a>(
+fn encode<'a, Key: Eq + std::hash::Hash>(
     rpass: &mut impl wgpu::util::RenderEncoder<'a>,
-    calls: impl IntoIterator<Item = DrawCall>,
+    calls: impl IntoIterator<Item = DrawCall<Key>>,
     pipeline: &'a Pipeline,
-    images: &'a Images,
+    images: &'a Images<Key>,
 ) {
     for call in calls {
         match call {

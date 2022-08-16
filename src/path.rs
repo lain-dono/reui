@@ -1,4 +1,4 @@
-use crate::geom::{Offset, Rect, Rounding, Transform};
+use crate::{Offset, Rect, Rounding, Transform};
 
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.
 const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
@@ -204,7 +204,7 @@ impl<'a> std::iter::Extend<&'a Command> for Path {
 }
 
 impl Path {
-    pub fn iter(&self) -> PathIter {
+    pub(crate) fn iter(&self) -> PathIter {
         PathIter {
             index: self.index.iter(),
             coord: &self.coord,
@@ -305,6 +305,24 @@ impl Path {
     /// that intersects the center of the rectangle and with positive angles going clockwise around the oval.
     pub fn add_arc(Rect oval, double startAngle, double sweepAngle) -> void
     */
+
+    pub fn line(&mut self, p0: Offset, p1: Offset) {
+        self.move_to(p0);
+        self.line_to(p1);
+    }
+
+    pub fn polyline(&mut self, points: &[Offset], close: bool) {
+        let mut iter = points.iter();
+        if let Some(&p0) = iter.next() {
+            self.move_to(p0);
+            for &p in iter {
+                self.line_to(p);
+            }
+            if close {
+                self.close();
+            }
+        }
+    }
 
     /// Adds a new sub-path that consists of a curve that forms the ellipse that fills the given rectangle.
     pub fn oval(&mut self, rect: Rect) {
