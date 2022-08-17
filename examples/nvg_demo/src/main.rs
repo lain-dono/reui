@@ -6,7 +6,7 @@ mod canvas;
 
 mod time;
 
-use reui::{wgpu, Offset, Rect, Renderer};
+use reui::{wgpu, Image, Offset, Rect, Renderer};
 use reui_app::{self as app, ControlFlow, WindowEvent};
 
 pub fn main() {
@@ -18,6 +18,28 @@ pub fn main() {
     window.set_inner_size(app::LogicalSize::new(1000, 600));
 
     app::run::<Demo>(event_loop, window);
+}
+
+/// # Errors
+pub fn open_image(
+    renderer: &mut Renderer,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    path: impl AsRef<std::path::Path>,
+) -> image::ImageResult<Image> {
+    let path = path.as_ref();
+    let m = image::open(path)?;
+    let m = m.to_rgba8();
+
+    Ok(renderer.upload_image(
+        device,
+        queue,
+        path.to_str(),
+        m.width(),
+        m.height(),
+        m.as_raw(),
+        None,
+    ))
 }
 
 struct Demo {
@@ -36,13 +58,11 @@ impl app::Application for Demo {
         queue: &wgpu::Queue,
         width: u32,
         height: u32,
-        scale: f32,
+        _scale: f32,
     ) -> Self {
-        let mut renderer = Renderer::new(device, width, height, scale);
+        let mut renderer = Renderer::new(device, width, height);
 
-        let image = renderer
-            .open_image(device, queue, "examples/rust-jerk.jpg")
-            .unwrap();
+        let image = open_image(&mut renderer, device, queue, "examples/rust-jerk.jpg").unwrap();
 
         let staging_belt = wgpu::util::StagingBelt::new(0x20_0000);
 
@@ -94,9 +114,8 @@ impl app::Application for Demo {
 
         let mut encoder = device.create_command_encoder(&Default::default());
 
-        let mut canvas = self
-            .renderer
-            .start_frame(device, queue, width, height, scale);
+        let mut canvas = self.renderer.start(device, queue, width, height);
+        canvas.push_scale(scale);
 
         {
             let mouse = self.mouse / scale;
@@ -106,17 +125,19 @@ impl app::Application for Demo {
             canvas::render_demo(&mut canvas, mouse, size, time, self.blowup);
         }
 
+        let clear = reui::wgpu::Color {
+            r: 0.3,
+            g: 0.3,
+            b: 0.32,
+            a: 1.0,
+        };
+
         self.renderer.flush(
             &mut encoder,
             &mut self.staging_belt,
             device,
             &view,
-            Some(reui::wgpu::Color {
-                r: 0.3,
-                g: 0.3,
-                b: 0.32,
-                a: 1.0,
-            }),
+            Some(clear),
         );
 
         self.staging_belt.finish();

@@ -1,5 +1,4 @@
-use crate::{upload_buffer::UploadBuffer, Offset, Transform};
-use std::ops::Range;
+use crate::{Offset, Transform};
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, bytemuck::Zeroable, bytemuck::Pod)]
@@ -47,136 +46,15 @@ impl Instance {
     }
 }
 
-#[derive(Default)]
-pub struct Batch {
-    instances: Vec<Instance>,
-    indices: Vec<u32>,
-    vertices: Vec<Vertex>,
-}
-
-impl std::ops::Index<i32> for Batch {
-    type Output = Vertex;
-    #[inline]
-    fn index(&self, index: i32) -> &Self::Output {
-        &self.vertices[index as usize]
-    }
-}
-
-impl std::ops::IndexMut<i32> for Batch {
-    #[inline]
-    fn index_mut(&mut self, index: i32) -> &mut Self::Output {
-        &mut self.vertices[index as usize]
-    }
-}
-
-#[allow(clippy::cast_possible_wrap)]
-impl Batch {
-    #[inline]
-    pub fn clear(&mut self) {
-        self.vertices.clear();
-        self.indices.clear();
-        self.instances.clear();
-    }
-
-    #[inline(always)]
-    pub fn emit(&mut self, pos: impl Into<[f32; 2]>, uv: [f32; 2]) {
-        self.vertices.push(Vertex::new(pos, uv))
-    }
-
-    #[inline]
-    pub(crate) fn instance(&mut self, instance: Instance) -> u32 {
-        let index = self.instances.len();
-        self.instances.push(instance);
-        index as u32
-    }
-
-    #[inline]
-    pub(crate) fn base_vertex(&self) -> i32 {
-        self.vertices.len() as i32
-    }
-
-    #[inline]
-    pub(crate) fn base_index(&self) -> u32 {
-        self.indices.len() as u32
-    }
-
-    #[inline]
-    pub(crate) fn push_strip(&mut self, offset: u32, vertices: &[Vertex]) -> Range<u32> {
-        let start = self.base_index();
-        self.vertices.extend_from_slice(vertices);
-        self.strip(offset, vertices.len() as i32);
-        start..self.base_index()
-    }
-
-    #[inline]
-    pub(crate) fn strip(&mut self, offset: u32, num_vertices: i32) {
-        for i in 0..num_vertices.saturating_sub(2) as u32 {
-            let (a, b) = if 0 == i % 2 { (1, 2) } else { (2, 1) };
-            self.indices.push(offset + i);
-            self.indices.push(offset + i + a);
-            self.indices.push(offset + i + b);
-        }
-    }
-
-    #[inline]
-    pub(crate) fn fan(&mut self, offset: u32, num_vertices: i32) {
-        for i in 0..num_vertices.saturating_sub(2) as u32 {
-            self.indices.push(offset);
-            self.indices.push(offset + i + 1);
-            self.indices.push(offset + i + 2);
-        }
-    }
-}
-
-pub struct GpuBatch {
-    pub indices: UploadBuffer<u32>,
-    pub vertices: UploadBuffer<Vertex>,
-    pub instances: UploadBuffer<Instance>,
-}
-
-impl GpuBatch {
-    pub fn new(device: &wgpu::Device) -> Self {
-        Self {
-            indices: UploadBuffer::new(device, wgpu::BufferUsages::INDEX, 128),
-            vertices: UploadBuffer::new(device, wgpu::BufferUsages::VERTEX, 128),
-            instances: UploadBuffer::new(device, wgpu::BufferUsages::VERTEX, 128),
-        }
-    }
-
-    pub fn upload_queue(&mut self, queue: &wgpu::Queue, device: &wgpu::Device, batch: &Batch) {
-        self.indices.upload_queue(queue, device, &batch.indices);
-        self.vertices.upload_queue(queue, device, &batch.vertices);
-        self.instances.upload_queue(queue, device, &batch.instances);
-    }
-
-    pub fn upload_staging(
-        &mut self,
-        encoder: &mut wgpu::CommandEncoder,
-        belt: &mut wgpu::util::StagingBelt,
-        device: &wgpu::Device,
-        batch: &Batch,
-    ) {
-        self.indices
-            .upload_staging(encoder, belt, device, &batch.indices);
-        self.vertices
-            .upload_staging(encoder, belt, device, &batch.vertices);
-        self.instances
-            .upload_staging(encoder, belt, device, &batch.instances);
-    }
-
-    pub fn bind<'rpass>(&'rpass self, rpass: &mut impl wgpu::util::RenderEncoder<'rpass>) {
-        rpass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
-        rpass.set_vertex_buffer(0, self.vertices.slice(..));
-        rpass.set_vertex_buffer(1, self.instances.slice(..));
-    }
-}
-
 pub struct Pipeline {
     pub view_layout: wgpu::BindGroupLayout,
 
-    pub image: wgpu::RenderPipeline,
+    pub premultiplied: wgpu::RenderPipeline,
+    pub unmultiplied: wgpu::RenderPipeline,
+    pub font: wgpu::RenderPipeline,
 
     pub convex: wgpu::RenderPipeline,
+    pub convex_simple: wgpu::RenderPipeline,
 
     pub fill_stencil: wgpu::RenderPipeline,
     pub fill_quad_non_zero: wgpu::RenderPipeline,
@@ -241,15 +119,69 @@ impl Pipeline {
         const INCR_WRAP: wgpu::StencilFaceState = stencil!(Always, Keep, IncrementWrap);
         const DECR_WRAP: wgpu::StencilFaceState = stencil!(Always, Keep, DecrementWrap);
 
-        let image = Builder::new("image", device, &image_layout, &module);
-        let main = Builder::new("main", device, &paint_layout, &module);
-        let stencil = Builder::new("stencil", device, &paint_layout, &module);
+        let premultiplied = Builder::new(
+            "vertex_blit",
+            "fragment_premultiplied",
+            device,
+            &image_layout,
+            &module,
+            false,
+        );
+
+        let unmultiplied = Builder::new(
+            "vertex_blit",
+            "fragment_unmultiplied",
+            device,
+            &image_layout,
+            &module,
+            false,
+        );
+
+        let font = Builder::new(
+            "vertex_blit",
+            "fragment_font",
+            device,
+            &image_layout,
+            &module,
+            false,
+        );
+
+        let main = Builder::new(
+            "vertex_main",
+            "fragment_main",
+            device,
+            &paint_layout,
+            &module,
+            true,
+        );
+
+        let convex_simple = Builder::new(
+            "vertex_main",
+            "fragment_convex_simple",
+            device,
+            &paint_layout,
+            &module,
+            true,
+        );
+
+        let stencil = Builder::new(
+            "vertex_stencil",
+            "fragment_stencil",
+            device,
+            &paint_layout,
+            &module,
+            false,
+        );
 
         Self {
             view_layout,
 
-            image: image.pipeline(true, true, 0xFF, ALWAYS_KEEP, ALWAYS_KEEP),
+            premultiplied: premultiplied.pipeline(true, true, 0xFF, ALWAYS_KEEP, ALWAYS_KEEP),
+            unmultiplied: unmultiplied.pipeline(true, true, 0xFF, ALWAYS_KEEP, ALWAYS_KEEP),
+            font: font.pipeline(true, true, 0xFF, ALWAYS_KEEP, ALWAYS_KEEP),
+
             convex: main.pipeline(true, true, 0xFF, ALWAYS_KEEP, ALWAYS_KEEP),
+            convex_simple: convex_simple.pipeline(true, true, 0xFF, ALWAYS_KEEP, ALWAYS_KEEP),
 
             fill_stencil: stencil.pipeline(false, false, 0xFF, INCR_WRAP, DECR_WRAP),
             fill_quad_non_zero: main.pipeline(true, true, 0xFF, NE_ZERO, NE_ZERO),
@@ -265,24 +197,31 @@ impl Pipeline {
 }
 
 struct Builder<'a> {
-    entry_point: &'a str,
+    vs_entry_point: &'a str,
+    fs_entry_point: &'a str,
     device: &'a wgpu::Device,
     layout: &'a wgpu::PipelineLayout,
     module: &'a wgpu::ShaderModule,
+    instances: bool,
 }
 
 impl<'a> Builder<'a> {
     fn new(
-        entry_point: &'a str,
+        vs_entry_point: &'a str,
+        fs_entry_point: &'a str,
         device: &'a wgpu::Device,
         layout: &'a wgpu::PipelineLayout,
         module: &'a wgpu::ShaderModule,
+
+        instances: bool,
     ) -> Self {
         Self {
-            entry_point,
+            vs_entry_point,
+            fs_entry_point,
             device,
             layout,
             module,
+            instances,
         }
     }
 
@@ -306,43 +245,45 @@ impl<'a> Builder<'a> {
 
         let cull_mode = back_culling.then_some(wgpu::Face::Back);
 
-        let buffers = &[
-            wgpu::VertexBufferLayout {
-                array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Unorm16x2],
-            },
-            wgpu::VertexBufferLayout {
-                array_stride: std::mem::size_of::<Instance>() as wgpu::BufferAddress,
-                step_mode: wgpu::VertexStepMode::Instance,
-                attributes: &wgpu::vertex_attr_array![
-                    2 => Float32x4,
-                    3 => Unorm8x4,
-                    4 => Unorm8x4,
-                    5 => Float32x4,
-                    6 => Float32x2,
-                ],
-            },
-        ];
-
         let Self {
             device,
             layout,
             module,
-            entry_point,
+            vs_entry_point,
+            fs_entry_point,
+            instances,
         } = self;
 
+        let vertex_buffer = wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Unorm16x2],
+        };
+        let instance_buffer = wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Instance>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![
+                2 => Float32x4,
+                3 => Unorm8x4,
+                4 => Unorm8x4,
+                5 => Float32x4,
+                6 => Float32x2,
+            ],
+        };
+
+        let buffers = [vertex_buffer, instance_buffer];
+
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(entry_point),
+            label: None,
             layout: Some(layout),
             vertex: wgpu::VertexState {
                 module,
-                entry_point: "vertex",
-                buffers,
+                entry_point: vs_entry_point,
+                buffers: if *instances { &buffers } else { &buffers[..1] },
             },
             fragment: Some(wgpu::FragmentState {
                 module,
-                entry_point,
+                entry_point: fs_entry_point,
                 targets: &[Some(target)],
             }),
             primitive: wgpu::PrimitiveState {
@@ -364,11 +305,7 @@ impl<'a> Builder<'a> {
                 },
                 bias: wgpu::DepthBiasState::default(),
             }),
-
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                ..wgpu::MultisampleState::default()
-            },
+            multisample: wgpu::MultisampleState::default(),
             multiview: None,
         })
     }

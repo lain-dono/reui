@@ -3,7 +3,7 @@ use crate::{Offset, Rect, Rounding, Transform};
 // Length proportional to radius of a cubic bezier handle for 90deg arcs.
 const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
 
-/// The fill rule used when filling paths: `EvenOdd`, `NonZero` (default).
+/// The fill rule used when filling paths: `EvenOdd`, `NonZero`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum FillRule {
@@ -35,7 +35,8 @@ impl Default for Solidity {
 enum Raw {
     MoveTo,
     LineTo,
-    BezierTo,
+    QuadTo,
+    CubicTo,
     Solid,
     Hole,
     Close,
@@ -45,17 +46,20 @@ impl Raw {
     fn num_points(self) -> usize {
         match self {
             Self::MoveTo | Self::LineTo => 1,
-            Self::BezierTo => 3,
+            Self::QuadTo => 2,
+            Self::CubicTo => 3,
             Self::Solid | Self::Hole | Self::Close => 0,
         }
     }
 }
 
+/// Path drawing command.
 #[derive(Clone, Copy)]
 pub enum Command {
     MoveTo(Offset),
     LineTo(Offset),
-    BezierTo(Offset, Offset, Offset),
+    QuadTo(Offset, Offset),
+    CubicTo(Offset, Offset, Offset),
     Solid,
     Hole,
     Close,
@@ -73,13 +77,17 @@ impl Command {
                 array[0] = p;
                 (Raw::LineTo, 1)
             }
-            Command::BezierTo(p1, p2, p3) => {
+            Command::QuadTo(p1, p2) => {
+                array[0] = p1;
+                array[1] = p2;
+                (Raw::QuadTo, 2)
+            }
+            Command::CubicTo(p1, p2, p3) => {
                 array[0] = p1;
                 array[1] = p2;
                 array[2] = p3;
-                (Raw::BezierTo, 3)
+                (Raw::CubicTo, 3)
             }
-
             Command::Solid => (Raw::Solid, 0),
             Command::Hole => (Raw::Hole, 0),
             Command::Close => (Raw::Close, 0),
@@ -116,7 +124,8 @@ impl<'a> Iterator for PathIter<'a> {
             Some(match raw {
                 Raw::MoveTo => Command::MoveTo(coords[0]),
                 Raw::LineTo => Command::LineTo(coords[0]),
-                Raw::BezierTo => Command::BezierTo(coords[0], coords[1], coords[2]),
+                Raw::QuadTo => Command::QuadTo(coords[0], coords[1]),
+                Raw::CubicTo => Command::CubicTo(coords[0], coords[1], coords[2]),
                 Raw::Solid => Command::Solid,
                 Raw::Hole => Command::Hole,
                 Raw::Close => Command::Close,
@@ -147,7 +156,11 @@ impl<'a> Iterator for PathTransformIter<'a> {
             Some(match raw {
                 Raw::MoveTo => Command::MoveTo(self.transform.apply(coords[0])),
                 Raw::LineTo => Command::LineTo(self.transform.apply(coords[0])),
-                Raw::BezierTo => Command::BezierTo(
+                Raw::QuadTo => Command::QuadTo(
+                    self.transform.apply(coords[0]),
+                    self.transform.apply(coords[1]),
+                ),
+                Raw::CubicTo => Command::CubicTo(
                     self.transform.apply(coords[0]),
                     self.transform.apply(coords[1]),
                     self.transform.apply(coords[2]),
@@ -211,8 +224,8 @@ impl Path {
         }
     }
 
-    pub(crate) fn transform_inplace(&mut self, tx: f32, ty: f32, scale: f32) {
-        let t = Transform::compose(tx, ty, 0.0, scale);
+    pub(crate) fn transform_inplace(&mut self, tx: f32, ty: f32, rotation: f32, scale: f32) {
+        let t = Transform::compose(tx, ty, rotation, scale);
         for coord in &mut self.coord {
             *coord = t.apply(*coord);
         }
@@ -267,18 +280,13 @@ impl Path {
 
     /// Adds a quadratic Bézier curve to the [`Path`] given its control point and its end point.
     pub fn quad_to(&mut self, p1: Offset, p2: Offset) {
-        if let Some(&p0) = self.coord.last() {
-            self.cubic_to(
-                p0 + (p1 - p0) * (2.0 / 3.0),
-                p2 + (p1 - p2) * (2.0 / 3.0),
-                p2,
-            );
-        }
+        self.index.push(Raw::QuadTo);
+        self.coord.extend([p1, p2]);
     }
 
     /// Adds a cubic Bézier curve to the [`Path`] given its two control points and its end point.
     pub fn cubic_to(&mut self, p1: Offset, p2: Offset, p3: Offset) {
-        self.index.push(Raw::BezierTo);
+        self.index.push(Raw::CubicTo);
         self.coord.extend([p1, p2, p3]);
     }
 
@@ -412,10 +420,10 @@ impl Path {
 
         self.index.extend([
             Raw::MoveTo,
-            Raw::BezierTo,
-            Raw::BezierTo,
-            Raw::BezierTo,
-            Raw::BezierTo,
+            Raw::CubicTo,
+            Raw::CubicTo,
+            Raw::CubicTo,
+            Raw::CubicTo,
             Raw::Close,
         ]);
 

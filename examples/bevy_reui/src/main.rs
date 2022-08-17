@@ -1,8 +1,5 @@
 use bevy::{prelude::*, window::WindowId};
-use reui::{
-    plugin::{Recorder, ViewportScale},
-    Color, FillRule, Offset, Paint, Path, Rect, Rounding, Transform,
-};
+use reui::{plugin::Recorder, Color, FillRule, Offset, Path, Rect, Rounding, Transform};
 
 fn main() {
     App::new()
@@ -16,16 +13,15 @@ fn main() {
 fn setup(mut commands: Commands, windows: Res<Windows>) {
     let factor = windows.scale_factor(WindowId::primary()) as f32;
 
-    // ui camera
     commands
         .spawn_bundle(Camera2dBundle::default())
-        .insert(Recorder::new())
-        .insert(ViewportScale { factor });
+        .insert(Recorder::default());
 }
 
-fn draw(mut query: Query<(&mut Recorder, &ViewportScale)>) {
-    for (mut recorder, scale) in query.iter_mut() {
-        let color = Color::hex(0x78_DCDCDC);
+fn draw(mut query: Query<&mut Recorder>, windows: Res<Windows>) {
+    let scale = windows.scale_factor(WindowId::primary()) as f32;
+    for mut recorder in query.iter_mut() {
+        let color = Color::bgra(0x78_DCDCDC);
         let transform = Transform::identity();
         let center = Offset::new(400.0, 400.0);
         let rect = Rect::from_center(center, 200.0, 100.0);
@@ -34,6 +30,6 @@ fn draw(mut query: Query<(&mut Recorder, &ViewportScale)>) {
         path.rrect(rect, Rounding::same(8.0));
 
         recorder.clear();
-        recorder.fill_path(&path, color, transform, scale.factor, FillRule::NonZero);
+        recorder.fill(&path, color, transform, FillRule::NonZero, true);
     }
 }

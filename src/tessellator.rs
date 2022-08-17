@@ -1,7 +1,6 @@
 use crate::{
-    path::Command,
-    pipeline::{Batch, Vertex},
-    FillRule, LineCap, LineJoin, Offset, Rect, Solidity,
+    internals::{Batch, Vertex},
+    Command, FillRule, LineCap, LineJoin, Offset, Rect, Solidity, Stroke,
 };
 use std::{cmp::Ordering, f32::consts::PI, f32::consts::TAU, ops::Range};
 
@@ -251,9 +250,22 @@ impl Tessellator {
                     self.add_point(p, dist_tol, PointFlags::CORNER);
                 }
                 Command::LineTo(p) => self.add_point(p, dist_tol, PointFlags::CORNER),
-                Command::BezierTo(p1, p2, p3) => {
-                    if let Some(p0) = self.points.last() {
-                        self.tesselate_bezier([p0.pos, p1, p2, p3], tess_tol, dist_tol);
+                Command::QuadTo(p1, p2) => {
+                    if let Some(last) = self.points.last() {
+                        let p0 = last.pos;
+                        let (p0, p1, p2, p3) = (
+                            p0,
+                            p0 + (p1 - p0) * (2.0 / 3.0),
+                            p2 + (p1 - p2) * (2.0 / 3.0),
+                            p2,
+                        );
+
+                        self.tesselate_bezier([p0, p1, p2, p3], tess_tol, dist_tol);
+                    }
+                }
+                Command::CubicTo(p1, p2, p3) => {
+                    if let Some(last) = self.points.last() {
+                        self.tesselate_bezier([last.pos, p1, p2, p3], tess_tol, dist_tol);
                     }
                 }
                 Command::Solid => {
@@ -456,17 +468,13 @@ impl Tessellator {
     pub fn expand_stroke(
         &mut self,
         batch: &mut Batch,
-        stroke_width: f32,
+        mut stroke: Stroke,
         fringe_width: f32,
-        cap_start: LineCap,
-        cap_end: LineCap,
-        join: LineJoin,
-        miter_limit: f32,
         tess_tol: f32,
     ) -> Range<u32> {
-        let ncap = curve_divisions(stroke_width, PI, tess_tol);
-        let stroke_width = stroke_width + (fringe_width * 0.5);
-        self.calculate_joins(stroke_width, join, miter_limit);
+        let ncap = curve_divisions(stroke.width, PI, tess_tol);
+        stroke.width += fringe_width * 0.5;
+        self.calculate_joins(stroke.width, stroke.join, stroke.miter);
 
         // Disable the gradient used for antialiasing when antialiasing is not enabled.
         let (u0, u1) = if fringe_width == 0.0 {
@@ -483,27 +491,35 @@ impl Tessellator {
             for (i, (p0, p1)) in contour.point_pairs(&self.points).enumerate() {
                 // Add start cap
                 if !contour.closed && i == 1 {
-                    batch.cap_start(cap_start, p0, stroke_width, fringe_width, ncap, (u0, u1));
+                    batch.cap_start(stroke.start, p0, stroke.width, fringe_width, ncap, (u0, u1));
                 }
 
                 if (i > 0 && i < contour.len() - 1) || contour.closed {
                     if p1.flags.contains(PointFlags::BEVEL)
                         || p1.flags.contains(PointFlags::INNERBEVEL)
                     {
-                        let args = [stroke_width, stroke_width, u0, u1];
-                        match join {
+                        let args = [stroke.width, stroke.width, u0, u1];
+                        match stroke.join {
                             LineJoin::Round => batch.round_join(p0, p1, args, ncap as usize),
                             _ => batch.bevel_join(p0, p1, args),
                         }
                     } else {
-                        batch.emit(p1.pos + (p1.ext * stroke_width), [u0, 1.0]);
-                        batch.emit(p1.pos - (p1.ext * stroke_width), [u1, 1.0]);
+                        batch.emit(p1.pos + (p1.ext * stroke.width), [u0, 1.0]);
+                        batch.emit(p1.pos - (p1.ext * stroke.width), [u1, 1.0]);
                     }
                 }
 
                 // Add end cap
                 if !contour.closed && i == contour.len() - 1 {
-                    batch.cap_end(cap_end, p0, p1, stroke_width, fringe_width, ncap, (u0, u1));
+                    batch.cap_end(
+                        stroke.end,
+                        p0,
+                        p1,
+                        stroke.width,
+                        fringe_width,
+                        ncap,
+                        (u0, u1),
+                    );
                 }
             }
 

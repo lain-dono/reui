@@ -1,4 +1,4 @@
-use palette::{GammaSrgba, Hsla, IntoColor, LinSrgb, LinSrgba, Pixel, Srgb, Srgba};
+use palette::{encoding, Hsla, IntoColor, LinSrgb, LinSrgba, Pixel, Srgb, Srgba};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Color {
@@ -25,6 +25,38 @@ impl From<Color> for [u8; 4] {
     }
 }
 
+impl From<Hsla<encoding::Linear<encoding::Srgb>, f32>> for Color {
+    fn from(hsla: Hsla<encoding::Linear<encoding::Srgb>, f32>) -> Self {
+        let linear: LinSrgba<f32> = hsla.into_color();
+        Self::from(linear)
+    }
+}
+
+impl From<LinSrgb<f32>> for Color {
+    fn from(color: LinSrgb<f32>) -> Self {
+        Self::new(color.red, color.green, color.blue, 1.0)
+    }
+}
+
+impl From<LinSrgba<f32>> for Color {
+    fn from(LinSrgba { color, alpha }: LinSrgba<f32>) -> Self {
+        Self::new(color.red, color.green, color.blue, alpha)
+    }
+}
+
+impl From<Srgb<f32>> for Color {
+    fn from(color: Srgb<f32>) -> Self {
+        Self::from(Srgba { color, alpha: 1.0 })
+    }
+}
+
+impl From<Srgba<f32>> for Color {
+    fn from(color: Srgba<f32>) -> Self {
+        let linear: LinSrgba<f32> = color.into_linear();
+        Self::from(linear)
+    }
+}
+
 impl Color {
     pub const TRANSPARENT: Self = Self::new(0.0, 0.0, 0.0, 0.0);
     pub const BLACK: Self = Self::new(0.0, 0.0, 0.0, 1.0);
@@ -43,43 +75,22 @@ impl Color {
     }
 
     #[inline]
-    pub fn hex(color: u32) -> Self {
+    pub fn bgra(color: u32) -> Self {
         let [b, g, r, a] = color.to_le_bytes();
         Self::new_srgba8(r, g, b, a)
     }
 
     #[inline]
     pub fn new_srgba8(r: u8, g: u8, b: u8, a: u8) -> Self {
-        let buffer = &[r, g, b, a];
-        Self::from_srgba(Srgba::from_raw(buffer).into_format())
-    }
-
-    #[inline]
-    pub fn from_srgb(color: Srgb<f32>) -> Self {
-        Self::from_srgba(Srgba { color, alpha: 1.0 })
-    }
-
-    #[inline]
-    pub fn from_srgba(color: Srgba<f32>) -> Self {
-        Self::from_linear(color.into_linear())
-    }
-
-    #[inline]
-    pub fn from_linear(LinSrgba { color, alpha }: LinSrgba<f32>) -> Self {
-        Self::new(color.red, color.green, color.blue, alpha)
+        let color: Srgba<f32> = Srgba::from_raw(&[r, g, b, a]).into_format();
+        Self::from(color)
     }
 
     /// Returns color value specified by hue, saturation and lightness and alpha.
     /// HSL values are all in range [0..1], alpha in range [0..1]
     pub fn hsla(hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Self {
-        use palette::encoding::{Linear, Srgb};
-
-        let hsla: Hsla<Linear<Srgb>, f32> = Hsla::from_components((
-            (hue.rem_euclid(1.0) * std::f32::consts::TAU).to_degrees(),
-            saturation.clamp(0.0, 1.0),
-            lightness.clamp(0.0, 1.0),
-            alpha,
-        ));
-        Self::from_linear(hsla.into_color())
+        let components = (hue, saturation, lightness, alpha);
+        let hsla: Hsla<encoding::Linear<encoding::Srgb>, f32> = Hsla::from_components(components);
+        Self::from(hsla)
     }
 }

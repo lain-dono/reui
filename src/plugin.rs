@@ -1,12 +1,10 @@
 use crate::{
-    image::Images,
-    picture::{DrawCall, Picture},
-    pipeline::{GpuBatch, Pipeline},
+    internals::{DrawCall, GpuBatch},
+    Picture, Pipeline,
 };
 use bevy::{
     prelude::*,
     render::{
-        extract_component::ExtractComponentPlugin,
         render_graph::{RenderGraph, RenderGraphError, RunGraphOnViewNode, SlotInfo, SlotType},
         renderer::{RenderDevice, RenderQueue},
         Extract, RenderApp, RenderStage,
@@ -17,9 +15,10 @@ mod node;
 mod viewport;
 
 pub use self::node::ReuiPassNode;
-pub use self::viewport::{UniformOffset, ViewDepthStencilTexture, ViewportScale};
+pub use self::viewport::{UniformOffset, ViewDepthStencilTexture};
 
 pub type Recorder = crate::Recorder<Handle<Image>>;
+pub type Images = crate::Images<Handle<Image>>;
 
 pub const REUI_PASS_DRIVER: &str = "reui_pass_driver";
 
@@ -37,15 +36,13 @@ pub struct ReuiPlugin;
 
 impl bevy::app::Plugin for ReuiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugin(ExtractComponentPlugin::<ViewportScale>::default());
-
         let render_app = match app.get_sub_app_mut(RenderApp) {
             Ok(render_app) => render_app,
             Err(_) => return,
         };
 
         render_app
-            .init_resource::<Images<Handle<Image>>>()
+            .init_resource::<Images>()
             .init_resource::<GpuBatch>()
             .init_resource::<Pipeline>()
             .init_resource::<viewport::Uniforms>()
@@ -128,22 +125,22 @@ fn get_graph(render_app: &mut App) -> Result<RenderGraph, RenderGraphError> {
     Ok(graph)
 }
 
-impl FromWorld for crate::image::Images<Handle<Image>> {
+impl FromWorld for Images {
     fn from_world(world: &mut World) -> Self {
         let device = world.resource::<RenderDevice>();
         Self::new(device.wgpu_device())
     }
 }
 
-impl FromWorld for crate::pipeline::Pipeline {
+impl FromWorld for Pipeline {
     fn from_world(world: &mut World) -> Self {
         let device = world.resource::<RenderDevice>();
-        let images = world.resource::<Images<Handle<Image>>>();
+        let images = world.resource::<Images>();
         Self::new(device.wgpu_device(), &images.layout)
     }
 }
 
-impl FromWorld for crate::pipeline::GpuBatch {
+impl FromWorld for GpuBatch {
     fn from_world(world: &mut World) -> Self {
         let device = world.resource::<RenderDevice>();
         Self::new(device.wgpu_device())
@@ -164,7 +161,7 @@ fn extract_recorder(
 ) {
     let device = render_device.wgpu_device();
     for (entity, recorder) in query.iter() {
-        batch.upload_queue(&render_queue, device, &recorder.batch);
+        batch.queue(&render_queue, device, &recorder.batch);
 
         let calls = recorder.calls.clone();
         let component = ExtractedRecorder { calls };
@@ -178,6 +175,7 @@ fn queue_pictures(
     pipeline: Res<Pipeline>,
     batch: Res<GpuBatch>,
     uniforms: Res<viewport::Uniforms>,
+    images: Res<Images>,
     query: Query<(Entity, &ExtractedRecorder, &UniformOffset)>,
 ) {
     let device = render_device.wgpu_device();
@@ -197,6 +195,7 @@ fn queue_pictures(
                 offset.offset,
                 &pipeline,
                 &batch,
+                &images,
                 &cmd.calls,
             );
             commands.get_or_spawn(entity).insert(picture);

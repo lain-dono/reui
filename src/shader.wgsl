@@ -29,8 +29,11 @@ struct Variable {
 @group(1) @binding(1) var t_color: texture_2d<f32>;
 
 @vertex
-fn vertex(in: Input) -> Variable {
+fn vertex_main(in: Input) -> Variable {
+    let position = in.position * viewport.inv_size * 2.0;
+
     var out: Variable;
+    out.vertex_position = vec4<f32>(position.x - 1.0, 1.0 - position.y, 0.0, 1.0);
 
     out.position = in.position;
     out.texcoord = in.texcoord;
@@ -41,55 +44,90 @@ fn vertex(in: Input) -> Variable {
     out.erf = in.erf;
     out.stroke = in.stroke;
 
-    var position: vec2<f32> = 2.0 * in.position * viewport.inv_size;
-    out.vertex_position = vec4<f32>(position.x - 1.0, 1.0 - position.y, 0.0, 1.0);
     return out;
 }
 
 fn sdroundrect(pt: vec2<f32>, ext: vec2<f32>, rad: f32) -> f32 {
-    var d: vec2<f32> = abs(pt) - ext + vec2<f32>(rad, rad);
-    return min(max(d.x, d.y), 0.0) + length(max(d, vec2<f32>(0.0, 0.0))) - rad;
+    let d = abs(pt) - ext + vec2<f32>(rad, rad);
+    return min(max(d.x, d.y), 0.0) + length(max(d, vec2<f32>(0.0))) - rad;
 }
 
 @fragment
-fn main(in: Input) -> @location(0) vec4<f32> {
-    var uv: vec2<f32> = in.texcoord;
-    var scale: f32 = in.stroke.x;
-    var limit: f32 = in.stroke.y;
+fn fragment_main(in: Input) -> @location(0) vec4<f32> {
+    let uv = in.texcoord;
+    let scale = in.stroke.x;
+    let limit = in.stroke.y;
 
     // Stroke - from [0..1] to clipped pyramid, where the slope is 1px.
-    var stroke_alpha: f32 = min(1.0, (1.0 - abs(uv.x * 2.0 - 1.0)) * scale) * min(1.0, uv.y);
+    let stroke_alpha = min(1.0, (1.0 - abs(uv.x * 2.0 - 1.0)) * scale) * uv.y;
     if (stroke_alpha < limit) {
         discard;
     }
 
-    var pos: vec2<f32> = in.position.xy;
-    var re: f32 = in.transform.x;
-    var im: f32 = in.transform.y;
-    var pt: vec2<f32> = in.transform.zw + vec2<f32>(pos.x * re - pos.y * im, pos.x * im + pos.y * re);
+    let pos = in.position.xy;
+    let re = in.transform.x;
+    let im = in.transform.y;
+    let pt = in.transform.zw + vec2<f32>(pos.x * re - pos.y * im, pos.x * im + pos.y * re);
 
-    var extent: vec2<f32> = in.erf.xy;
-    var radius: f32 = in.erf.z;
-    var feather: f32 = in.erf.w;
+    let extent = in.erf.xy;
+    let radius = in.erf.z;
+    let feather = in.erf.w;
 
     // Calculate gradient color using box gradient
-    var d: f32 = sdroundrect(pt, extent, radius) * feather + 0.5;
-    var d: f32 = clamp(d, 0.0, 1.0);
-    var color: vec4<f32> = mix(in.inner_color, in.outer_color, vec4<f32>(d));
+    let d = sdroundrect(pt, extent, radius) * feather + 0.5;
+    let d = clamp(d, 0.0, 1.0);
+    let color = mix(in.inner_color, in.outer_color, vec4<f32>(d));
 
     // Combine alpha
-    color.a = color.a * stroke_alpha;
-    return color;
+    return vec4<f32>(color.rgb, color.a * stroke_alpha);
 }
 
 @fragment
-fn stencil(in: Input) -> @location(0) vec4<f32> {
-    return vec4<f32>(0.0);
+fn fragment_convex_simple(in: Input) -> @location(0) vec4<f32> {
+    let uv = in.texcoord;
+    let scale = in.stroke.x;
+    let alpha = min(1.0, (1.0 - abs(uv.x * 2.0 - 1.0)) * scale) * uv.y;
+    let color = in.inner_color;
+    return vec4<f32>(color.rgb, color.a * alpha);
+}
+
+@vertex
+fn vertex_stencil(@location(0) position: vec2<f32>) -> @builtin(position) vec4<f32> {
+    let position = position * viewport.inv_size * 2.0;
+    return vec4<f32>(position.x - 1.0, 1.0 - position.y, 0.0, 1.0);
 }
 
 @fragment
-fn image(in: Input) -> @location(0) vec4<f32> {
-    var tex: vec4<f32> = textureSample(t_color, s_color, in.texcoord);
-    return tex * in.inner_color;
-    //return vec4<f32>(1.0);
+fn fragment_stencil() {}
+
+struct BlitOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) texcoord: vec2<f32>,
+}
+
+@vertex
+fn vertex_blit(
+    @location(0) position: vec2<f32>,
+    @location(1) texcoord: vec2<f32>,
+) -> BlitOutput {
+    let position = position * viewport.inv_size * 2.0;
+    let position = vec4<f32>(position.x - 1.0, 1.0 - position.y, 0.0, 1.0);
+    return BlitOutput(position, texcoord);
+}
+
+@fragment
+fn fragment_premultiplied(@location(0) texcoord: vec2<f32>) -> @location(0) vec4<f32> {
+    return textureSample(t_color, s_color, texcoord);
+}
+
+@fragment
+fn fragment_unmultiplied(@location(0) texcoord: vec2<f32>) -> @location(0) vec4<f32> {
+    let color = textureSample(t_color, s_color, texcoord);
+    return vec4<f32>(color.rgb * color.a, color.a);
+}
+
+@fragment
+fn fragment_font(@location(0) texcoord: vec2<f32>) -> @location(0) vec4<f32> {
+    let alpha = textureSample(t_color, s_color, texcoord).r;
+    return vec4<f32>(0.0, 0.0, 0.0, alpha);
 }

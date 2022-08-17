@@ -201,7 +201,7 @@ fn start<App: Application>(
         format: wgpu::TextureFormat::Bgra8UnormSrgb,
         width: size.width,
         height: size.height,
-        present_mode: wgpu::PresentMode::AutoNoVsync,
+        present_mode: wgpu::PresentMode::Mailbox,
     };
     surface.configure(&device, &sc_desc);
 
@@ -262,7 +262,7 @@ fn start<App: Application>(
                     accum_time += last_frame_inst.elapsed().as_secs_f32();
                     last_frame_inst = Instant::now();
                     frame_count += 1;
-                    if frame_count == 100 {
+                    if frame_count == 1000 {
                         println!(
                             "Avg frame time {}ms",
                             accum_time * 1000.0 / frame_count as f32

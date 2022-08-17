@@ -121,22 +121,10 @@ pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
     draw_option(ctx, opt, &opt_theme, State::Hovered);
     let opt = opt.translate(Offset::new(0.0, 20.0));
     draw_option(ctx, opt, &opt_theme, State::Active);
-
-    {
-        let pos = bounds.center();
-        let rect = Rect::from_size(4.0, 4.0).translate(pos);
-
-        ctx.fill_rect(rect, Color::hex(0xFF_CC0000));
-
-        let tr = Transform::rotation(time);
-        let pos = tr.apply(Offset::new(20.0, 0.0));
-
-        ctx.fill_rect(rect.translate(pos), Color::hex(0x99_CC0000));
-    }
 }
 
 pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {
-    ctx.fill_rect(bounds, Color::hex(theme.background));
+    ctx.fill_rect(bounds, Color::bgra(theme.background));
 
     let rect = bounds.deflate(3.0);
     let radius = Rounding::same(2.5);
@@ -145,16 +133,16 @@ pub fn draw_window(ctx: &mut Canvas, bounds: Rect, theme: &WindowTheme) {
     left_scroll.min.x = rect.max.x - 5.0;
     left_scroll.max.y = rect.max.y - 50.0;
 
-    ctx.fill_rrect(left_scroll, radius, Color::hex(0xFF_676767));
+    ctx.fill_rrect(left_scroll, radius, Color::bgra(0xFF_676767));
     //ctx.draw_rrect(left_scroll.add(1.0), Paint::stroke(0xFF_424242));
     //ctx.draw_rrect(left_scroll, Paint::stroke(0xFF_373737).stroke_width(0.5));
 }
 
 pub fn draw_option(ctx: &mut Canvas, bounds: Rect, theme: &WidgetTheme, state: State) {
     let bg = match state {
-        State::Normal => Color::hex(theme.background),
-        State::Hovered => shade(Color::hex(theme.background), HOVER_SHADE),
-        State::Active => Color::hex(theme.active),
+        State::Normal => Color::bgra(theme.background),
+        State::Hovered => shade(Color::bgra(theme.background), HOVER_SHADE),
+        State::Active => Color::bgra(theme.active),
     };
 
     let radius = Rounding::same(theme.radius);
@@ -166,14 +154,14 @@ pub fn draw_option(ctx: &mut Canvas, bounds: Rect, theme: &WidgetTheme, state: S
     ctx.stroke_rrect(
         bounds.inflate(0.5),
         radius,
-        Paint::color(Color::hex(theme.outline)).stroke_width(1.0),
+        Paint::color(Color::bgra(theme.outline)).stroke_width(1.0),
     );
 
     if state == State::Active {
         ctx.stroke_polyline(
             &[bounds.min + a, bounds.min + b, bounds.min + c],
             false,
-            Paint::color(Color::hex(0xFF_E6E6E6)).stroke_width(2.0),
+            Paint::color(Color::bgra(0xFF_E6E6E6)).stroke_width(2.0),
         )
     }
 }
@@ -186,9 +174,9 @@ pub fn draw_num(
     gropped: Gropped,
 ) {
     let bg = match state {
-        State::Normal => Color::hex(theme.background),
-        State::Hovered => shade(Color::hex(theme.background), HOVER_SHADE * 2),
-        State::Active => Color::hex(theme.active),
+        State::Normal => Color::bgra(theme.background),
+        State::Hovered => shade(Color::bgra(theme.background), HOVER_SHADE * 2),
+        State::Active => Color::bgra(theme.active),
     };
 
     let mut radius = Rounding::same(theme.radius);
@@ -218,7 +206,7 @@ pub fn draw_num(
         }
     };
 
-    let paint = Paint::color(Color::hex(theme.outline)).stroke_width(1.0);
+    let paint = Paint::color(Color::bgra(theme.outline)).stroke_width(1.0);
     ctx.stroke_rrect(bounds.inflate(0.1), radius, paint);
     ctx.fill_rrect(bounds, radius, bg);
 
@@ -235,7 +223,7 @@ pub fn draw_num(
     right_radius.se = 0.0;
 
     if state == State::Hovered {
-        let paint = shade(Color::hex(theme.background), HOVER_SHADE);
+        let paint = shade(Color::bgra(theme.background), HOVER_SHADE);
         ctx.fill_rrect(left, left_radius, paint);
         ctx.fill_rrect(right, right_radius, paint);
     }
@@ -243,7 +231,7 @@ pub fn draw_num(
     let l_arrow = left.center();
     let r_arrow = right.center();
 
-    let paint = Paint::color(Color::hex(0xFF_E6E6E6)).stroke_width(1.0);
+    let paint = Paint::color(Color::bgra(0xFF_E6E6E6)).stroke_width(1.0);
 
     let a = Offset::new(1.5, -3.0);
     let b = Offset::new(1.5, 0.0);

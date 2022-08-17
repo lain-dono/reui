@@ -90,6 +90,7 @@ impl_assign!(MulAssign<f32> for Offset fn mul_assign(*=));
 impl_assign!(DivAssign<f32> for Offset fn div_assign(/=));
 impl_assign!(RemAssign<f32> for Offset fn rem_assign(%=));
 
+/// Represents point or vector.
 #[derive(Clone, Copy, PartialEq, Default, Debug)]
 pub struct Offset {
     pub x: f32,
@@ -186,6 +187,22 @@ impl Rounding {
         Self { nw, ne, sw, se }
     }
 
+    pub const fn nw(nw: f32) -> Self {
+        Self::new(nw, 0.0, 0.0, 0.0)
+    }
+
+    pub const fn ne(ne: f32) -> Self {
+        Self::new(0.0, ne, 0.0, 0.0)
+    }
+
+    pub const fn sw(sw: f32) -> Self {
+        Self::new(0.0, 0.0, sw, 0.0)
+    }
+
+    pub const fn se(se: f32) -> Self {
+        Self::new(0.0, 0.0, 0.0, se)
+    }
+
     pub const fn zero() -> Self {
         Self::new(0.0, 0.0, 0.0, 0.0)
     }
@@ -216,6 +233,7 @@ impl Rounding {
     }
 }
 
+/// A rectangular region of space.
 #[derive(Clone, Copy, PartialEq, Default, Debug)]
 pub struct Rect {
     pub min: Offset,
@@ -335,6 +353,7 @@ impl Rect {
     }
 }
 
+/// Translation, rotation and uniform scale.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Transform {
     pub re: f32,
@@ -435,63 +454,4 @@ impl Transform {
             ty: (self.re * self.ty - self.im * self.tx) * id,
         }
     }
-}
-
-pub trait Bezier32:
-    Copy + Add<Output = Self> + Mul<f32, Output = Self> + Div<f32, Output = Self>
-{
-    #[inline]
-    fn conic(p: [Self; 3], w: f32, t: f32) -> Self {
-        let h = 1.0 - t;
-        let [a, b, c] = [h * h, h * t * 2.0 * w, t * t];
-        (p[0] * a + p[1] * b + p[2] * c) / (a + b + c)
-    }
-
-    #[inline]
-    fn bezier2(p: [Self; 3], t: f32) -> Self {
-        let h = 1.0 - t;
-        let [a, b, c] = [h * h, h * t * 2.0, t * t];
-        p[0] * a + p[1] * b + p[2] * c
-    }
-
-    #[inline]
-    fn rational2(p: [Self; 3], w: [f32; 3], t: f32) -> Self {
-        let h = 1.0 - t;
-        let [a, b, c] = [h * h, h * t * 2.0, t * t];
-        let [a, b, c] = [a * w[0], b * w[1], c * w[2]];
-        (p[0] * a + p[1] * b + p[2] * c) / (a + b + c)
-    }
-
-    #[inline]
-    fn bezier3(p: [Self; 4], t: f32) -> Self {
-        let [a, b, c, d] = Self::bezier_args3(t);
-        p[0] * a + p[1] * b + p[2] * c + p[3] * d
-    }
-
-    #[inline]
-    fn rational3(p: [Self; 4], w: [f32; 4], t: f32) -> Self {
-        let [a, b, c, d] = Self::bezier_args3(t);
-        let [a, b, c, d] = [a * w[0], b * w[1], c * w[2], d * w[3]];
-        (p[0] * a + p[1] * b + p[2] * c + p[3] * d) / (a + b + c + d)
-    }
-
-    #[inline(always)]
-    fn bezier_args3(t: f32) -> [f32; 4] {
-        let h = 1.0 - t;
-
-        let tt = t * t;
-        let hh = h * h;
-
-        let a = hh * h;
-        let b = hh * t;
-        let c = tt * h;
-        let d = tt * t;
-
-        [a, b * 3.0, c * 3.0, d]
-    }
-}
-
-impl<T> Bezier32 for T where
-    T: Copy + Add<Output = Self> + Mul<f32, Output = Self> + Div<f32, Output = Self>
-{
 }

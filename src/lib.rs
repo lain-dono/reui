@@ -14,6 +14,7 @@
 
 pub use wgpu;
 
+mod batch;
 mod canvas;
 mod color;
 mod geom;
@@ -24,23 +25,35 @@ mod picture;
 mod pipeline;
 mod renderer;
 mod tessellator;
-mod upload_buffer;
 
 #[cfg(feature = "bevy")]
+#[cfg_attr(docsrs, doc(cfg(feature = "bevy")))]
 pub mod plugin;
 
-pub use self::{
-    canvas::{Canvas, TransformStack},
+pub use crate::{
+    canvas::Canvas,
     color::Color,
     geom::{Offset, Rect, Rounding, Transform},
-    image::{ImageBind, Images},
-    paint::{Gradient, LineCap, LineJoin, Paint},
-    path::{Command, FillRule, Path, PathIter, PathTransformIter, Solidity},
+    image::Images,
+    paint::{BoxGradient, LineCap, LineJoin, LinearGradient, Paint, RadialGradient, Stroke},
+    path::{Command, FillRule, Path, Solidity},
     picture::{Picture, Recorder},
-    pipeline::{Batch, GpuBatch, Pipeline},
+    pipeline::Pipeline,
     renderer::{Image, Renderer},
-    tessellator::Tessellator,
 };
+
+pub mod internals {
+    pub use crate::{
+        batch::{Batch, GpuBatch},
+        canvas::TransformStack,
+        image::ImageBind,
+        paint::{IntoPaint, RawPaint},
+        path::{PathIter, PathTransformIter},
+        picture::DrawCall,
+        pipeline::{Instance, Vertex},
+        tessellator::{Draw, Tessellator},
+    };
+}
 
 pub fn render_pictures<'a>(
     encoder: &'a mut wgpu::CommandEncoder,
@@ -70,4 +83,10 @@ pub fn render_pictures<'a>(
     };
 
     encoder.begin_render_pass(&desc).execute_bundles(bundles)
+}
+
+pub fn combine_viewport(width: u32, height: u32) -> [f32; 4] {
+    let w = f32::recip(width as f32);
+    let h = f32::recip(height as f32);
+    [w, h, w, h]
 }

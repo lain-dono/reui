@@ -1,10 +1,7 @@
 use bevy::{
-    ecs::query::QueryItem,
-    ecs::system::lifetimeless::Read,
     prelude::*,
     render::{
         camera::ExtractedCamera,
-        extract_component::ExtractComponent,
         render_resource::*,
         renderer::{RenderDevice, RenderQueue},
         texture::TextureCache,
@@ -12,11 +9,6 @@ use bevy::{
     },
     utils::HashMap,
 };
-
-#[derive(Component, Clone, Copy)]
-pub struct ViewportScale {
-    pub factor: f32,
-}
 
 #[derive(Component)]
 pub struct ViewDepthStencilTexture {
@@ -36,29 +28,17 @@ pub struct Uniform {
     pub data: Vec4,
 }
 
-impl ExtractComponent for ViewportScale {
-    type Query = Read<Self>;
-
-    type Filter = ();
-
-    fn extract_component(query: QueryItem<Self::Query>) -> Self {
-        *query
-    }
-}
-
 pub fn prepare_uniforms(
     mut commands: Commands,
     device: Res<RenderDevice>,
     queue: Res<RenderQueue>,
     mut uniforms: ResMut<Uniforms>,
-    views: Query<(Entity, &ExtractedView, &ViewportScale)>,
+    views: Query<(Entity, &ExtractedView)>,
 ) {
     uniforms.clear();
 
-    for (entity, camera, scale) in &views {
-        let w = f32::recip(camera.width as f32);
-        let h = f32::recip(camera.height as f32);
-        let data = Vec4::new(w * scale.factor, h * scale.factor, w, h);
+    for (entity, camera) in &views {
+        let data = crate::combine_viewport(camera.width, camera.height).into();
         let offset = uniforms.push(Uniform { data });
         let offset = UniformOffset { offset };
         commands.get_or_spawn(entity).insert(offset);

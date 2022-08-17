@@ -1,5 +1,38 @@
-use crate::{pipeline::Instance, Color, Rect, Transform};
+use crate::{internals::Instance, Color, Rect, Transform};
 
+pub trait IntoPaint {
+    fn into_paint(self, transform: Transform) -> RawPaint;
+}
+
+#[derive(Clone, Copy)]
+pub struct RawPaint {
+    pub xform: Transform,
+    pub extent: [f32; 2],
+    pub radius: f32,
+    pub feather: f32,
+    pub inner_color: Color,
+    pub outer_color: Color,
+}
+
+impl RawPaint {
+    pub fn to_instance(self, width: f32, fringe: f32, stroke_thr: f32) -> Instance {
+        Instance {
+            paint_mat: self.xform.inverse().into(),
+
+            inner_color: self.inner_color.into(),
+            outer_color: self.outer_color.into(),
+
+            extent: self.extent,
+            radius: self.radius,
+            inv_feather: self.feather.recip(),
+
+            stroke_mul: (width + fringe) / fringe * 0.5,
+            stroke_thr,
+        }
+    }
+}
+
+/// Styles to use for line endings.
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum LineCap {
@@ -8,6 +41,7 @@ pub enum LineCap {
     Square,
 }
 
+/// Styles to use for line segment joins.
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum LineJoin {
@@ -18,36 +52,44 @@ pub enum LineJoin {
 
 #[derive(Clone, Copy)]
 pub enum Gradient {
-    Linear {
-        from: [f32; 2],
-        to: [f32; 2],
-        inner_color: Color,
-        outer_color: Color,
-    },
-    Box {
-        rect: Rect,
-        radius: f32,
-        feather: f32,
-        inner_color: Color,
-        outer_color: Color,
-    },
-    Radial {
-        center: [f32; 2],
-        inr: f32,
-        outr: f32,
-        inner_color: Color,
-        outer_color: Color,
-    },
+    Linear(LinearGradient),
+    Box(BoxGradient),
+    Radial(RadialGradient),
+}
+
+#[derive(Clone, Copy)]
+pub struct Stroke {
+    pub start: LineCap,
+    pub end: LineCap,
+    pub join: LineJoin,
+    pub miter: f32,
+    pub width: f32,
+}
+
+impl Stroke {
+    pub fn width(width: f32) -> Self {
+        Self {
+            width,
+            ..Default::default()
+        }
+    }
+}
+
+impl Default for Stroke {
+    fn default() -> Self {
+        Self {
+            start: LineCap::Butt,
+            end: LineCap::Butt,
+            join: LineJoin::Miter,
+            miter: 4.0,
+            width: 1.0,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
 pub struct Paint {
-    pub cap_start: LineCap,
-    pub cap_end: LineCap,
-    pub join: LineJoin,
-    pub antialias: bool,
-    pub miter: f32,
-    pub width: f32,
+    pub stroke: Stroke,
     pub color: Color,
     pub gradient: Option<Gradient>,
 }
@@ -56,12 +98,7 @@ impl Default for Paint {
     fn default() -> Self {
         Self {
             color: Color::BLACK,
-            cap_start: LineCap::Butt,
-            cap_end: LineCap::Butt,
-            join: LineJoin::Miter,
-            antialias: true,
-            miter: 10.0,
-            width: 1.0,
+            stroke: Stroke::default(),
             gradient: None,
         }
     }
@@ -84,205 +121,210 @@ impl Paint {
         }
     }
 
-    pub fn stroke_cap(self, cap: LineCap) -> Self {
+    pub fn cap(self, cap: LineCap) -> Self {
         Self {
-            cap_start: cap,
-            cap_end: cap,
+            stroke: Stroke {
+                start: cap,
+                end: cap,
+                ..self.stroke
+            },
             ..self
         }
     }
 
-    pub fn stroke_join(self, join: LineJoin) -> Self {
-        Self { join, ..self }
+    pub fn joint(self, join: LineJoin) -> Self {
+        Self {
+            stroke: Stroke {
+                join,
+                ..self.stroke
+            },
+            ..self
+        }
     }
 
-    pub fn stroke_miter_limit(self, miter: f32) -> Self {
-        Self { miter, ..self }
+    pub fn miter_limit(self, miter: f32) -> Self {
+        Self {
+            stroke: Stroke {
+                miter,
+                ..self.stroke
+            },
+            ..self
+        }
     }
 
     pub fn stroke_width(self, width: f32) -> Self {
-        Self { width, ..self }
-    }
-
-    pub fn antialias(self, antialias: bool) -> Self {
-        Self { antialias, ..self }
-    }
-
-    pub fn with_gradient(self, gradient: Gradient) -> Self {
         Self {
-            gradient: Some(gradient),
+            stroke: Stroke {
+                width,
+                ..self.stroke
+            },
             ..self
         }
     }
+}
 
-    pub fn linear_gradient(
-        from: [f32; 2],
-        to: [f32; 2],
-        inner_color: Color,
-        outer_color: Color,
-    ) -> Self {
-        Self::gradient(Gradient::Linear {
-            from,
-            to,
-            inner_color,
-            outer_color,
-        })
+impl IntoPaint for Paint {
+    fn into_paint(self, transform: Transform) -> RawPaint {
+        self.gradient.map_or_else(
+            || self.color.into_paint(transform),
+            |gradient| match gradient {
+                Gradient::Linear(gradient) => gradient.into_paint(transform),
+                Gradient::Box(gradient) => gradient.into_paint(transform),
+                Gradient::Radial(gradient) => gradient.into_paint(transform),
+            },
+        )
     }
+}
 
-    pub fn box_gradient(
-        rect: Rect,
-        radius: f32,
-        feather: f32,
-        inner_color: Color,
-        outer_color: Color,
-    ) -> Self {
-        Self::gradient(Gradient::Box {
-            rect,
-            radius,
-            feather,
-            inner_color,
-            outer_color,
-        })
-    }
-
-    pub fn radial_gradient(
-        center: [f32; 2],
-        inr: f32,
-        outr: f32,
-        inner_color: Color,
-        outer_color: Color,
-    ) -> Self {
-        Self::gradient(Gradient::Radial {
-            center,
-            inr,
-            outr,
-            inner_color,
-            outer_color,
-        })
-    }
-
-    fn gradient(gradient: Gradient) -> Self {
-        Self {
-            gradient: Some(gradient),
-            ..Self::default()
+impl IntoPaint for Color {
+    fn into_paint(self, transform: Transform) -> RawPaint {
+        RawPaint {
+            xform: transform,
+            extent: [0.0, 0.0],
+            radius: 0.0,
+            feather: 1.0,
+            inner_color: self,
+            outer_color: self,
         }
     }
 }
 
 #[derive(Clone, Copy)]
-pub struct RawPaint {
-    pub xform: Transform,
-    pub extent: [f32; 2],
-    pub radius: f32,
-    pub feather: f32,
-    pub inner_color: Color,
-    pub outer_color: Color,
+pub struct LinearGradient {
+    pub from: [f32; 2],
+    pub to: [f32; 2],
+    pub inner: Color,
+    pub outer: Color,
 }
 
-impl RawPaint {
-    pub fn convert(paint: &Paint, transform: Transform) -> Self {
-        paint.gradient.map_or_else(
-            || Self::flat(paint.color, transform),
-            |gradient| Self::gradient(gradient, transform),
-        )
-    }
-
-    pub fn flat(color: Color, transform: Transform) -> Self {
+impl LinearGradient {
+    pub fn new(from: [f32; 2], to: [f32; 2], inner: Color, outer: Color) -> Self {
         Self {
-            xform: transform,
-            extent: [0.0, 0.0],
+            from,
+            to,
+            inner,
+            outer,
+        }
+    }
+}
+
+impl IntoPaint for LinearGradient {
+    fn into_paint(self, transform: Transform) -> RawPaint {
+        let Self {
+            from,
+            to,
+            inner,
+            outer,
+        } = self;
+        let [sx, sy] = from;
+        let [ex, ey] = to;
+
+        let large = 1e5;
+
+        // Calculate transform aligned to the line
+        let dx = ex - sx;
+        let dy = ey - sy;
+        let d = (dx * dx + dy * dy).sqrt();
+        let (im, re) = if d > 0.0001 {
+            (-dx / d, dy / d)
+        } else {
+            (0.0, 1.0)
+        };
+
+        let tx = sx + im * large;
+        let ty = sy - re * large;
+
+        RawPaint {
+            xform: transform * Transform { re, im, tx, ty },
+            extent: [large, large + d * 0.5],
             radius: 0.0,
-            feather: 1.0,
-            inner_color: color,
-            outer_color: color,
+            feather: d.max(1.0),
+            inner_color: inner,
+            outer_color: outer,
         }
     }
+}
 
-    pub fn gradient(gradient: Gradient, transform: Transform) -> Self {
-        match gradient {
-            Gradient::Linear {
-                from,
-                to,
-                inner_color,
-                outer_color,
-            } => {
-                let [sx, sy] = from;
-                let [ex, ey] = to;
+#[derive(Clone, Copy)]
+pub struct BoxGradient {
+    pub rect: Rect,
+    pub radius: f32,
+    pub feather: f32,
+    pub inner: Color,
+    pub outer: Color,
+}
 
-                let large = 1e5;
-
-                // Calculate transform aligned to the line
-                let dx = ex - sx;
-                let dy = ey - sy;
-                let d = (dx * dx + dy * dy).sqrt();
-                let (im, re) = if d > 0.0001 {
-                    (-dx / d, dy / d)
-                } else {
-                    (0.0, 1.0)
-                };
-
-                let tx = sx + im * large;
-                let ty = sy - re * large;
-
-                Self {
-                    xform: transform * Transform { re, im, tx, ty },
-                    extent: [large, large + d * 0.5],
-                    radius: 0.0,
-                    feather: d.max(1.0),
-                    inner_color,
-                    outer_color,
-                }
-            }
-            Gradient::Box {
-                rect,
-                radius,
-                feather,
-                inner_color,
-                outer_color,
-            } => {
-                let center = rect.center();
-                Self {
-                    xform: transform * Transform::translation(center.x, center.y),
-                    extent: [rect.dx() * 0.5, rect.dy() * 0.5],
-                    radius,
-                    feather: feather.max(1.0),
-                    inner_color,
-                    outer_color,
-                }
-            }
-            Gradient::Radial {
-                center,
-                inr,
-                outr,
-                inner_color,
-                outer_color,
-            } => {
-                let radius = (inr + outr) * 0.5;
-                Self {
-                    xform: transform * Transform::translation(center[0], center[1]),
-                    extent: [radius, radius],
-                    radius,
-                    feather: (outr - inr).max(1.0),
-                    inner_color,
-                    outer_color,
-                }
-            }
+impl BoxGradient {
+    pub fn new(rect: Rect, radius: f32, feather: f32, inner: Color, outer: Color) -> Self {
+        Self {
+            rect,
+            radius,
+            feather,
+            inner,
+            outer,
         }
     }
+}
 
-    pub fn to_instance(self, width: f32, fringe: f32, stroke_thr: f32) -> Instance {
-        Instance {
-            paint_mat: self.xform.inverse().into(),
+impl IntoPaint for BoxGradient {
+    fn into_paint(self, transform: Transform) -> RawPaint {
+        let Self {
+            rect,
+            radius,
+            feather,
+            inner,
+            outer,
+        } = self;
+        let center = rect.center();
+        RawPaint {
+            xform: transform * Transform::translation(center.x, center.y),
+            extent: [rect.dx() * 0.5, rect.dy() * 0.5],
+            radius,
+            feather: feather.max(1.0),
+            inner_color: inner,
+            outer_color: outer,
+        }
+    }
+}
 
-            inner_color: self.inner_color.into(),
-            outer_color: self.outer_color.into(),
+#[derive(Clone, Copy)]
+pub struct RadialGradient {
+    pub center: [f32; 2],
+    pub inr: f32,
+    pub outr: f32,
+    pub inner: Color,
+    pub outer: Color,
+}
 
-            extent: self.extent,
-            radius: self.radius,
-            inv_feather: self.feather.recip(),
+impl RadialGradient {
+    pub fn new(center: [f32; 2], inr: f32, outr: f32, inner: Color, outer: Color) -> Self {
+        Self {
+            center,
+            inr,
+            outr,
+            inner,
+            outer,
+        }
+    }
+}
 
-            stroke_mul: (width * 0.5 + fringe * 0.5) / fringe,
-            stroke_thr,
+impl IntoPaint for RadialGradient {
+    fn into_paint(self, transform: Transform) -> RawPaint {
+        let Self {
+            center,
+            inr,
+            outr,
+            inner,
+            outer,
+        } = self;
+        let radius = (inr + outr) * 0.5;
+        RawPaint {
+            xform: transform * Transform::translation(center[0], center[1]),
+            extent: [radius, radius],
+            radius,
+            feather: (outr - inr).max(1.0),
+            inner_color: inner,
+            outer_color: outer,
         }
     }
 }
