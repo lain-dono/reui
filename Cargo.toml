@@ -1,16 +1,3 @@
-[package]
-name = "reui"
-version = "0.0.1"
-authors = ["Lain-dono <lain.dono@gmail.com>"]
-license = "MIT OR Apache-2.0"
-edition = "2021"
-
-description = "Renderer for User Interface"
-homepage = "https://github.com/lain-dono/reui"
-repository = "https://github.com/lain-dono/reui"
-keywords = ["graphics"]
-exclude = ["Cargo.lock", "examples/**/*", "tests/**/*", "target/**/*"]
-
 [workspace]
 members = [
     "reui",
