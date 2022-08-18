@@ -6,5 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reui = { path = "../..", features = ["bevy"] }
+reui = { path = "../../reui", features = ["bevy"] }
 bevy = "0.8"

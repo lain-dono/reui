@@ -6,7 +6,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-reui = { path = "../.." }
+reui = { path = "../../reui" }
 reui-app = { path = "../../reui-app" }
 
 tracing = "0.1"
