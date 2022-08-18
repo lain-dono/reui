@@ -1,29 +1,53 @@
 use crate::{
-    internals::{Batch, Draw, GpuBatch, IntoPaint, Tessellator, Vertex},
-    FillRule, Images, LineJoin, Paint, Path, Pipeline, Rect, Transform,
+    internals::{Batch, Draw, GpuBatch, Tessellator, Vertex},
+    FillRule, Images, IntoPaint, LineJoin, Path, Pipeline, Rect, Stroke, Transform,
 };
 
 #[derive(Clone, Copy, Debug)]
+pub struct DrawIndexed {
+    pub start: u32,
+    pub end: u32,
+    pub base_vertex: i32,
+    pub instance: u32,
+}
+
+impl DrawIndexed {
+    #[inline]
+    fn new(start: u32, end: u32, base_vertex: i32, instance: u32) -> Self {
+        Self {
+            start,
+            end,
+            base_vertex,
+            instance,
+        }
+    }
+
+    #[inline]
+    fn call<'a>(
+        &self,
+        rpass: &mut wgpu::RenderBundleEncoder<'a>,
+        pipeline: &'a wgpu::RenderPipeline,
+    ) {
+        let instances = self.instance..self.instance + 1;
+        rpass.set_pipeline(pipeline);
+        rpass.draw_indexed(self.start..self.end, self.base_vertex, instances);
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub enum DrawCall<Key> {
-    Indexed {
-        start: u32,
-        end: u32,
-        base_vertex: i32,
-        instance: u32,
-    },
+    Convex(DrawIndexed),
+    ConvexSimple(DrawIndexed),
+    Stencil(DrawIndexed),
+    FringesNonZero(DrawIndexed),
+    FringesEvenOdd(DrawIndexed),
+    QuadNonZero(DrawIndexed),
+    QuadEvenOdd(DrawIndexed),
+    ImagePremultiplied(DrawIndexed),
+    ImageUnmultiplied(DrawIndexed),
+    ImageFont(DrawIndexed),
+
     BindImage(Key),
-
-    Convex,
-    ConvexSimple,
-    FillStencil,
-    FillFringesNonZero,
-    FillFringesEvenOdd,
-    FillQuadNonZero,
-    FillQuadEvenOdd,
-    ImagePremultiplied,
-    ImageUnmultiplied,
-    ImageFont,
-
     Stroke {
         start: u32,
         end: u32,
@@ -60,7 +84,7 @@ impl Picture {
             color_formats: &[Some(wgpu::TextureFormat::Bgra8UnormSrgb)],
             depth_stencil: Some(wgpu::RenderBundleDepthStencil {
                 format: wgpu::TextureFormat::Depth24PlusStencil8,
-                depth_read_only: false,
+                depth_read_only: true,
                 stencil_read_only: false,
             }),
             sample_count: 1,
@@ -75,28 +99,20 @@ impl Picture {
 
         for call in calls {
             match call {
-                &DrawCall::Indexed {
-                    start,
-                    end,
-                    base_vertex,
-                    instance,
-                } => {
-                    rpass.draw_indexed(start..end, base_vertex, instance..instance + 1);
-                }
-
                 DrawCall::BindImage(image) => rpass.set_bind_group(1, &images[image].bind, &[]),
 
-                DrawCall::Convex => rpass.set_pipeline(&pipeline.convex),
-                DrawCall::ConvexSimple => rpass.set_pipeline(&pipeline.convex_simple),
-
-                DrawCall::FillStencil => rpass.set_pipeline(&pipeline.fill_stencil),
-                DrawCall::FillQuadNonZero => rpass.set_pipeline(&pipeline.fill_quad_non_zero),
-                DrawCall::FillQuadEvenOdd => rpass.set_pipeline(&pipeline.fill_quad_even_odd),
-                DrawCall::FillFringesNonZero => rpass.set_pipeline(&pipeline.fringes_non_zero),
-                DrawCall::FillFringesEvenOdd => rpass.set_pipeline(&pipeline.fringes_even_odd),
-                DrawCall::ImagePremultiplied => rpass.set_pipeline(&pipeline.premultiplied),
-                DrawCall::ImageUnmultiplied => rpass.set_pipeline(&pipeline.unmultiplied),
-                DrawCall::ImageFont => rpass.set_pipeline(&pipeline.font),
+                DrawCall::Convex(draw) => draw.call(&mut rpass, &pipeline.convex),
+                DrawCall::ConvexSimple(draw) => draw.call(&mut rpass, &pipeline.convex_simple),
+                DrawCall::Stencil(draw) => draw.call(&mut rpass, &pipeline.fill_stencil),
+                DrawCall::QuadNonZero(draw) => draw.call(&mut rpass, &pipeline.fill_quad_non_zero),
+                DrawCall::QuadEvenOdd(draw) => draw.call(&mut rpass, &pipeline.fill_quad_even_odd),
+                DrawCall::FringesNonZero(draw) => draw.call(&mut rpass, &pipeline.fringes_non_zero),
+                DrawCall::FringesEvenOdd(draw) => draw.call(&mut rpass, &pipeline.fringes_even_odd),
+                DrawCall::ImagePremultiplied(draw) => {
+                    draw.call(&mut rpass, &pipeline.premultiplied)
+                }
+                DrawCall::ImageUnmultiplied(draw) => draw.call(&mut rpass, &pipeline.unmultiplied),
+                DrawCall::ImageFont(draw) => draw.call(&mut rpass, &pipeline.font),
 
                 &DrawCall::Stroke {
                     start,
@@ -104,15 +120,12 @@ impl Picture {
                     base_vertex,
                     instance,
                 } => {
-                    // Fill the stroke base without overlap
                     rpass.set_pipeline(&pipeline.stroke_base);
                     rpass.draw_indexed(start..end, base_vertex, instance..instance + 1);
 
-                    // FringesNonZero
                     rpass.set_pipeline(&pipeline.fringes_non_zero);
                     rpass.draw_indexed(start..end, base_vertex, instance + 1..instance + 2);
 
-                    // Clear stencil buffer
                     rpass.set_pipeline(&pipeline.stroke_stencil);
                     rpass.draw_indexed(start..end, base_vertex, 0..1);
                 }
@@ -143,16 +156,14 @@ impl<Key> Recorder<Key> {
     pub fn stroke(
         &mut self,
         path: &Path,
-        paint: impl Into<Paint>,
-        xform: Transform,
+        paint: impl IntoPaint,
+        mut stroke: Stroke,
+        transform: Transform,
         antialias: bool,
     ) {
-        let paint = paint.into();
-        let mut stroke = paint.stroke;
+        let mut paint = paint.into_paint(transform);
 
-        let mut raw_paint = paint.into_paint(xform);
-
-        let average_scale = (xform.re * xform.re + xform.im * xform.im).sqrt();
+        let average_scale = (transform.re * transform.re + transform.im * transform.im).sqrt();
         stroke.width = (stroke.width * average_scale).max(0.0);
 
         let fringe_width = 1.0;
@@ -162,14 +173,14 @@ impl<Key> Recorder<Key> {
             // Since coverage is area, scale by alpha*alpha.
             let alpha = (stroke.width / fringe_width).clamp(0.0, 1.0);
             let coverage = alpha * alpha;
-            raw_paint.inner_color.alpha *= coverage;
-            raw_paint.outer_color.alpha *= coverage;
+            paint.inner_color.alpha *= coverage;
+            paint.outer_color.alpha *= coverage;
             stroke.width = fringe_width;
         }
 
         let fringe_width = if antialias { fringe_width } else { 0.0 };
 
-        let commands = path.transform_iter(xform);
+        let commands = path.transform_iter(transform);
         let tess_tol = 0.25;
         self.cache.flatten(commands, tess_tol, 0.01);
 
@@ -181,10 +192,10 @@ impl<Key> Recorder<Key> {
             .expand_stroke(&mut self.batch, stroke, fringe_width, tess_tol);
 
         let stroke_thr = 1.0 - 0.5 / 255.0;
-        let first = raw_paint.to_instance(stroke.width, fringe_width, stroke_thr);
+        let first = paint.to_instance(stroke.width, fringe_width, stroke_thr);
         let instance = self.batch.instance(first);
 
-        let second = raw_paint.to_instance(stroke.width, fringe_width, -1.0);
+        let second = paint.to_instance(stroke.width, fringe_width, -1.0);
         let _ = self.batch.instance(second);
 
         self.calls.push(DrawCall::Stroke {
@@ -199,11 +210,11 @@ impl<Key> Recorder<Key> {
         &mut self,
         path: &Path,
         paint: impl IntoPaint,
-        xform: Transform,
+        transform: Transform,
         fill_rule: FillRule,
         antialias: bool,
     ) {
-        let paint = paint.into_paint(xform);
+        let paint = paint.into_paint(transform);
 
         let fringe_width = if antialias { 1.0 } else { 0.0 };
 
@@ -211,7 +222,7 @@ impl<Key> Recorder<Key> {
         let raw = paint.to_instance(fringe_width, fringe_width, -1.0);
         let instance = self.batch.instance(raw);
 
-        let commands = path.transform_iter(xform);
+        let commands = path.transform_iter(transform);
         self.cache.flatten(commands, 0.25, 0.01);
 
         let draw = self
@@ -225,20 +236,12 @@ impl<Key> Recorder<Key> {
                 start,
                 end,
             } => {
+                let draw = DrawIndexed::new(start, end, base_vertex, instance);
                 if paint.inner_color == paint.outer_color {
-                    if !matches!(self.calls.last(), Some(DrawCall::ConvexSimple)) {
-                        self.calls.push(DrawCall::ConvexSimple);
-                    }
-                } else if !matches!(self.calls.last(), Some(DrawCall::Convex)) {
-                    self.calls.push(DrawCall::Convex);
+                    self.calls.push(DrawCall::ConvexSimple(draw));
+                } else {
+                    self.calls.push(DrawCall::Convex(draw));
                 }
-
-                self.calls.push(DrawCall::Indexed {
-                    start,
-                    end,
-                    base_vertex,
-                    instance,
-                });
             }
             Draw::Concave {
                 base_vertex,
@@ -246,35 +249,19 @@ impl<Key> Recorder<Key> {
                 stroke,
                 quad,
             } => {
-                self.calls.push(DrawCall::FillStencil);
-                self.calls.push(DrawCall::Indexed {
-                    start: fill.start,
-                    end: fill.end,
-                    base_vertex,
-                    instance: 0,
-                });
+                let stenicl = DrawIndexed::new(fill.start, fill.end, base_vertex, instance);
 
+                let stroke = DrawIndexed::new(stroke.start, stroke.end, base_vertex, instance);
+                let quad = DrawIndexed::new(quad.start, quad.end, base_vertex, instance);
+
+                self.calls.push(DrawCall::Stencil(stenicl));
                 self.calls.push(match fill_rule {
-                    FillRule::NonZero => DrawCall::FillFringesNonZero,
-                    FillRule::EvenOdd => DrawCall::FillFringesEvenOdd,
+                    FillRule::NonZero => DrawCall::FringesNonZero(stroke),
+                    FillRule::EvenOdd => DrawCall::FringesEvenOdd(stroke),
                 });
-
-                self.calls.push(DrawCall::Indexed {
-                    start: stroke.start,
-                    end: stroke.end,
-                    base_vertex,
-                    instance,
-                });
-
                 self.calls.push(match fill_rule {
-                    FillRule::NonZero => DrawCall::FillQuadNonZero,
-                    FillRule::EvenOdd => DrawCall::FillQuadEvenOdd,
-                });
-                self.calls.push(DrawCall::Indexed {
-                    start: quad.start,
-                    end: quad.end,
-                    base_vertex,
-                    instance,
+                    FillRule::NonZero => DrawCall::QuadNonZero(quad),
+                    FillRule::EvenOdd => DrawCall::QuadEvenOdd(quad),
                 });
             }
         }
@@ -292,14 +279,9 @@ impl<Key> Recorder<Key> {
                 Vertex::new([min.x, min.y], [0.0, 0.0]).transform(transform),
             ],
         );
+        let draw = DrawIndexed::new(indices.start, indices.end, base_vertex, 0);
         self.calls.push(DrawCall::BindImage(image));
-        self.calls.push(DrawCall::ImagePremultiplied);
-        self.calls.push(DrawCall::Indexed {
-            start: indices.start,
-            end: indices.end,
-            base_vertex,
-            instance: 0,
-        });
+        self.calls.push(DrawCall::ImagePremultiplied(draw));
     }
 
     pub fn blit_unmultiplied(&mut self, rect: Rect, transform: Transform, image: Key) {
@@ -314,14 +296,9 @@ impl<Key> Recorder<Key> {
                 Vertex::new([min.x, min.y], [0.0, 0.0]).transform(transform),
             ],
         );
+        let draw = DrawIndexed::new(indices.start, indices.end, base_vertex, 0);
         self.calls.push(DrawCall::BindImage(image));
-        self.calls.push(DrawCall::ImageUnmultiplied);
-        self.calls.push(DrawCall::Indexed {
-            start: indices.start,
-            end: indices.end,
-            base_vertex,
-            instance: 0,
-        });
+        self.calls.push(DrawCall::ImageUnmultiplied(draw));
     }
 
     pub fn blit_font(&mut self, rect: Rect, transform: Transform, image: Key) {
@@ -336,13 +313,8 @@ impl<Key> Recorder<Key> {
                 Vertex::new([min.x, min.y], [0.0, 0.0]).transform(transform),
             ],
         );
+        let draw = DrawIndexed::new(indices.start, indices.end, base_vertex, 0);
         self.calls.push(DrawCall::BindImage(image));
-        self.calls.push(DrawCall::ImageFont);
-        self.calls.push(DrawCall::Indexed {
-            start: indices.start,
-            end: indices.end,
-            base_vertex,
-            instance: 0,
-        });
+        self.calls.push(DrawCall::ImageFont(draw));
     }
 }

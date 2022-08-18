@@ -217,20 +217,6 @@ impl<'a> std::iter::Extend<&'a Command> for Path {
 }
 
 impl Path {
-    pub(crate) fn iter(&self) -> PathIter {
-        PathIter {
-            index: self.index.iter(),
-            coord: &self.coord,
-        }
-    }
-
-    pub(crate) fn transform_inplace(&mut self, tx: f32, ty: f32, rotation: f32, scale: f32) {
-        let t = Transform::compose(tx, ty, rotation, scale);
-        for coord in &mut self.coord {
-            *coord = t.apply(*coord);
-        }
-    }
-
     /// Returns a copy of the [`Path`] with all the segments of every sub-path transformed by the given matrix.
     pub(crate) fn transform_iter(&self, transform: Transform) -> PathTransformIter {
         PathTransformIter {
@@ -238,11 +224,6 @@ impl Path {
             index: self.index.iter(),
             coord: &self.coord,
         }
-    }
-
-    pub(crate) fn extend_with_path(&mut self, other: &Self) {
-        self.index.extend_from_slice(&other.index);
-        self.coord.extend_from_slice(&other.coord);
     }
 }
 

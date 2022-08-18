@@ -1,6 +1,6 @@
 use crate::{
-    internals::{ImageBind, IntoPaint},
-    FillRule, Images, Offset, Paint, Path, Recorder, Rect, Rounding, Transform,
+    internals::ImageBind, FillRule, Images, IntoPaint, Offset, Path, Recorder, Rect, Rounding,
+    Stroke, Transform,
 };
 
 #[derive(Default)]
@@ -94,33 +94,51 @@ impl<'a, Key: Eq + std::hash::Hash> Canvas<'a, Key> {
 
     /// Draws a line between the given points using the given paint.
     #[inline]
-    pub fn stroke_line(&mut self, p0: Offset, p1: Offset, paint: impl Into<Paint>) {
-        self.stroke(paint, |path| path.line(p0, p1));
+    pub fn stroke_line(&mut self, p0: Offset, p1: Offset, paint: impl IntoPaint, stroke: Stroke) {
+        self.stroke(paint, stroke, |path| path.line(p0, p1));
     }
 
     #[inline]
-    pub fn stroke_polyline(&mut self, points: &[Offset], close: bool, paint: impl Into<Paint>) {
-        self.stroke(paint, |path| path.polyline(points, close))
+    pub fn stroke_polyline(
+        &mut self,
+        points: &[Offset],
+        close: bool,
+        paint: impl IntoPaint,
+        stroke: Stroke,
+    ) {
+        self.stroke(paint, stroke, |path| path.polyline(points, close))
     }
 
     #[inline]
-    pub fn stroke_circle(&mut self, center: Offset, radius: f32, paint: impl Into<Paint>) {
-        self.stroke(paint, |path| path.circle(center, radius));
+    pub fn stroke_circle(
+        &mut self,
+        center: Offset,
+        radius: f32,
+        paint: impl IntoPaint,
+        stroke: Stroke,
+    ) {
+        self.stroke(paint, stroke, |path| path.circle(center, radius));
     }
 
     #[inline]
-    pub fn stroke_oval(&mut self, rect: Rect, paint: impl Into<Paint>) {
-        self.stroke(paint, |path| path.oval(rect));
+    pub fn stroke_oval(&mut self, rect: Rect, paint: impl IntoPaint, stroke: Stroke) {
+        self.stroke(paint, stroke, |path| path.oval(rect));
     }
 
     #[inline]
-    pub fn stroke_rect(&mut self, rect: Rect, paint: impl Into<Paint>) {
-        self.stroke(paint, |path| path.rect(rect));
+    pub fn stroke_rect(&mut self, rect: Rect, paint: impl IntoPaint, stroke: Stroke) {
+        self.stroke(paint, stroke, |path| path.rect(rect));
     }
 
     #[inline]
-    pub fn stroke_rrect(&mut self, rect: Rect, radius: Rounding, paint: impl Into<Paint>) {
-        self.stroke(paint, |path| path.rrect(rect, radius));
+    pub fn stroke_rrect(
+        &mut self,
+        rect: Rect,
+        radius: Rounding,
+        paint: impl IntoPaint,
+        stroke: Stroke,
+    ) {
+        self.stroke(paint, stroke, |path| path.rrect(rect, radius));
     }
 
     #[inline]
@@ -159,17 +177,17 @@ impl<'a, Key: Eq + std::hash::Hash> Canvas<'a, Key> {
     }
 
     #[inline]
-    pub fn stroke_path(&mut self, path: &Path, paint: impl Into<Paint>) {
+    pub fn stroke_path(&mut self, path: &Path, paint: impl IntoPaint, stroke: Stroke) {
         self.recorder
-            .stroke(path, paint, self.states.transform(), true)
+            .stroke(path, paint, stroke, self.states.transform(), true)
     }
 
     #[inline]
-    pub fn stroke(&mut self, paint: impl Into<Paint>, path: impl FnOnce(&mut Path)) {
+    pub fn stroke(&mut self, paint: impl IntoPaint, stroke: Stroke, path: impl FnOnce(&mut Path)) {
         self.path.clear();
         path(&mut self.path);
         self.recorder
-            .stroke(&self.path, paint, self.states.transform(), true)
+            .stroke(&self.path, paint, stroke, self.states.transform(), true)
     }
 
     #[inline]

@@ -1,4 +1,4 @@
-use reui::{Canvas, Color, Offset, Paint, Rect, Rounding, Transform};
+use reui::{Canvas, Color, Offset, Rect, Rounding, Stroke};
 
 const HOVER_SHADE: i32 = 15;
 
@@ -80,7 +80,7 @@ pub struct WindowTheme {
     pub background: u32,
 }
 
-pub fn run(ctx: &mut Canvas, time: f32, bounds: Rect) {
+pub fn run(ctx: &mut Canvas, bounds: Rect) {
     let win_theme = WindowTheme {
         background: 0xFF_424242,
     };
@@ -154,14 +154,16 @@ pub fn draw_option(ctx: &mut Canvas, bounds: Rect, theme: &WidgetTheme, state: S
     ctx.stroke_rrect(
         bounds.inflate(0.5),
         radius,
-        Paint::color(Color::bgra(theme.outline)).stroke_width(1.0),
+        Color::bgra(theme.outline),
+        Stroke::width(1.0),
     );
 
     if state == State::Active {
         ctx.stroke_polyline(
             &[bounds.min + a, bounds.min + b, bounds.min + c],
             false,
-            Paint::color(Color::bgra(0xFF_E6E6E6)).stroke_width(2.0),
+            Color::bgra(0xFF_E6E6E6),
+            Stroke::width(2.0),
         )
     }
 }
@@ -206,8 +208,8 @@ pub fn draw_num(
         }
     };
 
-    let paint = Paint::color(Color::bgra(theme.outline)).stroke_width(1.0);
-    ctx.stroke_rrect(bounds.inflate(0.1), radius, paint);
+    let paint = Color::bgra(theme.outline);
+    ctx.stroke_rrect(bounds.inflate(0.1), radius, paint, Stroke::width(1.0));
     ctx.fill_rrect(bounds, radius, bg);
 
     let arr = 13.0;
@@ -231,12 +233,22 @@ pub fn draw_num(
     let l_arrow = left.center();
     let r_arrow = right.center();
 
-    let paint = Paint::color(Color::bgra(0xFF_E6E6E6)).stroke_width(1.0);
+    let paint = Color::bgra(0xFF_E6E6E6);
 
     let a = Offset::new(1.5, -3.0);
     let b = Offset::new(1.5, 0.0);
     let c = Offset::new(1.5, 3.0);
 
-    ctx.stroke_polyline(&[l_arrow + a, l_arrow - b, l_arrow + c], false, paint);
-    ctx.stroke_polyline(&[r_arrow - a, r_arrow + b, r_arrow - c], false, paint);
+    ctx.stroke_polyline(
+        &[l_arrow + a, l_arrow - b, l_arrow + c],
+        false,
+        paint,
+        Stroke::width(1.0),
+    );
+    ctx.stroke_polyline(
+        &[r_arrow - a, r_arrow + b, r_arrow - c],
+        false,
+        paint,
+        Stroke::width(1.0),
+    );
 }

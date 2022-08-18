@@ -35,7 +35,9 @@ pub use crate::{
     color::Color,
     geom::{Offset, Rect, Rounding, Transform},
     image::Images,
-    paint::{BoxGradient, LineCap, LineJoin, LinearGradient, Paint, RadialGradient, Stroke},
+    paint::{
+        BoxGradient, IntoPaint, LineCap, LineJoin, LinearGradient, Paint, RadialGradient, Stroke,
+    },
     path::{Command, FillRule, Path, Solidity},
     picture::{Picture, Recorder},
     pipeline::Pipeline,
@@ -47,7 +49,6 @@ pub mod internals {
         batch::{Batch, GpuBatch},
         canvas::TransformStack,
         image::ImageBind,
-        paint::{IntoPaint, RawPaint},
         path::{PathIter, PathTransformIter},
         picture::DrawCall,
         pipeline::{Instance, Vertex},

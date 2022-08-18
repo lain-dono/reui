@@ -1,6 +1,6 @@
 use reui::{
-    BoxGradient, Canvas, Color, FillRule, LineCap, LineJoin, LinearGradient, Offset, Paint, Path,
-    RadialGradient, Rect, Rounding, Solidity, Transform,
+    BoxGradient, Canvas, Color, FillRule, LineCap, LineJoin, LinearGradient, Offset, Path,
+    RadialGradient, Rect, Rounding, Solidity, Stroke, Transform,
 };
 use std::f32::consts::TAU;
 
@@ -97,7 +97,7 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
 
     if true {
         ctx.save();
-        super::blendish::run(ctx, time, Rect::from_ltwh(380.0, 50.0, 200.0, 200.0));
+        super::blendish::run(ctx, Rect::from_ltwh(380.0, 50.0, 200.0, 200.0));
         ctx.restore();
     }
 
@@ -116,6 +116,7 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
             [60.0, 60.0].into(),
             [140.0, 140.0].into(),
             Color::bgra(0xFF_00CCCC),
+            Stroke::default(),
         );
     }
 }
@@ -123,17 +124,13 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
 fn draw_blending(ctx: &mut Canvas, x: f32, y: f32, width: f32, height: f32) {
     // blending test
 
-    fn srgba_fill(c: u32) -> Paint {
-        Paint::color(Color::bgra(c))
-    }
-
     let bg_paint = Color::bgra(0xFF_FFFFFF);
     ctx.fill_rect(Rect::from_ltwh(x, y, width, height), bg_paint);
 
-    let vg = srgba_fill(0xFF_18EA22);
-    let vy = srgba_fill(0xFF_EAE818);
-    let vc = srgba_fill(0xFF_18EAC8);
-    let vm = srgba_fill(0xFF_EE46A6);
+    let vg = Color::bgra(0xFF_18EA22);
+    let vy = Color::bgra(0xFF_EAE818);
+    let vc = Color::bgra(0xFF_18EAC8);
+    let vm = Color::bgra(0xFF_EE46A6);
 
     let w = 10.0;
     let rect = Rect::from_size(w, height);
@@ -142,9 +139,9 @@ fn draw_blending(ctx: &mut Canvas, x: f32, y: f32, width: f32, height: f32) {
     ctx.fill_rect(rect.shift(x + w * 4.5, y), vy);
     ctx.fill_rect(rect.shift(x + w * 6.5, y), vg);
 
-    let hr: [_; 2] = [srgba_fill(0xFF_FF0000), srgba_fill(0x7F_FF0000)];
-    let hg: [_; 2] = [srgba_fill(0xFF_93FF00), srgba_fill(0x7F_93FF00)];
-    let hb: [_; 2] = [srgba_fill(0xFF_007FFF), srgba_fill(0x7F_007FFF)];
+    let hr: [_; 2] = [Color::bgra(0xFF_FF0000), Color::bgra(0x7F_FF0000)];
+    let hg: [_; 2] = [Color::bgra(0xFF_93FF00), Color::bgra(0x7F_93FF00)];
+    let hb: [_; 2] = [Color::bgra(0xFF_007FFF), Color::bgra(0x7F_007FFF)];
 
     let h = 4.0;
     let rect = Rect::from_size(width, h);
@@ -307,7 +304,7 @@ pub fn draw_button(ctx: &mut Canvas, rr: Rect, col: u32) {
 
     let radius = Rounding::same(corner_radius - 0.5);
     let rrect = Rect::from_ltwh(x + 0.5, y + 0.5, w - 1.0, h - 1.0);
-    ctx.stroke_rrect(rrect, radius, Color::bgra(0x30_000000));
+    ctx.stroke_rrect(rrect, radius, Color::bgra(0x30_000000), Stroke::default());
 }
 
 pub fn draw_checkbox(ctx: &mut Canvas, rr: Rect) {
@@ -342,7 +339,7 @@ pub fn draw_drop_down(ctx: &mut Canvas, bounds: Rect) {
 
     let rect = Rect::from_ltwh(x + 0.5, y + 0.5, w - 1.0, h - 1.0);
     let radius = Rounding::same(corner_radius - 0.5);
-    ctx.stroke_rrect(rect, radius, Color::bgra(0x30_000000));
+    ctx.stroke_rrect(rect, radius, Color::bgra(0x30_000000), Stroke::default());
 }
 
 pub fn draw_eyes(ctx: &mut Canvas, rr: Rect, mouse: Offset, time: f32) {
@@ -473,10 +470,7 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
             (sx[i], sy[i] + 2.0).into(),
         );
     }
-    ctx.stroke_path(
-        &path,
-        Paint::color(Color::bgra(0x20_000000)).stroke_width(3.0),
-    );
+    ctx.stroke_path(&path, Color::bgra(0x20_000000), Stroke::width(3.0));
 
     path.clear();
     path.move_to((sx[0], sy[0]).into());
@@ -487,10 +481,7 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
             (sx[i], sy[i]).into(),
         );
     }
-    ctx.stroke_path(
-        &path,
-        Paint::color(Color::bgra(0xFF_00A0C0)).stroke_width(3.0),
-    );
+    ctx.stroke_path(&path, Color::bgra(0xFF_00A0C0), Stroke::width(3.0));
 
     // Graph sample pos
     for i in 0..6 {
@@ -514,12 +505,17 @@ pub fn draw_graph(ctx: &mut Canvas, x: f32, y: f32, w: f32, h: f32, time: f32) {
 }
 
 pub fn draw_widths(ctx: &mut Canvas, x: f32, y: f32, width: f32) {
-    let paint = Paint::color(Color::bgra(0xFF_999999));
+    let paint = Color::bgra(0xFF_999999);
 
     let mut y = y;
     for i in 0..75 {
-        let paint = paint.stroke_width((0.05 + i as f32) * 0.025);
-        ctx.stroke_line([x, y].into(), [x + width, y + width * 0.3].into(), paint);
+        let stroke = Stroke::width((0.05 + i as f32) * 0.025);
+        ctx.stroke_line(
+            [x, y].into(),
+            [x + width, y + width * 0.3].into(),
+            paint,
+            stroke,
+        );
         y += 4.0;
     }
 }
@@ -534,11 +530,13 @@ pub fn draw_caps(ctx: &mut Canvas, x: f32, y: f32, width: f32) {
     );
     ctx.fill_rect(Rect::from_ltwh(x, y, width, 40.0), Color::bgra(0x20_FFFFFF));
 
-    let paint = Paint::color(Color::BLACK).stroke_width(line_width);
+    let paint = Color::BLACK;
+    let stroke = Stroke::width(line_width);
 
     for (i, &cap) in caps.iter().enumerate() {
+        let stroke = stroke.cap(cap);
         let y = y + ((i * 10) as f32) + 5.0;
-        ctx.stroke_line([x, y].into(), [x + width, y].into(), paint.cap(cap))
+        ctx.stroke_line([x, y].into(), [x + width, y].into(), paint, stroke)
     }
 }
 
@@ -574,18 +572,14 @@ pub fn draw_lines(ctx: &mut Canvas, x: f32, y: f32, w: f32, _h: f32, t: f32) {
 
             ctx.stroke_path(
                 &path,
-                Paint::color(Color::bgra(0xA0_000000))
-                    .stroke_width(size * 0.3)
-                    .cap(cap)
-                    .joint(join),
+                Color::bgra(0xA0_000000),
+                Stroke::width(size * 0.3).cap(cap).joint(join),
             );
 
             ctx.stroke_path(
                 &path,
-                Paint::color(Color::bgra(0xFF_00C0FF))
-                    .stroke_width(1.0)
-                    .cap(LineCap::Butt)
-                    .joint(LineJoin::Bevel),
+                Color::bgra(0xFF_00C0FF),
+                Stroke::width(1.0).cap(LineCap::Butt).joint(LineJoin::Bevel),
             );
         }
     }
@@ -608,7 +602,7 @@ fn draw_edit_box_base(ctx: &mut Canvas, rr: Rect) {
 
     let rect = Rect::from_ltwh(left + 0.5, top + 0.5, width - 1.0, height - 1.0);
     let radius = Rounding::same(4.0 - 0.5);
-    ctx.stroke_rrect(rect, radius, Color::bgra(0x30_000000));
+    ctx.stroke_rrect(rect, radius, Color::bgra(0x30_000000), Stroke::default());
 }
 
 pub fn draw_edit_box(ctx: &mut Canvas, rr: Rect) {
@@ -672,7 +666,12 @@ pub fn draw_slider(ctx: &mut Canvas, pos: f32, rect: Rect) {
     let center = [x + (pos * w).floor(), cy].into();
     ctx.fill_circle(center, kr - 1.0, Color::bgra(0xFF_282B30));
     ctx.fill_circle(center, kr - 1.0, knob);
-    ctx.stroke_circle(center, kr - 0.5, Color::bgra(0x5C_000000));
+    ctx.stroke_circle(
+        center,
+        kr - 0.5,
+        Color::bgra(0x5C_000000),
+        Stroke::default(),
+    );
 }
 
 pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
@@ -712,7 +711,7 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     path.clear();
     path.circle([cx, cy].into(), r0 - 0.5);
     path.circle([cx, cy].into(), r1 + 0.5);
-    ctx.stroke_path(&path, Color::bgra(0x40_000000));
+    ctx.stroke_path(&path, Color::bgra(0x40_000000), Stroke::default());
 
     // Selector
     ctx.save();
@@ -720,8 +719,12 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     ctx.push_rotate(hue * TAU);
 
     // Marker on
-    let paint = Paint::color(Color::bgra(0xC0_FFFFFF)).stroke_width(2.0);
-    ctx.stroke_rect(Rect::from_ltwh(r0 - 1.0, -3.0, r1 - r0 + 2.0, 6.0), paint);
+    let paint = Color::bgra(0xC0_FFFFFF);
+    ctx.stroke_rect(
+        Rect::from_ltwh(r0 - 1.0, -3.0, r1 - r0 + 2.0, 6.0),
+        paint,
+        Stroke::width(2.0),
+    );
 
     let paint = BoxGradient::new(
         Rect::from_ltwh(r0 - 3.0, -5.0, r1 - r0 + 6.0, 10.0),
@@ -768,14 +771,14 @@ pub fn draw_colorwheel(ctx: &mut Canvas, rr: Rect, time: f32) {
     let paint = LinearGradient::new(from, [bx, by], Color::TRANSPARENT, Color::BLACK);
     ctx.fill_path(&path, paint, FillRule::NonZero);
 
-    let paint = Paint::color(Color::bgra(0x40_000000)).stroke_width(2.0);
-    ctx.stroke_path(&path, paint);
+    let paint = Color::bgra(0x40_000000);
+    ctx.stroke_path(&path, paint, Stroke::width(2.0));
 
     // Select circle on triangle
     let ax = f32::to_radians(120.0).cos() * radius * 0.3;
     let ay = f32::to_radians(120.0).sin() * radius * 0.4;
-    let paint = Paint::color(Color::bgra(0xC0_FFFFFF)).stroke_width(2.0);
-    ctx.stroke_circle([ax, ay].into(), 5.0, paint);
+    let paint = Color::bgra(0xC0_FFFFFF);
+    ctx.stroke_circle([ax, ay].into(), 5.0, paint, Stroke::width(2.0));
 
     let paint = RadialGradient::new(
         [ax, ay],

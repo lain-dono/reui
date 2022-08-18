@@ -163,7 +163,8 @@ async fn setup<E: Application>(event_loop: EventLoop<()>, window: Window) -> Set
         .await
         .expect("Unable to find a suitable GPU adapter!");
 
-    tracing::info!("Features: {:?}", device.features());
+    tracing::info!("Adapter Features: {:?}", adapter_features);
+    tracing::info!("Result Features: {:?}", device.features());
     tracing::info!("Limits: {:#?}", device.limits());
 
     Setup {

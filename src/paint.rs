@@ -1,12 +1,12 @@
 use crate::{internals::Instance, Color, Rect, Transform};
 
 pub trait IntoPaint {
-    fn into_paint(self, transform: Transform) -> RawPaint;
+    fn into_paint(self, transform: Transform) -> Paint;
 }
 
 #[derive(Clone, Copy)]
-pub struct RawPaint {
-    pub xform: Transform,
+pub struct Paint {
+    pub transform: Transform,
     pub extent: [f32; 2],
     pub radius: f32,
     pub feather: f32,
@@ -14,10 +14,10 @@ pub struct RawPaint {
     pub outer_color: Color,
 }
 
-impl RawPaint {
+impl Paint {
     pub fn to_instance(self, width: f32, fringe: f32, stroke_thr: f32) -> Instance {
         Instance {
-            paint_mat: self.xform.inverse().into(),
+            paint_mat: self.transform.inverse().into(),
 
             inner_color: self.inner_color.into(),
             outer_color: self.outer_color.into(),
@@ -51,13 +51,6 @@ pub enum LineJoin {
 }
 
 #[derive(Clone, Copy)]
-pub enum Gradient {
-    Linear(LinearGradient),
-    Box(BoxGradient),
-    Radial(RadialGradient),
-}
-
-#[derive(Clone, Copy)]
 pub struct Stroke {
     pub start: LineCap,
     pub end: LineCap,
@@ -73,6 +66,26 @@ impl Stroke {
             ..Default::default()
         }
     }
+
+    pub fn cap(self, cap: LineCap) -> Self {
+        Self {
+            start: cap,
+            end: cap,
+            ..self
+        }
+    }
+
+    pub fn joint(self, join: LineJoin) -> Self {
+        Self { join, ..self }
+    }
+
+    pub fn miter_limit(self, miter: f32) -> Self {
+        Self { miter, ..self }
+    }
+
+    pub fn stroke_width(self, width: f32) -> Self {
+        Self { width, ..self }
+    }
 }
 
 impl Default for Stroke {
@@ -81,105 +94,16 @@ impl Default for Stroke {
             start: LineCap::Butt,
             end: LineCap::Butt,
             join: LineJoin::Miter,
-            miter: 4.0,
+            miter: 2.4,
             width: 1.0,
         }
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct Paint {
-    pub stroke: Stroke,
-    pub color: Color,
-    pub gradient: Option<Gradient>,
-}
-
-impl Default for Paint {
-    fn default() -> Self {
-        Self {
-            color: Color::BLACK,
-            stroke: Stroke::default(),
-            gradient: None,
-        }
-    }
-}
-
-impl From<Color> for Paint {
-    fn from(color: Color) -> Self {
-        Self {
-            color,
-            ..Self::default()
-        }
-    }
-}
-
-impl Paint {
-    pub fn color(color: Color) -> Self {
-        Self {
-            color,
-            ..Self::default()
-        }
-    }
-
-    pub fn cap(self, cap: LineCap) -> Self {
-        Self {
-            stroke: Stroke {
-                start: cap,
-                end: cap,
-                ..self.stroke
-            },
-            ..self
-        }
-    }
-
-    pub fn joint(self, join: LineJoin) -> Self {
-        Self {
-            stroke: Stroke {
-                join,
-                ..self.stroke
-            },
-            ..self
-        }
-    }
-
-    pub fn miter_limit(self, miter: f32) -> Self {
-        Self {
-            stroke: Stroke {
-                miter,
-                ..self.stroke
-            },
-            ..self
-        }
-    }
-
-    pub fn stroke_width(self, width: f32) -> Self {
-        Self {
-            stroke: Stroke {
-                width,
-                ..self.stroke
-            },
-            ..self
-        }
-    }
-}
-
-impl IntoPaint for Paint {
-    fn into_paint(self, transform: Transform) -> RawPaint {
-        self.gradient.map_or_else(
-            || self.color.into_paint(transform),
-            |gradient| match gradient {
-                Gradient::Linear(gradient) => gradient.into_paint(transform),
-                Gradient::Box(gradient) => gradient.into_paint(transform),
-                Gradient::Radial(gradient) => gradient.into_paint(transform),
-            },
-        )
-    }
-}
-
 impl IntoPaint for Color {
-    fn into_paint(self, transform: Transform) -> RawPaint {
-        RawPaint {
-            xform: transform,
+    fn into_paint(self, transform: Transform) -> Paint {
+        Paint {
+            transform,
             extent: [0.0, 0.0],
             radius: 0.0,
             feather: 1.0,
@@ -209,7 +133,7 @@ impl LinearGradient {
 }
 
 impl IntoPaint for LinearGradient {
-    fn into_paint(self, transform: Transform) -> RawPaint {
+    fn into_paint(self, transform: Transform) -> Paint {
         let Self {
             from,
             to,
@@ -234,8 +158,8 @@ impl IntoPaint for LinearGradient {
         let tx = sx + im * large;
         let ty = sy - re * large;
 
-        RawPaint {
-            xform: transform * Transform { re, im, tx, ty },
+        Paint {
+            transform: transform * Transform { re, im, tx, ty },
             extent: [large, large + d * 0.5],
             radius: 0.0,
             feather: d.max(1.0),
@@ -267,7 +191,7 @@ impl BoxGradient {
 }
 
 impl IntoPaint for BoxGradient {
-    fn into_paint(self, transform: Transform) -> RawPaint {
+    fn into_paint(self, transform: Transform) -> Paint {
         let Self {
             rect,
             radius,
@@ -276,8 +200,8 @@ impl IntoPaint for BoxGradient {
             outer,
         } = self;
         let center = rect.center();
-        RawPaint {
-            xform: transform * Transform::translation(center.x, center.y),
+        Paint {
+            transform: transform * Transform::translation(center.x, center.y),
             extent: [rect.dx() * 0.5, rect.dy() * 0.5],
             radius,
             feather: feather.max(1.0),
@@ -309,7 +233,7 @@ impl RadialGradient {
 }
 
 impl IntoPaint for RadialGradient {
-    fn into_paint(self, transform: Transform) -> RawPaint {
+    fn into_paint(self, transform: Transform) -> Paint {
         let Self {
             center,
             inr,
@@ -318,8 +242,8 @@ impl IntoPaint for RadialGradient {
             outer,
         } = self;
         let radius = (inr + outr) * 0.5;
-        RawPaint {
-            xform: transform * Transform::translation(center[0], center[1]),
+        Paint {
+            transform: transform * Transform::translation(center[0], center[1]),
             extent: [radius, radius],
             radius,
             feather: (outr - inr).max(1.0),
