@@ -100,16 +100,6 @@ pub struct PathIter<'a> {
     coord: &'a [Offset],
 }
 
-impl<'a> PathIter<'a> {
-    pub(crate) fn transform(self, transform: Transform) -> PathTransformIter<'a> {
-        PathTransformIter {
-            transform,
-            index: self.index,
-            coord: self.coord,
-        }
-    }
-}
-
 impl<'a> Iterator for PathIter<'a> {
     type Item = Command;
 
