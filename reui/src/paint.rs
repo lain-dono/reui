@@ -17,7 +17,7 @@ pub struct Paint {
 impl Paint {
     pub fn to_instance(self, width: f32, fringe: f32, stroke_thr: f32) -> Instance {
         Instance {
-            paint_mat: self.transform.inverse().into(),
+            paint_mat: self.transform.inverse(),
 
             inner_color: self.inner_color.into(),
             outer_color: self.outer_color.into(),
@@ -149,17 +149,17 @@ impl IntoPaint for LinearGradient {
         let dx = ex - sx;
         let dy = ey - sy;
         let d = (dx * dx + dy * dy).sqrt();
-        let (im, re) = if d > 0.0001 {
-            (-dx / d, dy / d)
+        let (dx, dy) = if d > 0.0001 {
+            (dx / d, dy / d)
         } else {
             (0.0, 1.0)
         };
 
-        let tx = sx + im * large;
-        let ty = sy - re * large;
+        let tx = sx - dx * large;
+        let ty = sy - dy * large;
 
         Paint {
-            transform: transform * Transform { re, im, tx, ty },
+            transform: transform * Transform::new(dy, dx, tx, -dx, dy, ty),
             extent: [large, large + d * 0.5],
             radius: 0.0,
             feather: d.max(1.0),
@@ -201,7 +201,7 @@ impl IntoPaint for BoxGradient {
         } = self;
         let center = rect.center();
         Paint {
-            transform: transform * Transform::translation(center.x, center.y),
+            transform: transform * Transform::translate(center.x, center.y),
             extent: [rect.dx() * 0.5, rect.dy() * 0.5],
             radius,
             feather: feather.max(1.0),
@@ -243,7 +243,7 @@ impl IntoPaint for RadialGradient {
         } = self;
         let radius = (inr + outr) * 0.5;
         Paint {
-            transform: transform * Transform::translation(center[0], center[1]),
+            transform: transform * Transform::translate(center[0], center[1]),
             extent: [radius, radius],
             radius,
             feather: (outr - inr).max(1.0),

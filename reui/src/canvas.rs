@@ -57,19 +57,19 @@ impl<'a, Key: Eq + std::hash::Hash> Canvas<'a, Key> {
 
     /// Add a rotation to the current transform. The argument is in radians clockwise.
     pub fn push_rotate(&mut self, radians: f32) {
-        self.push_transform(Transform::rotation(radians));
+        self.push_transform(Transform::rotate(radians));
     }
 
     /// Add an axis-aligned scale to the current transform,
     /// scaling by the first argument in the horizontal direction and the second in the vertical direction. [...]
     pub fn push_scale(&mut self, scale: f32) {
-        self.push_transform(Transform::scale(scale));
+        self.push_transform(Transform::scale(scale, scale));
     }
 
     /// Add a translation to the current transform,
     /// shifting the coordinate space horizontally by the first argument and vertically by the second argument.
     pub fn push_translate(&mut self, dx: f32, dy: f32) {
-        self.push_transform(Transform::translation(dx, dy));
+        self.push_transform(Transform::translate(dx, dy));
     }
 
     /// Multiply the current transform by the specified 4⨉4 transformation matrix specified as a list of values in column-major order.

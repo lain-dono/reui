@@ -163,7 +163,12 @@ impl<Key> Recorder<Key> {
     ) {
         let mut paint = paint.into_paint(transform);
 
-        let average_scale = (transform.re * transform.re + transform.im * transform.im).sqrt();
+        let average_scale = {
+            let sx = (transform.sx * transform.sx + transform.shx * transform.shx).sqrt();
+            let sy = (transform.shy * transform.shy + transform.sy * transform.sy).sqrt();
+            (sx + sy) * 0.5
+        };
+
         stroke.width = (stroke.width * average_scale).max(0.0);
 
         let fringe_width = 1.0;

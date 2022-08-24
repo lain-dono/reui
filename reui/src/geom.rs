@@ -353,11 +353,14 @@ impl Rect {
     }
 }
 
-/// Translation, rotation and uniform scale.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Transform {
-    pub re: f32,
-    pub im: f32,
+    pub sx: f32,
+    pub shy: f32,
+    pub shx: f32,
+    pub sy: f32,
+
     pub tx: f32,
     pub ty: f32,
 }
@@ -369,89 +372,120 @@ impl Default for Transform {
     }
 }
 
-impl From<Transform> for [f32; 4] {
-    fn from(Transform { re, im, tx, ty }: Transform) -> [f32; 4] {
-        [re, im, tx, ty]
-    }
-}
-
 impl Mul<Self> for Transform {
     type Output = Self;
+
     #[inline]
     fn mul(self, other: Self) -> Self {
-        Self {
-            re: other.re * self.re - other.im * self.im,
-            im: other.re * self.im + other.im * self.re,
-
-            tx: other.tx * self.re - other.ty * self.im + self.tx,
-            ty: other.tx * self.im + other.ty * self.re + self.ty,
-        }
+        Self::multiply(&self, &other)
     }
 }
 
 impl MulAssign<Self> for Transform {
     #[inline]
     fn mul_assign(&mut self, other: Self) {
-        *self = *self * other;
+        *self = Self::multiply(self, &other);
     }
 }
 
 impl Transform {
-    #[inline]
-    pub const fn identity() -> Self {
-        Self::new(1.0, 0.0, 0.0, 0.0)
-    }
-
-    #[inline]
-    pub const fn new(re: f32, im: f32, tx: f32, ty: f32) -> Self {
-        Self { re, im, tx, ty }
-    }
-
-    #[inline]
-    pub fn compose(tx: f32, ty: f32, rotation: f32, scale: f32) -> Self {
-        let (im, re) = (rotation.sin() * scale, rotation.cos() * scale);
-        Self { re, im, tx, ty }
-    }
-
-    #[inline]
-    pub fn translation(tx: f32, ty: f32) -> Self {
-        Self::new(1.0, 0.0, tx, ty)
-    }
-
-    #[inline]
-    pub fn rotation(theta: f32) -> Self {
-        Self::new(theta.cos(), theta.sin(), 0.0, 0.0)
-    }
-
-    #[inline]
-    pub fn scale(factor: f32) -> Self {
-        Self::new(factor, 0.0, 0.0, 0.0)
-    }
-
-    #[inline]
-    pub fn apply(&self, Offset { x, y }: Offset) -> Offset {
-        Offset {
-            x: self.re * x - self.im * y + self.tx,
-            y: self.im * x + self.re * y + self.ty,
-        }
-    }
-
-    #[inline]
-    pub fn apply_inv(&self, Offset { x, y }: Offset) -> Offset {
-        let id = (self.re * self.re + self.im * self.im).recip();
-        let [re, im] = [self.re * id, self.im * id];
-        let [dx, dy] = [x - self.tx, y - self.ty];
-        Offset::new(re * dx + im * dy, re * dy - im * dx)
-    }
-
-    #[inline]
-    pub fn inverse(&self) -> Self {
-        let id = -(self.re * self.re + self.im * self.im).recip();
+    pub const fn new(sx: f32, shx: f32, tx: f32, shy: f32, sy: f32, ty: f32) -> Self {
         Self {
-            re: -self.re * id,
-            im: self.im * id,
-            tx: (self.im * self.ty + self.re * self.tx) * id,
-            ty: (self.re * self.ty - self.im * self.tx) * id,
+            sx,
+            shx,
+            tx,
+            shy,
+            sy,
+            ty,
         }
+    }
+
+    pub const fn identity() -> Self {
+        Self::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+    }
+
+    pub const fn translate(tx: f32, ty: f32) -> Self {
+        Self::new(1.0, 0.0, tx, 0.0, 1.0, ty)
+    }
+
+    pub const fn scale(sx: f32, sy: f32) -> Self {
+        Self::new(sx, 0.0, 0.0, 0.0, sy, 0.0)
+    }
+
+    pub const fn shear(shx: f32, shy: f32) -> Self {
+        Self::new(1.0, shx, 0.0, shy, 1.0, 0.0)
+    }
+
+    #[inline]
+    pub fn skew_x(theta: f32) -> Self {
+        Self::shear(theta.tan(), 0.0)
+    }
+
+    #[inline]
+    pub fn skew_y(theta: f32) -> Self {
+        Self::shear(0.0, theta.tan())
+    }
+
+    #[inline]
+    pub fn rotate(theta: f32) -> Self {
+        let (sn, cs) = theta.sin_cos();
+        Self::new(cs, -sn, 0.0, sn, cs, 0.0)
+    }
+
+    #[inline]
+    pub fn rotate_xy2(theta: f32, cx: f32, cy: f32, tx: f32, ty: f32) -> Self {
+        let (sn, cs) = theta.sin_cos();
+        let tx = tx - (cx * cs) + (cy * sn);
+        let ty = ty - (cx * sn) - (cy * cs);
+        Self::new(cs, -sn, tx, sn, cs, ty)
+    }
+
+    #[inline]
+    pub fn rotate_xy(theta: f32, cx: f32, cy: f32) -> Self {
+        Self::rotate_xy2(theta, cx, cy, cx, cy)
+    }
+
+    #[inline]
+    pub fn rotate_scale_xy(theta: f32, sx: f32, sy: f32, cx: f32, cy: f32) -> Self {
+        let (sn, cs) = theta.sin_cos();
+        let tx = cx - cx * sx * cs + cy * sy * sn;
+        let ty = cy - cy * sy * cs - cx * sx * sn;
+        Self::new(sx * cs, -sx * sn, tx, sy * sn, sy * cs, ty)
+    }
+
+    #[inline(always)]
+    fn multiply(a: &Self, b: &Self) -> Self {
+        Self {
+            sx: a.sx * b.sx + a.shx * b.shy,
+            shx: a.sx * b.shx + a.shx * b.sy,
+            tx: a.sx * b.tx + a.shx * b.ty + a.tx,
+            shy: a.shy * b.sx + a.sy * b.shy,
+            sy: a.shy * b.shx + a.sy * b.sy,
+            ty: a.shy * b.tx + a.sy * b.ty + a.ty,
+        }
+    }
+
+    pub fn inverse(&self) -> Self {
+        let n = (self.sx * self.sy - self.shy * self.shx).recip();
+        Self {
+            sx: self.sy * n,
+            shy: -self.shy * n,
+            shx: -self.shx * n,
+            sy: self.sx * n,
+            tx: (self.shx * self.ty - self.sy * self.tx) * n,
+            ty: (self.shy * self.tx - self.sx * self.ty) * n,
+        }
+    }
+
+    #[inline]
+    pub fn apply<I: Into<[f32; 2]>, F: From<[f32; 2]>>(&self, coord: I) -> F {
+        self.apply_impl(coord.into()).into()
+    }
+
+    #[inline]
+    pub fn apply_impl(&self, [x, y]: [f32; 2]) -> [f32; 2] {
+        let xp = x * self.sx + y * self.shx + self.tx;
+        let yp = x * self.shy + y * self.sy + self.ty;
+        [xp, yp]
     }
 }

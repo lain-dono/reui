@@ -34,7 +34,7 @@ pub fn render_demo(ctx: &mut Canvas, mouse: Offset, wsize: Offset, time: f32, bl
 
             ctx.fill_rect(rect, Color::bgra(0xFF_CC0000));
 
-            let tr = Transform::rotation(time);
+            let tr = Transform::rotate(time);
             let pos = tr.apply(Offset::new(10.0, 0.0));
 
             ctx.fill_rect(rect.translate(pos), Color::bgra(0x99_CC0000));

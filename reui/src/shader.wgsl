@@ -2,43 +2,58 @@ struct Viewport {
     inv_size: vec2<f32>,
 }
 
-struct Input {
+struct VertexInput {
     @location(0) position: vec2<f32>,
     @location(1) texcoord: vec2<f32>,
+
     @location(2) transform: vec4<f32>,
-    @location(3) inner_color: vec4<f32>,
-    @location(4) outer_color: vec4<f32>,
-    @location(5) erf: vec4<f32>,
-    @location(6) stroke: vec2<f32>,
+    @location(3) translate: vec2<f32>,
+    @location(4) inner_color: vec4<f32>,
+    @location(5) outer_color: vec4<f32>,
+    @location(6) erf: vec4<f32>,
+    @location(7) stroke: vec2<f32>,
 }
 
-struct Variable {
-    @builtin(position) vertex_position: vec4<f32>,
+struct VertexOutput {
+    @builtin(position) clip: vec4<f32>,
 
     @location(0) position: vec2<f32>,
     @location(1) texcoord: vec2<f32>,
-    @location(2) transform: vec4<f32>,
-    @location(3) inner_color: vec4<f32>,
-    @location(4) outer_color: vec4<f32>,
-    @location(5) erf: vec4<f32>,
-    @location(6) stroke: vec2<f32>,
+    @location(2) inner_color: vec4<f32>,
+    @location(3) outer_color: vec4<f32>,
+    @location(4) erf: vec4<f32>,
+    @location(5) stroke: vec2<f32>,
+}
+
+struct FragmentInput {
+    @location(0) position: vec2<f32>,
+    @location(1) texcoord: vec2<f32>,
+    @location(2) inner_color: vec4<f32>,
+    @location(3) outer_color: vec4<f32>,
+    @location(4) erf: vec4<f32>,
+    @location(5) stroke: vec2<f32>,
 }
 
 @group(0) @binding(0) var<uniform> viewport: Viewport;
 @group(1) @binding(0) var s_color: sampler;
 @group(1) @binding(1) var t_color: texture_2d<f32>;
 
+fn sdroundrect(pt: vec2<f32>, ext: vec2<f32>, rad: f32) -> f32 {
+    let d = abs(pt) - ext + vec2<f32>(rad, rad);
+    return min(max(d.x, d.y), 0.0) + length(max(d, vec2<f32>(0.0))) - rad;
+}
+
 @vertex
-fn vertex_main(in: Input) -> Variable {
+fn vertex_main(in: VertexInput) -> VertexOutput {
     let position = in.position * viewport.inv_size * 2.0;
 
-    var out: Variable;
-    out.vertex_position = vec4<f32>(position.x - 1.0, 1.0 - position.y, 0.0, 1.0);
+    let px = in.position.x * in.transform.x + in.position.y * in.transform.z;
+    let py = in.position.x * in.transform.y + in.position.y * in.transform.w;
 
-    out.position = in.position;
+    var out: VertexOutput;
+    out.clip = vec4<f32>(position.x - 1.0, 1.0 - position.y, 0.0, 1.0);
+    out.position = in.translate.xy + vec2<f32>(px, py);
     out.texcoord = in.texcoord;
-
-    out.transform = in.transform;
     out.inner_color = in.inner_color;
     out.outer_color = in.outer_color;
     out.erf = in.erf;
@@ -47,13 +62,8 @@ fn vertex_main(in: Input) -> Variable {
     return out;
 }
 
-fn sdroundrect(pt: vec2<f32>, ext: vec2<f32>, rad: f32) -> f32 {
-    let d = abs(pt) - ext + vec2<f32>(rad, rad);
-    return min(max(d.x, d.y), 0.0) + length(max(d, vec2<f32>(0.0))) - rad;
-}
-
 @fragment
-fn fragment_main(in: Input) -> @location(0) vec4<f32> {
+fn fragment_main(in: FragmentInput) -> @location(0) vec4<f32> {
     let uv = in.texcoord;
     let scale = in.stroke.x;
     let limit = in.stroke.y;
@@ -64,11 +74,7 @@ fn fragment_main(in: Input) -> @location(0) vec4<f32> {
         discard;
     }
 
-    let pos = in.position.xy;
-    let re = in.transform.x;
-    let im = in.transform.y;
-    let pt = in.transform.zw + vec2<f32>(pos.x * re - pos.y * im, pos.x * im + pos.y * re);
-
+    let pt = in.position;
     let extent = in.erf.xy;
     let radius = in.erf.z;
     let feather = in.erf.w;
@@ -83,7 +89,7 @@ fn fragment_main(in: Input) -> @location(0) vec4<f32> {
 }
 
 @fragment
-fn fragment_convex_simple(in: Input) -> @location(0) vec4<f32> {
+fn fragment_convex_simple(in: FragmentInput) -> @location(0) vec4<f32> {
     let uv = in.texcoord;
     let scale = in.stroke.x;
     let alpha = min(1.0, (1.0 - abs(uv.x * 2.0 - 1.0)) * scale) * uv.y;

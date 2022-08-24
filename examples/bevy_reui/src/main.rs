@@ -10,9 +10,7 @@ fn main() {
         .run();
 }
 
-fn setup(mut commands: Commands, windows: Res<Windows>) {
-    let factor = windows.scale_factor(WindowId::primary()) as f32;
-
+fn setup(mut commands: Commands) {
     commands
         .spawn_bundle(Camera2dBundle::default())
         .insert(Recorder::default());
@@ -22,7 +20,7 @@ fn draw(mut query: Query<&mut Recorder>, windows: Res<Windows>) {
     let scale = windows.scale_factor(WindowId::primary()) as f32;
     for mut recorder in query.iter_mut() {
         let color = Color::bgra(0x78_DCDCDC);
-        let transform = Transform::identity();
+        let transform = Transform::scale(scale, scale);
         let center = Offset::new(400.0, 400.0);
         let rect = Rect::from_center(center, 200.0, 100.0);
 

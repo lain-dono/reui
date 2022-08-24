@@ -17,7 +17,7 @@ impl Vertex {
 
     #[inline]
     pub fn transform(self, transform: Transform) -> Self {
-        let pos = transform.apply(Offset::from(self.pos)).into();
+        let pos = transform.apply(Offset::from(self.pos));
         Self { pos, ..self }
     }
 }
@@ -25,7 +25,8 @@ impl Vertex {
 #[repr(C)]
 #[derive(Clone, Copy, Default, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Instance {
-    pub paint_mat: [f32; 4],
+    pub paint_mat: Transform,
+
     pub inner_color: [u8; 4],
     pub outer_color: [u8; 4],
 
@@ -264,10 +265,11 @@ impl<'a> Builder<'a> {
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &wgpu::vertex_attr_array![
                 2 => Float32x4,
-                3 => Unorm8x4,
+                3 => Float32x2,
                 4 => Unorm8x4,
-                5 => Float32x4,
-                6 => Float32x2,
+                5 => Unorm8x4,
+                6 => Float32x4,
+                7 => Float32x2,
             ],
         };
 
