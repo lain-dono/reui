@@ -21,7 +21,10 @@ pub struct UniformOffset {
     pub offset: u32,
 }
 
-pub type Uniforms = DynamicUniformBuffer<Uniform>;
+#[derive(Resource, Default)]
+pub struct Uniforms {
+    pub buffer: DynamicUniformBuffer<Uniform>,
+}
 
 #[derive(Clone, ShaderType)]
 pub struct Uniform {
@@ -35,16 +38,18 @@ pub fn prepare_uniforms(
     mut uniforms: ResMut<Uniforms>,
     views: Query<(Entity, &ExtractedView)>,
 ) {
-    uniforms.clear();
+    uniforms.buffer.clear();
 
     for (entity, camera) in &views {
-        let data = crate::combine_viewport(camera.width, camera.height).into();
-        let offset = uniforms.push(Uniform { data });
+        let width = camera.viewport.z;
+        let height = camera.viewport.w;
+        let data = crate::combine_viewport(width, height).into();
+        let offset = uniforms.buffer.push(Uniform { data });
         let offset = UniformOffset { offset };
         commands.get_or_spawn(entity).insert(offset);
     }
 
-    uniforms.write_buffer(&device, &queue);
+    uniforms.buffer.write_buffer(&device, &queue);
 }
 
 pub fn prepare_textures(
@@ -55,34 +60,36 @@ pub fn prepare_textures(
 ) {
     let mut textures = HashMap::default();
     for (entity, camera) in &views {
-        if let Some(physical_target_size) = camera.physical_target_size {
-            let cached_texture = textures
-                .entry(camera.target.clone())
-                .or_insert_with(|| {
-                    texture_cache.get(
-                        &render_device,
-                        TextureDescriptor {
-                            label: Some("depth_stenicl_texture"),
-                            size: Extent3d {
-                                depth_or_array_layers: 1,
-                                width: physical_target_size.x,
-                                height: physical_target_size.y,
-                            },
-                            mip_level_count: 1,
-                            sample_count: 1,
-                            dimension: TextureDimension::D2,
-                            format: TextureFormat::Depth24PlusStencil8,
-                            usage: TextureUsages::RENDER_ATTACHMENT
-                                | TextureUsages::TEXTURE_BINDING,
-                        },
-                    )
-                })
-                .clone();
+        let Some(physical_target_size) = camera.physical_target_size else {
+            continue;
+        };
 
-            commands.entity(entity).insert(ViewDepthStencilTexture {
-                texture: cached_texture.texture,
-                view: cached_texture.default_view,
-            });
-        }
+        let cached_texture = textures
+            .entry(camera.target.clone())
+            .or_insert_with(|| {
+                texture_cache.get(
+                    &render_device,
+                    TextureDescriptor {
+                        label: Some("depth_stenicl_texture"),
+                        size: Extent3d {
+                            depth_or_array_layers: 1,
+                            width: physical_target_size.x,
+                            height: physical_target_size.y,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: TextureDimension::D2,
+                        format: TextureFormat::Depth24PlusStencil8,
+                        usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[],
+                    },
+                )
+            })
+            .clone();
+
+        commands.entity(entity).insert(ViewDepthStencilTexture {
+            texture: cached_texture.texture,
+            view: cached_texture.default_view,
+        });
     }
 }

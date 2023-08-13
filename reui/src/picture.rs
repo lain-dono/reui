@@ -81,7 +81,7 @@ impl Picture {
     ) -> Self {
         let mut rpass = device.create_render_bundle_encoder(&wgpu::RenderBundleEncoderDescriptor {
             label: Some("reui::Picture"),
-            color_formats: &[Some(wgpu::TextureFormat::Bgra8UnormSrgb)],
+            color_formats: &[Some(wgpu::TextureFormat::Rgba8UnormSrgb)],
             depth_stencil: Some(wgpu::RenderBundleDepthStencil {
                 format: wgpu::TextureFormat::Depth24PlusStencil8,
                 depth_read_only: true,

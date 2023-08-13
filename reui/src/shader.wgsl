@@ -81,8 +81,7 @@ fn fragment_main(in: FragmentInput) -> @location(0) vec4<f32> {
 
     // Calculate gradient color using box gradient
     let d = sdroundrect(pt, extent, radius) * feather + 0.5;
-    let d = clamp(d, 0.0, 1.0);
-    let color = mix(in.inner_color, in.outer_color, vec4<f32>(d));
+    let color = mix(in.inner_color, in.outer_color, clamp(d, 0.0, 1.0));
 
     // Combine alpha
     return vec4<f32>(color.rgb, color.a * stroke_alpha);
@@ -117,8 +116,7 @@ fn vertex_blit(
     @location(1) texcoord: vec2<f32>,
 ) -> BlitOutput {
     let position = position * viewport.inv_size * 2.0;
-    let position = vec4<f32>(position.x - 1.0, 1.0 - position.y, 0.0, 1.0);
-    return BlitOutput(position, texcoord);
+    return BlitOutput(vec4<f32>(position.x - 1.0, 1.0 - position.y, 0.0, 1.0), texcoord);
 }
 
 @fragment

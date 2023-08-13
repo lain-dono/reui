@@ -1,61 +1,37 @@
 use crate::{picture::Picture, plugin::ViewDepthStencilTexture};
 use bevy::{
+    ecs::query::QueryItem,
     prelude::*,
     render::{
-        render_graph::{Node, NodeRunError, RenderGraphContext, SlotInfo, SlotType},
+        render_graph::{NodeRunError, RenderGraphContext, ViewNode},
         renderer::RenderContext,
-        view::{ExtractedView, ViewTarget},
+        view::ViewTarget,
     },
 };
 
-pub struct ReuiPassNode {
-    query: QueryState<
-        (
-            &'static Picture,
-            &'static ViewTarget,
-            &'static ViewDepthStencilTexture,
-        ),
-        With<ExtractedView>,
-    >,
-}
+#[derive(Default)]
+pub struct ReuiNode;
 
-impl ReuiPassNode {
-    pub const IN_VIEW: &'static str = "view";
-
-    pub fn new(world: &mut World) -> Self {
-        Self {
-            query: world.query_filtered(),
-        }
-    }
-}
-
-impl Node for ReuiPassNode {
-    fn input(&self) -> Vec<SlotInfo> {
-        vec![SlotInfo::new(Self::IN_VIEW, SlotType::Entity)]
-    }
-
-    fn update(&mut self, world: &mut World) {
-        self.query.update_archetypes(world);
-    }
+impl ViewNode for ReuiNode {
+    type ViewQuery = (
+        &'static Picture,
+        &'static ViewTarget,
+        &'static ViewDepthStencilTexture,
+    );
 
     fn run(
         &self,
-        graph: &mut RenderGraphContext<'_>,
+        _graph: &mut RenderGraphContext<'_>,
         render_context: &mut RenderContext,
-        world: &World,
+        (picture, target, depth): QueryItem<Self::ViewQuery>,
+        _world: &World,
     ) -> Result<(), NodeRunError> {
-        let view_entity = graph.get_input_entity(Self::IN_VIEW)?;
-        let (picture, target, depth) = match self.query.get_manual(world, view_entity) {
-            Ok(query) => query,
-            Err(_) => return Ok(()), // No window
-        };
-
         #[cfg(feature = "trace")]
         let _span = info_span!("reui_pass").entered();
 
         crate::render_pictures(
-            &mut render_context.command_encoder,
-            &target.view,
+            render_context.command_encoder(),
+            target.main_texture_view(),
             &depth.view,
             picture,
             None,

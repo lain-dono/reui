@@ -111,11 +111,14 @@ async fn setup<E: Application>(event_loop: EventLoop<()>, window: Window) -> Set
 
     tracing::info!("Initializing the surface...");
 
-    let instance = wgpu::Instance::new(backend());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: backend(),
+        dx12_shader_compiler: wgpu::util::dx12_shader_compiler_from_env().unwrap_or_default(),
+    });
     let (size, surface) = unsafe {
         let size = window.inner_size();
         let surface = instance.create_surface(&window);
-        (size, surface)
+        (size, surface.unwrap())
     };
     let adapter = instance
         .request_adapter(&wgpu::RequestAdapterOptions {
@@ -194,15 +197,18 @@ fn start<App: Application>(
     /*
     let format = surface
         .get_preferred_format(&adapter)
-        .unwrap_or(wgpu::TextureFormat::Bgra8UnormSrgb);
+        .unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb);
     */
 
     let mut sc_desc = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format: wgpu::TextureFormat::Bgra8UnormSrgb,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
         width: size.width,
         height: size.height,
         present_mode: wgpu::PresentMode::Mailbox,
+        alpha_mode: wgpu::CompositeAlphaMode::Auto,
+        //view_formats: vec![wgpu::TextureFormat::Rgba8UnormSrgb],
+        view_formats: vec![wgpu::TextureFormat::Rgba8UnormSrgb],
     };
     surface.configure(&device, &sc_desc);
 

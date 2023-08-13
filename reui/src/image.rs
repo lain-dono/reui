@@ -6,6 +6,7 @@ pub struct ImageBind {
     pub size: wgpu::Extent3d,
 }
 
+#[cfg_attr(feature = "bevy", derive(bevy::prelude::Resource))]
 pub struct Images<Key> {
     pub images: HashMap<Key, ImageBind>,
     pub layout: wgpu::BindGroupLayout,
@@ -55,7 +56,7 @@ impl<Key: Eq + std::hash::Hash> Images<Key> {
                 lod_min_clamp: 0.0,
                 lod_max_clamp: 100.0,
                 compare: None,
-                anisotropy_clamp: None,
+                anisotropy_clamp: 1,
                 border_color: None,
             }),
         }
@@ -94,6 +95,7 @@ impl<Key: Eq + std::hash::Hash> Images<Key> {
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
             usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
         });
 
         let copy_texture = wgpu::ImageCopyTexture {
@@ -105,7 +107,7 @@ impl<Key: Eq + std::hash::Hash> Images<Key> {
 
         let data_layout = wgpu::ImageDataLayout {
             offset: 0,
-            bytes_per_row: std::num::NonZeroU32::new(4 * width),
+            bytes_per_row: Some(4 * width),
             rows_per_image: None,
         };
 

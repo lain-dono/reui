@@ -83,6 +83,7 @@ impl Batch {
     }
 }
 
+#[cfg_attr(feature = "bevy", derive(bevy::prelude::Resource))]
 pub struct GpuBatch {
     pub indices: UploadBuffer<u32>,
     pub vertices: UploadBuffer<Vertex>,

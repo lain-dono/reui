@@ -5,16 +5,16 @@ use crate::{
 use bevy::{
     prelude::*,
     render::{
-        render_graph::{RenderGraph, RenderGraphError, RunGraphOnViewNode, SlotInfo, SlotType},
+        render_graph::{RenderGraphApp, ViewNodeRunner},
         renderer::{RenderDevice, RenderQueue},
-        Extract, RenderApp, RenderStage,
+        Extract, ExtractSchedule, Render, RenderApp, RenderSet,
     },
 };
 
 mod node;
 mod viewport;
 
-pub use self::node::ReuiPassNode;
+pub use self::node::ReuiNode;
 pub use self::viewport::{UniformOffset, ViewDepthStencilTexture};
 
 pub type Recorder = crate::Recorder<Handle<Image>>;
@@ -36,73 +36,48 @@ pub struct ReuiPlugin;
 
 impl bevy::app::Plugin for ReuiPlugin {
     fn build(&self, app: &mut App) {
-        let render_app = match app.get_sub_app_mut(RenderApp) {
-            Ok(render_app) => render_app,
-            Err(_) => return,
-        };
+        let Ok(render_app) = app.get_sub_app_mut(RenderApp) else { return };
+
+        //let reui_graph_2d = get_graph(render_app);
+        //let reui_graph_3d = get_graph(render_app);
+
+        //let mut graph = render_app.world.resource_mut::<RenderGraph>();
+
+        render_app
+            .add_systems(ExtractSchedule, extract_recorder)
+            .add_systems(
+                Render,
+                self::viewport::prepare_textures.in_set(RenderSet::Prepare),
+            )
+            .add_systems(
+                Render,
+                self::viewport::prepare_uniforms.in_set(RenderSet::Prepare),
+            )
+            .add_systems(Render, queue_pictures.in_set(RenderSet::Queue))
+            .add_render_graph_node::<ViewNodeRunner<ReuiNode>>(
+                bevy::core_pipeline::core_2d::CORE_2D,
+                draw_reui_graph::node::REUI_PASS,
+            )
+            .add_render_graph_edge(
+                bevy::core_pipeline::core_2d::CORE_2D,
+                bevy::core_pipeline::core_2d::graph::node::MAIN_PASS,
+                draw_reui_graph::node::REUI_PASS,
+            );
+    }
+
+    fn finish(&self, app: &mut App) {
+        let Ok(render_app) = app.get_sub_app_mut(RenderApp) else { return };
 
         render_app
             .init_resource::<Images>()
             .init_resource::<GpuBatch>()
             .init_resource::<Pipeline>()
-            .init_resource::<viewport::Uniforms>()
-            .add_system_to_stage(RenderStage::Extract, extract_recorder)
-            .add_system_to_stage(RenderStage::Prepare, self::viewport::prepare_textures)
-            .add_system_to_stage(RenderStage::Prepare, self::viewport::prepare_uniforms)
-            .add_system_to_stage(RenderStage::Queue, queue_pictures);
-
-        let reui_graph_2d = get_graph(render_app).unwrap();
-        let reui_graph_3d = get_graph(render_app).unwrap();
-
-        let mut graph = render_app.world.resource_mut::<RenderGraph>();
-
-        if let Some(graph) = graph.get_sub_graph_mut(bevy::core_pipeline::core_2d::graph::NAME) {
-            graph.add_sub_graph(draw_reui_graph::NAME, reui_graph_2d);
-            graph.add_node(
-                draw_reui_graph::node::REUI_PASS,
-                RunGraphOnViewNode::new(draw_reui_graph::NAME),
-            );
-            graph
-                .add_node_edge(
-                    bevy::core_pipeline::core_2d::graph::node::MAIN_PASS,
-                    draw_reui_graph::node::REUI_PASS,
-                )
-                .unwrap();
-            graph
-                .add_slot_edge(
-                    graph.input_node().unwrap().id,
-                    bevy::core_pipeline::core_2d::graph::input::VIEW_ENTITY,
-                    draw_reui_graph::node::REUI_PASS,
-                    RunGraphOnViewNode::IN_VIEW,
-                )
-                .unwrap();
-        }
-
-        if let Some(graph) = graph.get_sub_graph_mut(bevy::core_pipeline::core_3d::graph::NAME) {
-            graph.add_sub_graph(draw_reui_graph::NAME, reui_graph_3d);
-            graph.add_node(
-                draw_reui_graph::node::REUI_PASS,
-                RunGraphOnViewNode::new(draw_reui_graph::NAME),
-            );
-            graph
-                .add_node_edge(
-                    bevy::core_pipeline::core_3d::graph::node::MAIN_PASS,
-                    draw_reui_graph::node::REUI_PASS,
-                )
-                .unwrap();
-            graph
-                .add_slot_edge(
-                    graph.input_node().unwrap().id,
-                    bevy::core_pipeline::core_3d::graph::input::VIEW_ENTITY,
-                    draw_reui_graph::node::REUI_PASS,
-                    RunGraphOnViewNode::IN_VIEW,
-                )
-                .unwrap();
-        }
+            .init_resource::<viewport::Uniforms>();
     }
 }
 
-fn get_graph(render_app: &mut App) -> Result<RenderGraph, RenderGraphError> {
+/*
+fn get_graph(render_app: &mut App) -> RenderGraph {
     let mut graph = RenderGraph::default();
 
     graph.add_node(
@@ -120,10 +95,11 @@ fn get_graph(render_app: &mut App) -> Result<RenderGraph, RenderGraphError> {
         draw_reui_graph::input::VIEW_ENTITY,
         draw_reui_graph::node::REUI_PASS,
         ReuiPassNode::IN_VIEW,
-    )?;
+    );
 
-    Ok(graph)
+    graph
 }
+*/
 
 impl FromWorld for Images {
     fn from_world(world: &mut World) -> Self {
@@ -180,7 +156,7 @@ fn queue_pictures(
 ) {
     let device = render_device.wgpu_device();
 
-    if let Some(resource) = uniforms.binding() {
+    if let Some(resource) = uniforms.buffer.binding() {
         let binding = 0;
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("reui::Viewport"),

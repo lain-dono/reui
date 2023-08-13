@@ -1,23 +1,23 @@
-use bevy::{prelude::*, window::WindowId};
+use bevy::{prelude::*, window::PrimaryWindow};
 use reui::{plugin::Recorder, Color, FillRule, Offset, Path, Rect, Rounding, Transform};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugin(reui::plugin::ReuiPlugin)
-        .add_startup_system(setup)
-        .add_system(draw)
+        .add_plugins(reui::plugin::ReuiPlugin)
+        .add_systems(Startup, setup)
+        .add_systems(Update, draw)
         .run();
 }
 
 fn setup(mut commands: Commands) {
     commands
-        .spawn_bundle(Camera2dBundle::default())
+        .spawn(Camera2dBundle::default())
         .insert(Recorder::default());
 }
 
-fn draw(mut query: Query<&mut Recorder>, windows: Res<Windows>) {
-    let scale = windows.scale_factor(WindowId::primary()) as f32;
+fn draw(mut query: Query<&mut Recorder>, windows: Query<&Window, With<PrimaryWindow>>) {
+    let scale = windows.single().scale_factor() as f32;
     for mut recorder in query.iter_mut() {
         let color = Color::bgra(0x78_DCDCDC);
         let transform = Transform::scale(scale, scale);

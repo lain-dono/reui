@@ -145,6 +145,7 @@ fn create_depth_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu:
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Depth24PlusStencil8,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
         })
         .create_view(&wgpu::TextureViewDescriptor::default())
 }

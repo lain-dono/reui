@@ -60,7 +60,7 @@ pub fn render_pictures<'a>(
     encoder: &'a mut wgpu::CommandEncoder,
     color_view: &'a wgpu::TextureView,
     depth_view: &'a wgpu::TextureView,
-    bundles: impl IntoIterator<Item = &'a wgpu::RenderBundle>,
+    bundles: impl IntoIterator<Item = &'a wgpu::RenderBundle> + 'a,
     clear_color: Option<wgpu::Color>,
     clear: bool,
 ) {

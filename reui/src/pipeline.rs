@@ -47,6 +47,7 @@ impl Instance {
     }
 }
 
+#[cfg_attr(feature = "bevy", derive(bevy::prelude::Resource))]
 pub struct Pipeline {
     pub view_layout: wgpu::BindGroupLayout,
 
@@ -235,7 +236,7 @@ impl<'a> Builder<'a> {
         back: wgpu::StencilFaceState,
     ) -> wgpu::RenderPipeline {
         let target = wgpu::ColorTargetState {
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
             write_mask: if write_color {
                 wgpu::ColorWrites::all()
             } else {

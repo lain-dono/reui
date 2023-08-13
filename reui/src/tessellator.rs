@@ -28,7 +28,7 @@ impl Default for Convexity {
 }
 
 bitflags::bitflags!(
-    #[derive(Default)]
+    #[derive(Default, Clone, Copy)]
     pub struct PointFlags: u32 {
         const CORNER = 0x01;
         const LEFT = 0x02;
@@ -500,7 +500,7 @@ impl Tessellator {
                     {
                         let args = [stroke.width, stroke.width, u0, u1];
                         match stroke.join {
-                            LineJoin::Round => batch.round_join(p0, p1, args, ncap as usize),
+                            LineJoin::Round => batch.round_join(p0, p1, args, ncap),
                             _ => batch.bevel_join(p0, p1, args),
                         }
                     } else {
@@ -776,7 +776,7 @@ impl Batch {
             self.emit(l0, [lu, 1.0]);
             self.emit(p1.pos - dl0 * rw, [ru, 1.0]);
 
-            let n = (((a0 - a1) / PI * ncap as f32).ceil() as usize).clamp(2, ncap as usize);
+            let n = (((a0 - a1) / PI * ncap as f32).ceil() as usize).clamp(2, ncap);
             for i in 0..n {
                 let u = i as f32 / (n - 1) as f32;
                 let a = a0 + u * (a1 - a0);
@@ -796,7 +796,7 @@ impl Batch {
             self.emit(p1.pos + dl0 * rw, [lu, 1.0]);
             self.emit(r0, [ru, 1.0]);
 
-            let n = (((a1 - a0) / PI * ncap as f32).ceil() as usize).clamp(2, ncap as usize);
+            let n = (((a1 - a0) / PI * ncap as f32).ceil() as usize).clamp(2, ncap);
             for i in 0..n {
                 let u = i as f32 / (n - 1) as f32;
                 let a = a0 + u * (a1 - a0);

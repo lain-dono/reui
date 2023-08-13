@@ -1,4 +1,4 @@
-use palette::{encoding, Hsla, IntoColor, LinSrgb, LinSrgba, Pixel, Srgb, Srgba};
+use palette::{encoding, Hsla, IntoColor, LinSrgb, LinSrgba, Srgb, Srgba};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Color {
@@ -82,7 +82,7 @@ impl Color {
 
     #[inline]
     pub fn new_srgba8(r: u8, g: u8, b: u8, a: u8) -> Self {
-        let color: Srgba<f32> = Srgba::from_raw(&[r, g, b, a]).into_format();
+        let color: Srgba<f32> = Srgba::from([r, g, b, a]).into_format();
         Self::from(color)
     }
 
