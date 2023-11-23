@@ -9,4 +9,4 @@ publish = false
 
 [dependencies]
 reui = { path = "../../reui", features = ["bevy"] }
-bevy = "0.11"
+bevy = "0.12"

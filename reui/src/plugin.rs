@@ -36,7 +36,9 @@ pub struct ReuiPlugin;
 
 impl bevy::app::Plugin for ReuiPlugin {
     fn build(&self, app: &mut App) {
-        let Ok(render_app) = app.get_sub_app_mut(RenderApp) else { return };
+        let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
+            return;
+        };
 
         //let reui_graph_2d = get_graph(render_app);
         //let reui_graph_3d = get_graph(render_app);
@@ -47,11 +49,11 @@ impl bevy::app::Plugin for ReuiPlugin {
             .add_systems(ExtractSchedule, extract_recorder)
             .add_systems(
                 Render,
-                self::viewport::prepare_textures.in_set(RenderSet::Prepare),
+                self::viewport::prepare_textures.in_set(RenderSet::PrepareAssets),
             )
             .add_systems(
                 Render,
-                self::viewport::prepare_uniforms.in_set(RenderSet::Prepare),
+                self::viewport::prepare_uniforms.in_set(RenderSet::PrepareAssets),
             )
             .add_systems(Render, queue_pictures.in_set(RenderSet::Queue))
             .add_render_graph_node::<ViewNodeRunner<ReuiNode>>(
@@ -66,7 +68,9 @@ impl bevy::app::Plugin for ReuiPlugin {
     }
 
     fn finish(&self, app: &mut App) {
-        let Ok(render_app) = app.get_sub_app_mut(RenderApp) else { return };
+        let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
+            return;
+        };
 
         render_app
             .init_resource::<Images>()

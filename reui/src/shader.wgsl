@@ -98,8 +98,8 @@ fn fragment_convex_simple(in: FragmentInput) -> @location(0) vec4<f32> {
 
 @vertex
 fn vertex_stencil(@location(0) position: vec2<f32>) -> @builtin(position) vec4<f32> {
-    let position = position * viewport.inv_size * 2.0;
-    return vec4<f32>(position.x - 1.0, 1.0 - position.y, 0.0, 1.0);
+    let frag_position = position * viewport.inv_size * 2.0;
+    return vec4<f32>(frag_position.x - 1.0, 1.0 - frag_position.y, 0.0, 1.0);
 }
 
 @fragment
@@ -115,8 +115,8 @@ fn vertex_blit(
     @location(0) position: vec2<f32>,
     @location(1) texcoord: vec2<f32>,
 ) -> BlitOutput {
-    let position = position * viewport.inv_size * 2.0;
-    return BlitOutput(vec4<f32>(position.x - 1.0, 1.0 - position.y, 0.0, 1.0), texcoord);
+    let frag_position = position * viewport.inv_size * 2.0;
+    return BlitOutput(vec4<f32>(frag_position.x - 1.0, 1.0 - frag_position.y, 0.0, 1.0), texcoord);
 }
 
 @fragment
