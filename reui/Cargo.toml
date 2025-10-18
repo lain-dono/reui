@@ -1,6 +1,6 @@
 [package]
 name = "reui"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Lain-dono <lain.dono@gmail.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
@@ -11,9 +11,12 @@ repository = "https://github.com/lain-dono/reui"
 keywords = ["graphics"]
 exclude = ["Cargo.lock", "examples/**/*", "tests/**/*", "target/**/*"]
 
+[features]
+default = ["bevy"]
+
 [dependencies]
-bevy = { version = "0.12", optional = true }
+bevy = { version = "0.17", optional = true }
 bytemuck = { version = "1", features = ["derive"] }
-wgpu = "0.17"
+wgpu = "26"
 bitflags = "2.4"
 palette = "0.7"

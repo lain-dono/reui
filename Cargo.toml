@@ -1,11 +1,7 @@
 [workspace]
-resolver = "2"
-members = [
-    "reui",
-    "reui-app",
-    "examples/nvg_demo",
-    "examples/bevy_reui",
-]
+resolver = "3"
+# members = ["reui", "reui-app", "examples/nvg_demo", "examples/bevy_reui"]
+members = ["reui", "examples/bevy_reui"]
 
 
 #glyph_brush = "0.7"

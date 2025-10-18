@@ -98,14 +98,14 @@ impl<Key: Eq + std::hash::Hash> Images<Key> {
             view_formats: &[],
         });
 
-        let copy_texture = wgpu::ImageCopyTexture {
+        let copy_texture = wgpu::TexelCopyTextureInfo {
             texture: &texture,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         };
 
-        let data_layout = wgpu::ImageDataLayout {
+        let data_layout = wgpu::TexelCopyBufferLayout {
             offset: 0,
             bytes_per_row: Some(4 * width),
             rows_per_image: None,

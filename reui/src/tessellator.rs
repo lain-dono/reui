@@ -15,16 +15,11 @@ const DEFAULT_BOUNDS: Rect = Rect {
     max: Offset::new(-1e6, -1e6),
 };
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
 pub enum Convexity {
+    #[default]
     Concave,
     Convex,
-}
-
-impl Default for Convexity {
-    fn default() -> Self {
-        Self::Concave
-    }
 }
 
 bitflags::bitflags!(

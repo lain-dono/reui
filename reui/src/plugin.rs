@@ -2,14 +2,13 @@ use crate::{
     internals::{DrawCall, GpuBatch},
     Picture, Pipeline,
 };
-use bevy::{
-    prelude::*,
-    render::{
-        render_graph::{RenderGraphApp, ViewNodeRunner},
-        renderer::{RenderDevice, RenderQueue},
-        Extract, ExtractSchedule, Render, RenderApp, RenderSet,
-    },
+use bevy::render::{
+    render_graph::{RenderLabel, ViewNodeRunner},
+    renderer::{RenderDevice, RenderQueue},
+    sync_world::RenderEntity,
+    Extract, ExtractSchedule, Render, RenderApp, RenderStartup, RenderSystems,
 };
+use bevy::{prelude::*, render::render_graph::RenderGraphExt};
 
 mod node;
 mod viewport;
@@ -32,11 +31,14 @@ pub mod draw_reui_graph {
     }
 }
 
+#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+pub struct ReuiLabel;
+
 pub struct ReuiPlugin;
 
 impl bevy::app::Plugin for ReuiPlugin {
     fn build(&self, app: &mut App) {
-        let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
+        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
 
@@ -46,38 +48,36 @@ impl bevy::app::Plugin for ReuiPlugin {
         //let mut graph = render_app.world.resource_mut::<RenderGraph>();
 
         render_app
+            .add_systems(RenderStartup, init_resources)
             .add_systems(ExtractSchedule, extract_recorder)
             .add_systems(
                 Render,
-                self::viewport::prepare_textures.in_set(RenderSet::PrepareAssets),
+                (
+                    self::viewport::prepare_textures.in_set(RenderSystems::PrepareAssets),
+                    self::viewport::prepare_uniforms.in_set(RenderSystems::PrepareAssets),
+                    queue_pictures.in_set(RenderSystems::Queue),
+                ),
             )
-            .add_systems(
-                Render,
-                self::viewport::prepare_uniforms.in_set(RenderSet::PrepareAssets),
-            )
-            .add_systems(Render, queue_pictures.in_set(RenderSet::Queue))
             .add_render_graph_node::<ViewNodeRunner<ReuiNode>>(
-                bevy::core_pipeline::core_2d::CORE_2D,
-                draw_reui_graph::node::REUI_PASS,
+                bevy::core_pipeline::core_2d::graph::Core2d,
+                ReuiLabel,
             )
-            .add_render_graph_edge(
-                bevy::core_pipeline::core_2d::CORE_2D,
-                bevy::core_pipeline::core_2d::graph::node::MAIN_PASS,
-                draw_reui_graph::node::REUI_PASS,
+            .add_render_graph_edges(
+                bevy::core_pipeline::core_2d::graph::Core2d,
+                (
+                    bevy::core_pipeline::core_2d::graph::Node2d::MainTransparentPass,
+                    ReuiLabel,
+                    bevy::core_pipeline::core_2d::graph::Node2d::EndMainPass,
+                ),
             );
     }
+}
 
-    fn finish(&self, app: &mut App) {
-        let Ok(render_app) = app.get_sub_app_mut(RenderApp) else {
-            return;
-        };
-
-        render_app
-            .init_resource::<Images>()
-            .init_resource::<GpuBatch>()
-            .init_resource::<Pipeline>()
-            .init_resource::<viewport::Uniforms>();
-    }
+fn init_resources(mut commands: Commands) {
+    commands.init_resource::<Images>();
+    commands.init_resource::<GpuBatch>();
+    commands.init_resource::<Pipeline>();
+    commands.init_resource::<viewport::Uniforms>();
 }
 
 /*
@@ -137,7 +137,7 @@ fn extract_recorder(
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
     mut batch: ResMut<GpuBatch>,
-    query: Extract<Query<(Entity, &Recorder)>>,
+    query: Extract<Query<(RenderEntity, &Recorder)>>,
 ) {
     let device = render_device.wgpu_device();
     for (entity, recorder) in query.iter() {
@@ -145,7 +145,7 @@ fn extract_recorder(
 
         let calls = recorder.calls.clone();
         let component = ExtractedRecorder { calls };
-        commands.get_or_spawn(entity).insert(component);
+        commands.entity(entity).insert(component);
     }
 }
 
@@ -178,7 +178,8 @@ fn queue_pictures(
                 &images,
                 &cmd.calls,
             );
-            commands.get_or_spawn(entity).insert(picture);
+
+            commands.entity(entity).insert(picture);
         }
     }
 }

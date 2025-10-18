@@ -77,13 +77,14 @@ impl Renderer {
         image_key
     }
 
+    /*
     pub fn start(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         width: u32,
         height: u32,
-    ) -> Canvas<Image> {
+    ) -> Canvas<'_, Image> {
         self.recorder.clear();
 
         if self.width != width || self.height != height {
@@ -98,6 +99,7 @@ impl Renderer {
 
         Canvas::new(&mut self.recorder, &self.images)
     }
+    */
 
     pub fn flush(
         &mut self,

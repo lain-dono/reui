@@ -171,7 +171,7 @@ impl<T: bytemuck::Pod> UploadBuffer<T> {
         }
     }
 
-    pub fn slice<S: RangeBounds<wgpu::BufferAddress>>(&self, bounds: S) -> wgpu::BufferSlice {
+    pub fn slice<S: RangeBounds<wgpu::BufferAddress>>(&self, bounds: S) -> wgpu::BufferSlice<'_> {
         self.buffer.slice(bounds)
     }
 

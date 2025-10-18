@@ -65,9 +65,12 @@ pub fn render_pictures<'a>(
     clear: bool,
 ) {
     let cload = clear_color.map_or(wgpu::LoadOp::Load, wgpu::LoadOp::Clear);
-    let dload = clear.then_some(wgpu::LoadOp::Load).unwrap_or_default();
-    let sload = clear.then_some(wgpu::LoadOp::Load).unwrap_or_default();
-    let store = true;
+    let (dload, sload) = if !clear {
+        (Default::default(), Default::default())
+    } else {
+        (wgpu::LoadOp::Load, wgpu::LoadOp::Load)
+    };
+    let store = wgpu::StoreOp::Store;
 
     let desc = wgpu::RenderPassDescriptor {
         label: Some("reui"),
@@ -75,15 +78,20 @@ pub fn render_pictures<'a>(
             view: color_view,
             resolve_target: None,
             ops: wgpu::Operations { load: cload, store },
+            depth_slice: None,
         })],
         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
             view: depth_view,
             depth_ops: Some(wgpu::Operations { load: dload, store }),
             stencil_ops: Some(wgpu::Operations { load: sload, store }),
         }),
+        timestamp_writes: None,
+        occlusion_query_set: None,
     };
 
-    encoder.begin_render_pass(&desc).execute_bundles(bundles)
+    let mut rpass = encoder.begin_render_pass(&desc);
+    rpass.set_stencil_reference(0);
+    rpass.execute_bundles(bundles)
 }
 
 pub fn combine_viewport(width: u32, height: u32) -> [f32; 4] {

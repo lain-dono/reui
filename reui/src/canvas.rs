@@ -30,16 +30,17 @@ impl TransformStack {
 
 pub struct Canvas<'a, Key = u32> {
     recorder: &'a mut Recorder<Key>,
-    images: &'a Images<Key>,
+    // images: &'a Images<Key>,
     states: TransformStack,
     path: Path,
 }
 
 impl<'a, Key: Eq + std::hash::Hash> Canvas<'a, Key> {
-    pub fn new(recorder: &'a mut Recorder<Key>, images: &'a Images<Key>) -> Self {
+    // pub fn new(recorder: &'a mut Recorder<Key>, images: &'a Images<Key>) -> Self {
+    pub fn new(recorder: &'a mut Recorder<Key>) -> Self {
         Self {
             recorder,
-            images,
+            // images,
             states: TransformStack(Transform::default(), Vec::with_capacity(16)),
             path: Path::new(),
         }
@@ -77,6 +78,7 @@ impl<'a, Key: Eq + std::hash::Hash> Canvas<'a, Key> {
         self.states.pre_transform(t);
     }
 
+    /*
     pub fn image_rect(&mut self, image: Key, rect: Rect) {
         let transform = self.states.transform();
         self.recorder.blit_premultiplied(rect, transform, image);
@@ -91,6 +93,7 @@ impl<'a, Key: Eq + std::hash::Hash> Canvas<'a, Key> {
             self.image_rect(image, rect);
         }
     }
+    */
 
     /// Draws a line between the given points using the given paint.
     #[inline]

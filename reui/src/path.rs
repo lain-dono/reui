@@ -6,28 +6,19 @@ const KAPPA90: f32 = 0.552_284_8; // 0.5522847493
 /// The fill rule used when filling paths: `EvenOdd`, `NonZero`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
+#[derive(Default)]
 pub enum FillRule {
+    #[default]
     NonZero,
     EvenOdd,
 }
 
-impl Default for FillRule {
-    fn default() -> Self {
-        Self::NonZero
-    }
-}
-
 /// Used to specify Solid/Hole when adding shapes to a path.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
 pub enum Solidity {
+    #[default]
     Solid,
     Hole,
-}
-
-impl Default for Solidity {
-    fn default() -> Self {
-        Self::Solid
-    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -208,7 +199,7 @@ impl<'a> std::iter::Extend<&'a Command> for Path {
 
 impl Path {
     /// Returns a copy of the [`Path`] with all the segments of every sub-path transformed by the given matrix.
-    pub(crate) fn transform_iter(&self, transform: Transform) -> PathTransformIter {
+    pub(crate) fn transform_iter(&self, transform: Transform) -> PathTransformIter<'_> {
         PathTransformIter {
             transform,
             index: self.index.iter(),

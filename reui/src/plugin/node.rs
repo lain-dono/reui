@@ -26,9 +26,6 @@ impl ViewNode for ReuiNode {
         (picture, target, depth): QueryItem<Self::ViewQuery>,
         _world: &World,
     ) -> Result<(), NodeRunError> {
-        #[cfg(feature = "trace")]
-        let _span = info_span!("reui_pass").entered();
-
         crate::render_pictures(
             render_context.command_encoder(),
             target.main_texture_view(),

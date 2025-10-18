@@ -281,13 +281,15 @@ impl<'a> Builder<'a> {
             layout: Some(layout),
             vertex: wgpu::VertexState {
                 module,
-                entry_point: vs_entry_point,
+                entry_point: Some(vs_entry_point),
                 buffers: if *instances { &buffers } else { &buffers[..1] },
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module,
-                entry_point: fs_entry_point,
+                entry_point: Some(fs_entry_point),
                 targets: &[Some(target)],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -310,6 +312,7 @@ impl<'a> Builder<'a> {
             }),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
+            cache: None,
         })
     }
 }
